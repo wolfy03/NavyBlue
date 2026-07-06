@@ -1,0 +1,36 @@
+[gd_scene format=3 uid="uid://b8fim51lv0pqu"]
+
+[ext_resource type="Script" path="res://scripts/weapon/Turret.gd" id="1_turret"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_base"]
+top_radius = 0.42
+height = 0.28
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_base"]
+albedo_color = Color(0.35, 0.52, 0.72, 1)
+roughness = 0.72
+
+[sub_resource type="BoxMesh" id="BoxMesh_barrel"]
+size = Vector3(0.18, 0.18, 1.55)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_barrel"]
+albedo_color = Color(0.12, 0.14, 0.16, 1)
+roughness = 0.85
+
+[node name="Turret" type="Node3D" unique_id=238336547]
+script = ExtResource("1_turret")
+
+[node name="Base" type="MeshInstance3D" parent="." unique_id=1063977664]
+mesh = SubResource("CylinderMesh_base")
+surface_material_override/0 = SubResource("StandardMaterial3D_base")
+
+[node name="BarrelPivot" type="Node3D" parent="." unique_id=872444050]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, 0)
+
+[node name="Barrel" type="MeshInstance3D" parent="BarrelPivot" unique_id=1136484312]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.82)
+mesh = SubResource("BoxMesh_barrel")
+surface_material_override/0 = SubResource("StandardMaterial3D_barrel")
+
+[node name="Muzzle" type="Node3D" parent="BarrelPivot" unique_id=1645097386]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1.65)

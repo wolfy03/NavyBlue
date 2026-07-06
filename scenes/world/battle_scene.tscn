@@ -1,0 +1,105 @@
+[gd_scene load_steps=14 format=3 uid="uid://c346y3o6qqqhd"]
+
+[ext_resource type="Script" path="res://scripts/world/BattleScene.gd" id="1_battle"]
+[ext_resource type="Script" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/input/PlayerInputManager.gd" id="3_input"]
+[ext_resource type="Script" path="res://scripts/ui/HUD.gd" id="4_hud"]
+[ext_resource type="Script" path="res://scripts/world/ocean/OceanGrid.gd" id="5_grid"]
+[ext_resource type="Script" path="res://scripts/world/SpawnSystem.gd" id="6_spawn"]
+[ext_resource type="Script" path="res://scripts/world/WaveSystem.gd" id="7_wave"]
+
+[sub_resource type="Environment" id="Environment_battle"]
+background_mode = 1
+background_color = Color(0.51, 0.69, 0.86, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.7, 0.78, 0.86, 1)
+ambient_light_energy = 0.8
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ocean"]
+size = Vector2(420, 420)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ocean"]
+albedo_color = Color(0.04, 0.25, 0.42, 1)
+roughness = 0.48
+
+[sub_resource type="TorusMesh" id="TorusMesh_impact"]
+inner_radius = 1.15
+outer_radius = 1.35
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_impact"]
+albedo_color = Color(1, 0.05, 0.03, 0.88)
+emission_enabled = true
+emission = Color(1, 0, 0, 1)
+emission_energy_multiplier = 0.7
+
+[node name="BattleScene" type="Node3D"]
+script = ExtResource("1_battle")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_battle")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.819152, -0.439385, 0.368688, 0, 0.642788, 0.766044, -0.573576, -0.627507, 0.526541, 0, 0, 0)
+light_energy = 2.1
+
+[node name="Ocean" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_ocean")
+surface_material_override/0 = SubResource("StandardMaterial3D_ocean")
+
+[node name="OceanGrid" type="Node3D" parent="."]
+script = ExtResource("5_grid")
+
+[node name="Ships" type="Node3D" parent="."]
+
+[node name="SpawnSystem" type="Node" parent="."]
+script = ExtResource("6_spawn")
+
+[node name="WaveSystem" type="Node" parent="."]
+script = ExtResource("7_wave")
+
+[node name="SpawnPoints" type="Node3D" parent="."]
+
+[node name="Player" type="Marker3D" parent="SpawnPoints"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10)
+
+[node name="AllyCruiser" type="Marker3D" parent="SpawnPoints"]
+transform = Transform3D(0.965926, 0, -0.258819, 0, 1, 0, 0.258819, 0, 0.965926, -12, 0, 18)
+
+[node name="AllyCarrier" type="Marker3D" parent="SpawnPoints"]
+transform = Transform3D(0.984808, 0, 0.173648, 0, 1, 0, -0.173648, 0, 0.984808, 13, 0, 24)
+
+[node name="EnemyDestroyer" type="Marker3D" parent="SpawnPoints"]
+transform = Transform3D(-0.996195, 0, 0.0871557, 0, 1, 0, -0.0871557, 0, -0.996195, -20, 0, -42)
+
+[node name="EnemyCruiser" type="Marker3D" parent="SpawnPoints"]
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 4, 0, -55)
+
+[node name="EnemyBattleship" type="Marker3D" parent="SpawnPoints"]
+transform = Transform3D(-0.984808, 0, -0.173648, 0, 1, 0, 0.173648, 0, -0.984808, 27, 0, -62)
+
+[node name="ImpactMarker" type="MeshInstance3D" parent="."]
+visible = false
+mesh = SubResource("TorusMesh_impact")
+surface_material_override/0 = SubResource("StandardMaterial3D_impact")
+
+[node name="RTSCamera" type="Camera3D" parent="."]
+transform = Transform3D(0.742102, -0.477993, 0.470032, 0, 0.701163, 0.713001, -0.670287, -0.529164, 0.520371, 28, 34, 41.035)
+projection = 1
+size = 42.0
+far = 850.0
+script = ExtResource("2_camera")
+
+[node name="PlayerInputManager" type="Node" parent="."]
+script = ExtResource("3_input")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+script = ExtResource("4_hud")
+
+[node name="StatusLabel" type="Label" parent="HUD"]
+offset_left = 18.0
+offset_top = 14.0
+offset_right = 420.0
+offset_bottom = 64.0
+theme_override_colors/font_color = Color(0.92, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "Initializing..."

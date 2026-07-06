@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://doig3d7r8f3p1"]
+
+[ext_resource type="Script" path="res://scripts/weapon/Projectile.gd" id="1_projectile"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_projectile"]
+radius = 0.12
+
+[sub_resource type="SphereMesh" id="SphereMesh_projectile"]
+radius = 0.12
+height = 0.24
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_projectile"]
+albedo_color = Color(1, 0.86, 0.42, 1)
+emission_enabled = true
+emission = Color(1, 0.45, 0.12, 1)
+emission_energy_multiplier = 0.9
+
+[node name="Projectile" type="RigidBody3D" unique_id=1085906256]
+continuous_cd = true
+contact_monitor = true
+max_contacts_reported = 4
+script = ExtResource("1_projectile")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=713296469]
+shape = SubResource("SphereShape3D_projectile")
+
+[node name="ProjectileMesh" type="MeshInstance3D" parent="." unique_id=1197608774]
+mesh = SubResource("SphereMesh_projectile")
+surface_material_override/0 = SubResource("StandardMaterial3D_projectile")
