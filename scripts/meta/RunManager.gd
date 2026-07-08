@@ -10,7 +10,12 @@ var current_stage_index := 0
 var active_upgrades: Array[String] = []
 var pending_rewards: Array = []
 var difficulty := 1.0
+var currency: Dictionary = {
+	"gold": 0,
+	"scrap": 0,
+}
 var player_ship_state: Dictionary = {}
+var world_state: Dictionary = {}
 var started_at_msec := 0
 
 func start_new_run(config: Dictionary = {}) -> void:
@@ -21,7 +26,9 @@ func start_new_run(config: Dictionary = {}) -> void:
 	active_upgrades = _to_string_array(config.get("upgrades", []))
 	pending_rewards = config.get("rewards", [])
 	difficulty = float(config.get("difficulty", 1.0))
+	currency = config.get("currency", {"gold": 0, "scrap": 0})
 	player_ship_state = config.get("player_ship_state", {})
+	world_state = config.get("world_state", {})
 	started_at_msec = Time.get_ticks_msec()
 	_emit_started()
 	_emit_updated()
@@ -34,7 +41,12 @@ func reset_run() -> void:
 	active_upgrades.clear()
 	pending_rewards.clear()
 	difficulty = 1.0
+	currency = {
+		"gold": 0,
+		"scrap": 0,
+	}
 	player_ship_state.clear()
+	world_state.clear()
 	started_at_msec = 0
 	_emit_updated()
 
@@ -62,8 +74,22 @@ func clear_pending_rewards() -> void:
 	pending_rewards.clear()
 	_emit_updated()
 
+func set_currency(next_currency: Dictionary) -> void:
+	currency = next_currency.duplicate(true)
+	_emit_updated()
+
+func add_currency(currency_id: String, amount: int) -> void:
+	if currency_id.is_empty():
+		return
+	currency[currency_id] = int(currency.get(currency_id, 0)) + amount
+	_emit_updated()
+
 func update_player_ship_state(state: Dictionary) -> void:
 	player_ship_state = state.duplicate(true)
+	_emit_updated()
+
+func update_world_state(state: Dictionary) -> void:
+	world_state = state.duplicate(true)
 	_emit_updated()
 
 func capture_player_ship(ship) -> void:
@@ -85,6 +111,7 @@ func finish_run(result: Dictionary = {}) -> void:
 
 func to_save_data() -> Dictionary:
 	return {
+		"version": 1,
 		"is_run_active": is_run_active,
 		"current_sea_id": current_sea_id,
 		"current_stage_id": current_stage_id,
@@ -92,7 +119,9 @@ func to_save_data() -> Dictionary:
 		"active_upgrades": active_upgrades,
 		"pending_rewards": pending_rewards,
 		"difficulty": difficulty,
+		"currency": currency,
 		"player_ship_state": player_ship_state,
+		"world_state": world_state,
 		"started_at_msec": started_at_msec,
 	}
 
@@ -104,9 +133,30 @@ func restore_from_save_data(data: Dictionary) -> void:
 	active_upgrades = _to_string_array(data.get("active_upgrades", []))
 	pending_rewards = data.get("pending_rewards", [])
 	difficulty = float(data.get("difficulty", 1.0))
+	currency = data.get("currency", {"gold": 0, "scrap": 0})
 	player_ship_state = data.get("player_ship_state", {})
+	world_state = data.get("world_state", {})
 	started_at_msec = int(data.get("started_at_msec", 0))
 	_emit_updated()
+
+func save_current_run() -> Error:
+	if not has_node("/root/SaveManager"):
+		return ERR_UNAVAILABLE
+	return get_node("/root/SaveManager").save_run(to_save_data())
+
+func load_saved_run() -> bool:
+	if not has_node("/root/SaveManager"):
+		return false
+	var save_manager = get_node("/root/SaveManager")
+	if not save_manager.run_exists():
+		return false
+	restore_from_save_data(save_manager.load_run())
+	return is_run_active
+
+func clear_saved_run() -> Error:
+	if not has_node("/root/SaveManager"):
+		return ERR_UNAVAILABLE
+	return get_node("/root/SaveManager").delete_run()
 
 func _to_string_array(value) -> Array[String]:
 	var result: Array[String] = []
