@@ -15,14 +15,21 @@ var gravity := 9.8
 func _ready() -> void:
 	gravity = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 	if has_node("/root/GameManager"):
-		get_node("/root/GameManager").start_run("test_level")
+		get_node("/root/GameManager").enter_battle()
+	if has_node("/root/RunManager") and not get_node("/root/RunManager").is_run_active:
+		get_node("/root/RunManager").start_new_run({
+			"sea_id": "test_sea",
+			"stage_id": "test_level",
+			"stage_index": 0,
+			"difficulty": 1.0,
+		})
 	_spawn_fleets()
 	_assign_ai_targets()
 	camera.setup(player_ship)
 	input_manager.setup(player_ship, camera, 0.0)
 	hud.setup(player_ship)
-	if has_node("/root/GameManager"):
-		get_node("/root/GameManager").register_player_ship(player_ship)
+	if has_node("/root/RunManager"):
+		get_node("/root/RunManager").capture_player_ship(player_ship)
 
 func _process(_delta: float) -> void:
 	_update_impact_marker()

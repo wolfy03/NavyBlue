@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 
 EventBus="*res://scripts/core/EventBus.gd"
 GameManager="*res://scripts/core/GameManager.gd"
+RunManager="*res://scripts/meta/RunManager.gd"
 SceneLoader="*res://scripts/core/SceneLoader.gd"
 SaveManager="*res://scripts/core/SaveManager.gd"
 ObjectPool="*res://scripts/core/ObjectPool.gd"
