@@ -16,13 +16,13 @@ func _process(_delta: float) -> void:
 		return
 	var data = target_ship.ship_data
 	var turret_pitch := 0.0
-	if not target_ship.turrets.is_empty():
-		turret_pitch = target_ship.turrets[0].pitch_degrees
+	var turrets: Array = target_ship.get_turrets()
+	if not turrets.is_empty():
+		turret_pitch = turrets[0].pitch_degrees
 	status_label.text = "%s | %s\nEngine %d%% | Speed %.1f | Gun %.1f deg" % [
 		data.display_name,
 		ship_database.class_label(data.ship_class),
-		roundi(target_ship.engine_output * 100.0),
+		roundi(target_ship.get_engine_output() * 100.0),
 		target_ship.get_speed_knots_style(),
 		turret_pitch,
 	]
-

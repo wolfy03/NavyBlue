@@ -1,6 +1,11 @@
-[gd_scene format=3 uid="uid://dtiv3xr6a37g4"]
+[gd_scene load_steps=12 format=3 uid="uid://dtiv3xr6a37g4"]
 
 [ext_resource type="Script" path="res://scripts/unit/ShipUnit.gd" id="1_ship"]
+[ext_resource type="Script" path="res://scripts/unit/ShipMovement.gd" id="2_movement"]
+[ext_resource type="Script" path="res://scripts/unit/ShipCombat.gd" id="3_combat"]
+[ext_resource type="Script" path="res://scripts/unit/ShipHealth.gd" id="4_health"]
+[ext_resource type="Script" path="res://scripts/unit/ShipAI.gd" id="5_ai"]
+[ext_resource type="Script" path="res://scripts/unit/ShipVisualBuilder.gd" id="6_visual_builder"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
 size = Vector3(2.2, 0.8, 7)
@@ -47,3 +52,18 @@ mesh = SubResource("BoxMesh_deck")
 surface_material_override/0 = SubResource("StandardMaterial3D_deck")
 
 [node name="TurretMounts" type="Node3D" parent="." unique_id=457494772]
+
+[node name="ShipMovement" type="Node" parent="."]
+script = ExtResource("2_movement")
+
+[node name="ShipCombat" type="Node" parent="."]
+script = ExtResource("3_combat")
+
+[node name="ShipHealth" type="Node" parent="."]
+script = ExtResource("4_health")
+
+[node name="ShipAI" type="Node" parent="."]
+script = ExtResource("5_ai")
+
+[node name="ShipVisualBuilder" type="Node" parent="."]
+script = ExtResource("6_visual_builder")

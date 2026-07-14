@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene load_steps=12 format=3 uid="uid://c346y3o6qqqhd"]
 
 [ext_resource type="Script" path="res://scripts/world/BattleScene.gd" id="1_battle"]
 [ext_resource type="Script" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/world/ocean/OceanGrid.gd" id="5_grid"]
 [ext_resource type="Script" path="res://scripts/world/SpawnSystem.gd" id="6_spawn"]
 [ext_resource type="Script" path="res://scripts/world/WaveSystem.gd" id="7_wave"]
+[ext_resource type="PackedScene" path="res://scenes/world/ocean.tscn" id="8_ocean"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -14,13 +15,6 @@ background_color = Color(0.51, 0.69, 0.86, 1)
 ambient_light_source = 2
 ambient_light_color = Color(0.7, 0.78, 0.86, 1)
 ambient_light_energy = 0.8
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_ocean"]
-size = Vector2(420, 420)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ocean"]
-albedo_color = Color(0.04, 0.25, 0.42, 1)
-roughness = 0.48
 
 [sub_resource type="TorusMesh" id="TorusMesh_impact"]
 inner_radius = 1.15
@@ -42,9 +36,7 @@ environment = SubResource("Environment_battle")
 transform = Transform3D(0.819152, -0.439385, 0.368688, 0, 0.642788, 0.766044, -0.573576, -0.627507, 0.526541, 0, 0, 0)
 light_energy = 2.1
 
-[node name="Ocean" type="MeshInstance3D" parent="."]
-mesh = SubResource("PlaneMesh_ocean")
-surface_material_override/0 = SubResource("StandardMaterial3D_ocean")
+[node name="Ocean" parent="." instance=ExtResource("8_ocean")]
 
 [node name="OceanGrid" type="Node3D" parent="."]
 script = ExtResource("5_grid")

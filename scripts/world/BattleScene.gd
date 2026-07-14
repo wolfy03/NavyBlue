@@ -51,9 +51,9 @@ func _assign_ai_targets() -> void:
 		if ship == player_ship:
 			continue
 		if ship.team == &"enemy":
-			ship.ai_target = player_ship
+			ship.set_ai_target(player_ship)
 		else:
-			ship.ai_target = _nearest_enemy(ship)
+			ship.set_ai_target(_nearest_enemy(ship))
 
 func _nearest_enemy(source):
 	var best

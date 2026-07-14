@@ -98,7 +98,7 @@ func capture_player_ship(ship) -> void:
 	else:
 		player_ship_state = {
 			"ship_id": str(ship.get("ship_id")),
-			"engine_output": float(ship.get("engine_output")),
+			"engine_output": ship.get_engine_output() if ship.has_method("get_engine_output") else 0.0,
 			"position": _vector3_to_dictionary(ship.global_position if ship is Node3D else Vector3.ZERO),
 			"rotation": _vector3_to_dictionary(ship.global_rotation if ship is Node3D else Vector3.ZERO),
 		}
