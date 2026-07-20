@@ -1,0 +1,26 @@
+[gd_scene load_steps=7 format=3 uid="uid://bnt51f2yrt2sn"]
+
+[ext_resource type="Script" path="res://scripts/world/ocean/OceanManager.gd" id="1_manager"]
+[ext_resource type="Script" uid="uid://dan8jqn26d577" path="res://scripts/world/ocean/OceanVisual.gd" id="1_visual"]
+[ext_resource type="Material" path="res://scripts/world/ocean/ocean_material.tres" id="2_material"]
+[ext_resource type="Script" path="res://scripts/world/ocean/OceanInteraction.gd" id="3_interaction"]
+[ext_resource type="Script" path="res://scripts/world/ocean/effects/SplashEffectPool.gd" id="4_pool"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ioky5"]
+size = Vector2(420, 420)
+subdivide_width = 96
+subdivide_depth = 96
+
+[node name="Ocean" type="Node3D" unique_id=522742060]
+script = ExtResource("1_manager")
+
+[node name="OceanVisual" type="MeshInstance3D" parent="." unique_id=1295046185]
+material_override = ExtResource("2_material")
+mesh = SubResource("PlaneMesh_ioky5")
+script = ExtResource("1_visual")
+
+[node name="OceanInteraction" type="Node" parent="."]
+script = ExtResource("3_interaction")
+
+[node name="SplashEffectPool" type="Node" parent="OceanInteraction"]
+script = ExtResource("4_pool")

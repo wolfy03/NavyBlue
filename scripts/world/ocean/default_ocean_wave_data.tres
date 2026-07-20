@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="OceanWaveData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/ocean/OceanWaveData.gd" id="1_wave_data"]
+
+[resource]
+script = ExtResource("1_wave_data")
+direction = Vector2(1, 0.16)
+amplitude = 0.55
+frequency = 0.055
+speed = 0.9
+phase_offset = 0.0

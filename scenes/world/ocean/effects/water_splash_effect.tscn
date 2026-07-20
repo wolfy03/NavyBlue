@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://d1dbvbb4sqyk8"]
+
+[ext_resource type="Script" path="res://scripts/world/ocean/effects/WaterSplashEffect.gd" id="1_splash"]
+
+[node name="WaterSplashEffect" type="Node3D"]
+script = ExtResource("1_splash")
+
+[node name="MainPlumeParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="DropletParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="MistParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="."]
+
+[node name="LifetimeTimer" type="Timer" parent="."]
+one_shot = true

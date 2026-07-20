@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://caf3li4ics4p2"]
+
+[ext_resource type="Script" path="res://scripts/world/ocean/effects/FoamPatch.gd" id="1_foam"]
+
+[node name="FoamPatch" type="Node3D"]
+script = ExtResource("1_foam")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]

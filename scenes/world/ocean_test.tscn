@@ -1,0 +1,32 @@
+[gd_scene load_steps=5 format=3 uid="uid://dhqhd2g5v06py"]
+
+[ext_resource type="PackedScene" path="res://scenes/world/ocean.tscn" id="1_ocean"]
+[ext_resource type="Script" path="res://scripts/world/ocean/OceanImpactTestInput.gd" id="2_test_input"]
+
+[sub_resource type="Environment" id="Environment_ocean_test"]
+background_mode = 1
+background_color = Color(0.48, 0.67, 0.84, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.72, 0.8, 0.88, 1)
+ambient_light_energy = 0.85
+
+[node name="OceanTest" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_ocean_test")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.819152, -0.439385, 0.368688, 0, 0.642788, 0.766044, -0.573576, -0.627507, 0.526541, 0, 0, 0)
+light_energy = 2.0
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.742102, -0.477993, 0.470032, 0, 0.701163, 0.713001, -0.670287, -0.529164, 0.520371, 28, 34, 41.035)
+projection = 1
+current = true
+size = 42.0
+far = 850.0
+
+[node name="Ocean" parent="." instance=ExtResource("1_ocean")]
+
+[node name="OceanImpactTestInput" type="Node" parent="."]
+script = ExtResource("2_test_input")
