@@ -9,7 +9,7 @@ class_name RTSCamera
 @export var pan_bounds_max := Vector2(170.0, 170.0)
 @export var zoom_step := 3.0
 @export var min_zoom_size := 18.0
-@export var max_zoom_size := 90.0
+@export var max_zoom_size := 120.0
 
 var focus_position := Vector3.ZERO
 

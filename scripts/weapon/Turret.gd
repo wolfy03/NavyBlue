@@ -2,6 +2,7 @@ extends Node3D
 class_name Turret
 
 @export var projectile_scene: PackedScene = preload("res://scenes/weapon/projectile.tscn")
+@export var shell_stats: ShellStats = preload("res://scripts/combat/default_ap_shell.tres")
 @export var yaw_speed := 7.5
 @export var min_pitch_degrees := 4.0
 @export var max_pitch_degrees := 55.0
@@ -45,13 +46,16 @@ func fire() -> bool:
 	if reload_left > 0.0 or muzzle == null:
 		return false
 
-	var projectile = projectile_scene.instantiate()
+	var projectile := projectile_scene.instantiate() as Projectile
+	if projectile == null:
+		push_warning("Turret projectile scene must instantiate Projectile.")
+		return false
 	var projectile_parent := get_tree().current_scene
 	if projectile_parent == null:
 		projectile_parent = get_tree().root
 	projectile_parent.add_child(projectile)
 	projectile.global_transform = muzzle.global_transform
-	projectile.launch(get_muzzle_velocity_vector(), owner_team)
+	projectile.launch(get_muzzle_velocity_vector(), owner_team, shell_stats)
 	reload_left = reload_seconds
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").projectile_fired.emit(projectile)
@@ -81,4 +85,3 @@ func _apply_team_materials(team_color: Color) -> void:
 	barrel_material.albedo_color = Color(0.12, 0.14, 0.16)
 	barrel_material.roughness = 0.85
 	barrel_mesh.material_override = barrel_material
-

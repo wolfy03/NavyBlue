@@ -2,7 +2,7 @@
 extends MeshInstance3D
 class_name OceanVisual
 
-const MAX_WAVE_COUNT := 4
+const MAX_WAVE_COUNT := 0
 const DEFAULT_MATERIAL := preload("res://scripts/world/ocean/ocean_material.tres")
 
 @export_range(32.0, 4096.0, 1.0, "or_greater") var mesh_size: float = 420.0:

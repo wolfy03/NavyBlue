@@ -1,6 +1,7 @@
-[gd_scene format=3 uid="uid://doig3d7r8f3p1"]
+[gd_scene load_steps=6 format=3 uid="uid://doig3d7r8f3p1"]
 
 [ext_resource type="Script" path="res://scripts/weapon/Projectile.gd" id="1_projectile"]
+[ext_resource type="Resource" path="res://scripts/combat/default_ap_shell.tres" id="2_shell"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_projectile"]
 radius = 0.12
@@ -20,6 +21,7 @@ continuous_cd = true
 contact_monitor = true
 max_contacts_reported = 4
 script = ExtResource("1_projectile")
+shell_stats = ExtResource("2_shell")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=713296469]
 shape = SubResource("SphereShape3D_projectile")

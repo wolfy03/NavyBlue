@@ -16,15 +16,16 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 @onready var bow_mesh: MeshInstance3D = $BowMesh
 @onready var deck_mesh: MeshInstance3D = $DeckMesh
 @onready var turret_mounts: Node3D = $TurretMounts
-@onready var movement = $ShipMovement
-@onready var combat = $ShipCombat
-@onready var health = $ShipHealth
-@onready var ai = $ShipAI
-@onready var visual_builder = $ShipVisualBuilder
+@onready var movement: ShipMovement = $ShipMovement
+@onready var combat: ShipCombat = $ShipCombat
+@onready var health: ShipHealth = $ShipHealth
+@onready var ai: ShipAI = $ShipAI
+@onready var visual_builder: Node = $ShipVisualBuilder
 
 var _player_throttle_axis := 0.0
 var _player_rudder_axis := 0.0
 var _player_fire_pressed := false
+var _is_sinking: bool = false
 
 func setup(data: Resource, team_name: StringName, is_player: bool, color: Color) -> void:
 	ship_data = data
@@ -85,6 +86,31 @@ func get_speed_knots_style() -> float:
 func get_primary_impact_point(gravity: float) -> Variant:
 	return combat.get_primary_impact_point(gravity)
 
+
+func get_defense_stats() -> ShipDefenseStats:
+	return health.get_defense_stats()
+
+
+func apply_damage(damage: float, penetration_result: int, hit_info: HitInfo) -> float:
+	return health.apply_damage(damage, penetration_result, hit_info)
+
+
+func get_current_hp() -> float:
+	return health.current_health
+
+
+func sink() -> void:
+	if _is_sinking:
+		return
+	_is_sinking = true
+	set_physics_process(false)
+	velocity = Vector3.ZERO
+	collision_layer = 0
+	collision_mask = 0
+	if has_node("/root/EventBus"):
+		get_node("/root/EventBus").ship_destroyed.emit(self)
+	call_deferred(&"queue_free")
+
 func _register_groups() -> void:
 	add_to_group("ships")
 	add_to_group("team_%s" % String(team))
@@ -94,7 +120,13 @@ func _setup_components() -> void:
 	var built_turrets: Array = visual_builder.build(ship_data, team, team_color, turret_scene)
 	movement.setup(self, ship_data, engine_output_change_rate)
 	combat.setup(built_turrets)
-	health.current_health = health.max_health
+	health.setup(ship_data.defense_stats if ship_data != null else null)
+	if not health.died.is_connected(_on_health_died):
+		health.died.connect(_on_health_died)
 
 	if not player_controlled:
 		ai.engagement_range = 85.0
+
+
+func _on_health_died() -> void:
+	sink()

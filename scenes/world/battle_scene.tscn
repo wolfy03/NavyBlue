@@ -1,13 +1,13 @@
-[gd_scene load_steps=12 format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene format=3 uid="uid://c346y3o6qqqhd"]
 
-[ext_resource type="Script" path="res://scripts/world/BattleScene.gd" id="1_battle"]
-[ext_resource type="Script" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
-[ext_resource type="Script" path="res://scripts/input/PlayerInputManager.gd" id="3_input"]
-[ext_resource type="Script" path="res://scripts/ui/HUD.gd" id="4_hud"]
-[ext_resource type="Script" path="res://scripts/world/ocean/OceanGrid.gd" id="5_grid"]
-[ext_resource type="Script" path="res://scripts/world/SpawnSystem.gd" id="6_spawn"]
-[ext_resource type="Script" path="res://scripts/world/WaveSystem.gd" id="7_wave"]
-[ext_resource type="PackedScene" path="res://scenes/world/ocean.tscn" id="8_ocean"]
+[ext_resource type="Script" uid="uid://cj802p5ep0lqm" path="res://scripts/world/BattleScene.gd" id="1_battle"]
+[ext_resource type="Script" uid="uid://bqtoaaf4qto5a" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
+[ext_resource type="Script" uid="uid://bh2c7cuoxcuhe" path="res://scripts/input/PlayerInputManager.gd" id="3_input"]
+[ext_resource type="Script" uid="uid://c2e85pvejnl3s" path="res://scripts/ui/HUD.gd" id="4_hud"]
+[ext_resource type="Script" uid="uid://bi17kah3p71d7" path="res://scripts/world/ocean/OceanGrid.gd" id="5_grid"]
+[ext_resource type="Script" uid="uid://cs18h8pjmqmho" path="res://scripts/world/SpawnSystem.gd" id="6_spawn"]
+[ext_resource type="Script" uid="uid://ca3rv7l0a8lcs" path="res://scripts/world/WaveSystem.gd" id="7_wave"]
+[ext_resource type="PackedScene" uid="uid://bnt51f2yrt2sn" path="res://scenes/world/ocean.tscn" id="8_ocean"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -26,68 +26,70 @@ emission_enabled = true
 emission = Color(1, 0, 0, 1)
 emission_energy_multiplier = 0.7
 
-[node name="BattleScene" type="Node3D"]
+[node name="BattleScene" type="Node3D" unique_id=2029115520]
 script = ExtResource("1_battle")
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1393857481]
 environment = SubResource("Environment_battle")
 
-[node name="Sun" type="DirectionalLight3D" parent="."]
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=226991557]
 transform = Transform3D(0.819152, -0.439385, 0.368688, 0, 0.642788, 0.766044, -0.573576, -0.627507, 0.526541, 0, 0, 0)
 light_energy = 2.1
 
-[node name="Ocean" parent="." instance=ExtResource("8_ocean")]
+[node name="Ocean" parent="." unique_id=1702889926 instance=ExtResource("8_ocean")]
 
-[node name="OceanGrid" type="Node3D" parent="."]
+[node name="OceanGrid" type="Node3D" parent="." unique_id=1723233970]
 script = ExtResource("5_grid")
+half_extent = 500.0
+spacing = 10.0
 
-[node name="Ships" type="Node3D" parent="."]
+[node name="Ships" type="Node3D" parent="." unique_id=963148669]
 
-[node name="SpawnSystem" type="Node" parent="."]
+[node name="SpawnSystem" type="Node" parent="." unique_id=127868479]
 script = ExtResource("6_spawn")
 
-[node name="WaveSystem" type="Node" parent="."]
+[node name="WaveSystem" type="Node" parent="." unique_id=1660287078]
 script = ExtResource("7_wave")
 
-[node name="SpawnPoints" type="Node3D" parent="."]
+[node name="SpawnPoints" type="Node3D" parent="." unique_id=127682599]
 
-[node name="Player" type="Marker3D" parent="SpawnPoints"]
+[node name="Player" type="Marker3D" parent="SpawnPoints" unique_id=297398798]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10)
 
-[node name="AllyCruiser" type="Marker3D" parent="SpawnPoints"]
+[node name="AllyCruiser" type="Marker3D" parent="SpawnPoints" unique_id=20881575]
 transform = Transform3D(0.965926, 0, -0.258819, 0, 1, 0, 0.258819, 0, 0.965926, -12, 0, 18)
 
-[node name="AllyCarrier" type="Marker3D" parent="SpawnPoints"]
+[node name="AllyCarrier" type="Marker3D" parent="SpawnPoints" unique_id=2021419729]
 transform = Transform3D(0.984808, 0, 0.173648, 0, 1, 0, -0.173648, 0, 0.984808, 13, 0, 24)
 
-[node name="EnemyDestroyer" type="Marker3D" parent="SpawnPoints"]
+[node name="EnemyDestroyer" type="Marker3D" parent="SpawnPoints" unique_id=1149719019]
 transform = Transform3D(-0.996195, 0, 0.0871557, 0, 1, 0, -0.0871557, 0, -0.996195, -20, 0, -42)
 
-[node name="EnemyCruiser" type="Marker3D" parent="SpawnPoints"]
+[node name="EnemyCruiser" type="Marker3D" parent="SpawnPoints" unique_id=763050583]
 transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 4, 0, -55)
 
-[node name="EnemyBattleship" type="Marker3D" parent="SpawnPoints"]
+[node name="EnemyBattleship" type="Marker3D" parent="SpawnPoints" unique_id=41382988]
 transform = Transform3D(-0.984808, 0, -0.173648, 0, 1, 0, 0.173648, 0, -0.984808, 27, 0, -62)
 
-[node name="ImpactMarker" type="MeshInstance3D" parent="."]
+[node name="ImpactMarker" type="MeshInstance3D" parent="." unique_id=1912462861]
 visible = false
 mesh = SubResource("TorusMesh_impact")
 surface_material_override/0 = SubResource("StandardMaterial3D_impact")
 
-[node name="RTSCamera" type="Camera3D" parent="."]
+[node name="RTSCamera" type="Camera3D" parent="." unique_id=387124255]
 transform = Transform3D(0.742102, -0.477993, 0.470032, 0, 0.701163, 0.713001, -0.670287, -0.529164, 0.520371, 28, 34, 41.035)
 projection = 1
 size = 42.0
 far = 850.0
 script = ExtResource("2_camera")
 
-[node name="PlayerInputManager" type="Node" parent="."]
+[node name="PlayerInputManager" type="Node" parent="." unique_id=25421482]
 script = ExtResource("3_input")
 
-[node name="HUD" type="CanvasLayer" parent="."]
+[node name="HUD" type="CanvasLayer" parent="." unique_id=1555648183]
 script = ExtResource("4_hud")
 
-[node name="StatusLabel" type="Label" parent="HUD"]
+[node name="StatusLabel" type="Label" parent="HUD" unique_id=1931921531]
 offset_left = 18.0
 offset_top = 14.0
 offset_right = 420.0
