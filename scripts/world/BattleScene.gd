@@ -7,7 +7,7 @@ class_name BattleScene
 @onready var camera: Camera3D = $RTSCamera
 @onready var input_manager: Node = $PlayerInputManager
 @onready var impact_marker: MeshInstance3D = $ImpactMarker
-@onready var hud: CanvasLayer = $HUD
+@onready var hud: HUD = $HUD
 
 var player_ship
 var gravity := 9.8
@@ -27,7 +27,7 @@ func _ready() -> void:
 	_assign_ai_targets()
 	camera.setup(player_ship)
 	input_manager.setup(player_ship, camera, 0.0)
-	hud.setup(player_ship)
+	hud.setup(player_ship, camera)
 	if has_node("/root/RunManager"):
 		get_node("/root/RunManager").capture_player_ship(player_ship)
 
