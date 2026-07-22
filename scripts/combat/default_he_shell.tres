@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ShellStats" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/ShellStats.gd" id="1_shell"]
+
+[resource]
+script = ExtResource("1_shell")
+shell_type = 1
+penetration = 35.0
+base_damage = 28.0
+penetration_damage_multiplier = 2.0
+non_penetration_damage_multiplier = 0.8
+ricochet_damage_multiplier = 0.5
+explosion_damage = 24.0
+explosion_radius = 3.5
+ricochet_angle = 82.0

@@ -1,5 +1,5 @@
 extends Resource
-class_name UpgradeData
+class_name LegacyUpgradeData
 
 @export var id := ""
 @export var display_name := ""

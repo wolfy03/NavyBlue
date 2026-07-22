@@ -54,6 +54,15 @@ func apply_damage(
 	var final_damage: float = raw_damage * (1.0 - reduction)
 	defense_stats.current_hp = maxf(0.0, defense_stats.current_hp - final_damage)
 	damage_applied.emit(final_damage, penetration_result, hit_info)
+	if has_node("/root/EventBus"):
+		get_node("/root/EventBus").ship_damaged.emit(
+			get_parent(),
+			final_damage,
+			{
+				"penetration_result": penetration_result,
+				"hit_info": hit_info,
+			}
+		)
 
 	if debug_damage_log:
 		_log_damage(final_damage, penetration_result, hit_info)

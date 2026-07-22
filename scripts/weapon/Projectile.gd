@@ -23,6 +23,7 @@ var previous_position_initialized := false
 var water_impact_processed := false
 var ship_impact_processed: bool = false
 var last_travel_direction: Vector3 = Vector3.FORWARD
+var _despawn_requested := false
 
 func _ready() -> void:
 	gravity_scale = 1.0
@@ -42,6 +43,7 @@ func launch(start_velocity: Vector3, owner_team: StringName, fired_shell_stats: 
 	age = 0.0
 	water_impact_processed = false
 	ship_impact_processed = false
+	_despawn_requested = false
 	previous_position = global_position
 	previous_position_initialized = true
 
@@ -69,20 +71,22 @@ func _physics_process(delta: float) -> void:
 		previous_position_initialized = true
 
 	if not water_impact_processed and _try_process_water_impact(previous_position, current_position):
-		queue_free()
+		despawn()
 		return
 
 	var ocean_manager := _get_ocean_manager()
 	if ocean_manager != null and ocean_manager.has_method(&"is_underwater"):
 		if bool(ocean_manager.call(&"is_underwater", current_position)):
-			queue_free()
+			_emit_water_impact(current_position, _calculate_water_impact_strength())
+			despawn()
 			return
 	elif current_position.y <= water_height:
-		queue_free()
+		_emit_water_impact(current_position, _calculate_water_impact_strength())
+		despawn()
 		return
 
 	if age >= LIFETIME_SECONDS:
-		queue_free()
+		despawn()
 		return
 
 	previous_position = current_position
@@ -116,7 +120,31 @@ func _process_ship_contact(
 	)
 	var damage_result: DamageResult = DamageResolver.resolve_hit(hit_info)
 	ship_hit_resolved.emit(damage_result)
-	call_deferred(&"queue_free")
+	call_deferred(&"despawn")
+
+func despawn() -> void:
+	if _despawn_requested:
+		return
+	_despawn_requested = true
+	_recycle_self()
+
+func _recycle_self() -> void:
+	if has_node("/root/ObjectPool"):
+		get_node("/root/ObjectPool").recycle(self)
+	else:
+		queue_free()
+
+func on_spawned_from_pool() -> void:
+	_despawn_requested = false
+	age = 0.0
+	water_impact_processed = false
+	ship_impact_processed = false
+	previous_position = global_position
+	previous_position_initialized = true
+
+func on_recycled_to_pool() -> void:
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
 
 
 func _find_ship_damage_target(collider: Object) -> Node3D:
@@ -183,7 +211,12 @@ func _try_process_water_impact(from_position: Vector3, to_position: Vector3) -> 
 			hit.get(&"normal") as Vector3,
 			self
 		)
+	_emit_water_impact(hit.get(&"position") as Vector3, _calculate_water_impact_strength())
 	return true
+
+func _emit_water_impact(position: Vector3, strength: float) -> void:
+	if has_node("/root/EventBus"):
+		get_node("/root/EventBus").projectile_water_impact.emit(position, strength)
 
 
 func _calculate_water_impact_strength() -> float:

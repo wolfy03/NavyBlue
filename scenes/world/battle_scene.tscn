@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene load_steps=13 format=3 uid="uid://c346y3o6qqqhd"]
 
 [ext_resource type="Script" uid="uid://cj802p5ep0lqm" path="res://scripts/world/BattleScene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bqtoaaf4qto5a" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://cs18h8pjmqmho" path="res://scripts/world/SpawnSystem.gd" id="6_spawn"]
 [ext_resource type="Script" uid="uid://ca3rv7l0a8lcs" path="res://scripts/world/WaveSystem.gd" id="7_wave"]
 [ext_resource type="PackedScene" uid="uid://bnt51f2yrt2sn" path="res://scenes/world/ocean.tscn" id="8_ocean"]
+[ext_resource type="Script" path="res://scripts/world/BattleStateController.gd" id="9_battle_state"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -45,8 +46,13 @@ spacing = 10.0
 
 [node name="Ships" type="Node3D" parent="." unique_id=963148669]
 
+[node name="Projectiles" type="Node3D" parent="."]
+
 [node name="SpawnSystem" type="Node" parent="." unique_id=127868479]
 script = ExtResource("6_spawn")
+
+[node name="BattleStateController" type="Node" parent="."]
+script = ExtResource("9_battle_state")
 
 [node name="WaveSystem" type="Node" parent="." unique_id=1660287078]
 script = ExtResource("7_wave")

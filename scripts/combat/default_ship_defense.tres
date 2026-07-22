@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="ShipDefenseStats" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/ShipDefenseStats.gd" id="1_defense"]
+
+[resource]
+resource_local_to_scene = true
+script = ExtResource("1_defense")
+max_hp = 140.0
+current_hp = 140.0
+belt_armor = 45.0
+deck_armor = 24.0
+bow_armor = 20.0
+stern_armor = 18.0
+superstructure_armor = 10.0
+damage_reduction = 0.02

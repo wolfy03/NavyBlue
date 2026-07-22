@@ -1,30 +1,30 @@
 extends Node3D
 class_name BattleScene
 
+const STAGE_DATABASE_SCRIPT := preload("res://scripts/data/StageDatabase.gd")
+
 @onready var ships_root: Node3D = $Ships
 @onready var spawn_points: Node3D = $SpawnPoints
 @onready var spawn_system: Node = $SpawnSystem
+@onready var battle_state_controller: Node = $BattleStateController
+@onready var projectiles_root: Node3D = $Projectiles
 @onready var camera: Camera3D = $RTSCamera
 @onready var input_manager: Node = $PlayerInputManager
 @onready var impact_marker: MeshInstance3D = $ImpactMarker
 @onready var hud: HUD = $HUD
 
 var player_ship
+var allies: Array = []
+var enemies: Array = []
 var gravity := 9.8
+var stage_database := STAGE_DATABASE_SCRIPT.new()
 
 func _ready() -> void:
 	gravity = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 	if has_node("/root/GameManager"):
 		get_node("/root/GameManager").enter_battle()
-	if has_node("/root/RunManager") and not get_node("/root/RunManager").is_run_active:
-		get_node("/root/RunManager").start_new_run({
-			"sea_id": "test_sea",
-			"stage_id": "test_level",
-			"stage_index": 0,
-			"difficulty": 1.0,
-		})
-	_spawn_fleets()
-	_assign_ai_targets()
+	var stage_data := _resolve_stage_data()
+	_initialize_battle(stage_data)
 	camera.setup(player_ship)
 	input_manager.setup(player_ship, camera, 0.0)
 	hud.setup(player_ship, camera)
@@ -34,19 +34,45 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_update_impact_marker()
 
-func _spawn_fleets() -> void:
-	player_ship = _spawn_ship("dd_bluewind", &"player", true, "Player", Color(0.18, 0.48, 0.95))
-	_spawn_ship("cl_tidebreaker", &"ally", false, "AllyCruiser", Color(0.12, 0.68, 0.88))
-	_spawn_ship("cv_seabastion", &"ally", false, "AllyCarrier", Color(0.16, 0.62, 0.78))
-	_spawn_ship("dd_bluewind", &"enemy", false, "EnemyDestroyer", Color(0.9, 0.18, 0.14))
-	_spawn_ship("cl_tidebreaker", &"enemy", false, "EnemyCruiser", Color(0.78, 0.12, 0.18))
-	_spawn_ship("bb_ironwake", &"enemy", false, "EnemyBattleship", Color(0.64, 0.08, 0.1))
+func _resolve_stage_data() -> StageData:
+	var stage_id := "test_level"
+	if has_node("/root/RunManager"):
+		var run_manager = get_node("/root/RunManager")
+		if not run_manager.is_run_active:
+			run_manager.start_new_run({
+				"sea_id": "test_sea",
+				"stage_id": stage_id,
+				"stage_index": 0,
+				"difficulty": 1.0,
+			})
+		stage_id = run_manager.current_stage_id if not str(run_manager.current_stage_id).is_empty() else stage_id
+	var stage_data: StageData = stage_database.get_stage(stage_id)
+	if has_node("/root/RunManager"):
+		var active_run_manager = get_node("/root/RunManager")
+		active_run_manager.set_stage(stage_data.sea_id, stage_data.id, active_run_manager.current_stage_index)
+		active_run_manager.set_difficulty(stage_data.difficulty)
+	return stage_data
 
-func _spawn_ship(id: String, team: StringName, is_player: bool, spawn_name: String, color: Color):
-	var spawn := spawn_points.get_node(spawn_name) as Node3D
-	return spawn_system.spawn_ship(id, team, is_player, spawn, color, ships_root)
+func _initialize_battle(stage_data: StageData) -> void:
+	var spawn_result: Dictionary = spawn_system.spawn_stage(stage_data, ships_root)
+	player_ship = spawn_result.get("player_ship")
+	allies = spawn_result.get("allies", [])
+	enemies = spawn_result.get("enemies", [])
+	_assign_ai_targets()
+	battle_state_controller.start_battle(stage_data, player_ship, allies, enemies)
+
+func _spawn_test_fleets() -> Dictionary:
+	return spawn_system.spawn_stage(stage_database.get_stage("test_level"), ships_root)
 
 func _assign_ai_targets() -> void:
+	for ship in allies:
+		if is_instance_valid(ship):
+			ship.set_ai_target(_nearest_enemy(ship))
+	for ship in enemies:
+		if is_instance_valid(ship):
+			ship.set_ai_target(player_ship)
+
+func _assign_ai_targets_from_groups() -> void:
 	for ship in get_tree().get_nodes_in_group("ships"):
 		if ship == player_ship:
 			continue

@@ -46,20 +46,31 @@ func fire() -> bool:
 	if reload_left > 0.0 or muzzle == null:
 		return false
 
-	var projectile := projectile_scene.instantiate() as Projectile
+	var projectile_parent := _get_projectile_parent()
+	var projectile: Projectile
+	if has_node("/root/ObjectPool"):
+		projectile = get_node("/root/ObjectPool").spawn(projectile_scene, projectile_parent) as Projectile
+	else:
+		projectile = projectile_scene.instantiate() as Projectile
+		projectile_parent.add_child(projectile)
 	if projectile == null:
 		push_warning("Turret projectile scene must instantiate Projectile.")
 		return false
-	var projectile_parent := get_tree().current_scene
-	if projectile_parent == null:
-		projectile_parent = get_tree().root
-	projectile_parent.add_child(projectile)
 	projectile.global_transform = muzzle.global_transform
 	projectile.launch(get_muzzle_velocity_vector(), owner_team, shell_stats)
 	reload_left = reload_seconds
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").projectile_fired.emit(projectile)
 	return true
+
+func _get_projectile_parent() -> Node:
+	var current_scene := get_tree().current_scene
+	if current_scene != null:
+		var projectiles := current_scene.get_node_or_null("Projectiles")
+		if projectiles != null:
+			return projectiles
+		return current_scene
+	return get_tree().root
 
 func get_muzzle_velocity_vector() -> Vector3:
 	return -muzzle.global_transform.basis.z.normalized() * muzzle_velocity

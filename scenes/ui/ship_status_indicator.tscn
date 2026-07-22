@@ -1,0 +1,25 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/ShipStatusIndicator.gd" id="1_indicator"]
+
+[node name="ShipStatusIndicator" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 80.0
+offset_bottom = 50.0
+mouse_filter = 2
+script = ExtResource("1_indicator")
+
+[node name="StatusPanel" type="PanelContainer" parent="."]
+layout_mode = 0
+offset_right = 44.0
+offset_bottom = 16.0
+mouse_filter = 2
+
+[node name="StatusLabel" type="Label" parent="StatusPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_font_sizes/font_size = 10
+text = "MOVE"
+horizontal_alignment = 1
+vertical_alignment = 1

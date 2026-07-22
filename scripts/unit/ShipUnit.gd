@@ -21,6 +21,7 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 @onready var health: ShipHealth = $ShipHealth
 @onready var ai: ShipAI = $ShipAI
 @onready var visual_builder: Node = $ShipVisualBuilder
+@onready var buoyancy: Node = $ShipBuoyancy
 
 var _player_throttle_axis := 0.0
 var _player_rudder_axis := 0.0
@@ -51,6 +52,7 @@ func _physics_process(delta: float) -> void:
 		ai.update_ai(self, movement, combat, ship_data, delta)
 
 	movement.apply_movement(delta)
+	buoyancy.apply_buoyancy(self)
 	combat.update_turrets(self, player_controlled)
 
 func set_player_commands(throttle_axis: float, rudder_axis: float, fire_pressed: bool) -> void:
