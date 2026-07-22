@@ -7,9 +7,9 @@
 [ext_resource type="Script" path="res://scripts/world/ocean/effects/SplashEffectPool.gd" id="4_pool"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ioky5"]
-size = Vector2(420, 420)
-subdivide_width = 96
-subdivide_depth = 96
+size = Vector2(48000, 48000)
+subdivide_width = 64
+subdivide_depth = 64
 
 [node name="Ocean" type="Node3D" unique_id=522742060]
 script = ExtResource("1_manager")
@@ -18,6 +18,9 @@ script = ExtResource("1_manager")
 material_override = ExtResource("2_material")
 mesh = SubResource("PlaneMesh_ioky5")
 script = ExtResource("1_visual")
+mesh_size = 48000.0
+mesh_subdivisions = 64
+follow_snap_size = 128.0
 
 [node name="OceanInteraction" type="Node" parent="."]
 script = ExtResource("3_interaction")

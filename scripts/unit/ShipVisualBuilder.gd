@@ -72,6 +72,8 @@ func _rebuild_turrets(ship_data: Resource, team: StringName, team_color: Color, 
 		var turret = turret_scene.instantiate()
 		turret.name = "Turret_%02d" % index
 		turret.position = Vector3(0.0, ship_data.hull_size.y + 0.28, start_z + ship_data.turret_spacing * index)
+		var turret_scale := clampf(ship_data.hull_size.x / 3.0, 5.0, 13.0)
+		turret.scale = Vector3.ONE * turret_scale
 		turret_mounts.add_child(turret)
 		turret.setup(team, team_color, ship_data.shell_muzzle_velocity, ship_data.reload_seconds)
 		turrets.append(turret)

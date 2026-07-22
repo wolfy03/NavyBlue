@@ -1,7 +1,7 @@
 extends RigidBody3D
 class_name Projectile
 
-const LIFETIME_SECONDS := 12.0
+const LIFETIME_SECONDS := 30.0
 const DEFAULT_AP_SHELL: ShellStats = preload("res://scripts/combat/default_ap_shell.tres")
 
 signal ship_hit_resolved(result: DamageResult)
@@ -10,7 +10,7 @@ signal ship_hit_resolved(result: DamageResult)
 @export var base_water_splash_strength := 1.0
 @export var min_water_splash_strength := 0.35
 @export var max_water_splash_strength := 4.0
-@export var velocity_strength_reference := 45.0
+@export var velocity_strength_reference := 800.0
 @export var shell_stats: ShellStats = DEFAULT_AP_SHELL
 @export_range(0.0, 1.0, 0.01) var deck_normal_threshold: float = 0.65
 @export_range(0.1, 1.0, 0.01) var end_section_ratio: float = 0.68

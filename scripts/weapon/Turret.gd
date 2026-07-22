@@ -4,9 +4,12 @@ class_name Turret
 @export var projectile_scene: PackedScene = preload("res://scenes/weapon/projectile.tscn")
 @export var shell_stats: ShellStats = preload("res://scripts/combat/default_ap_shell.tres")
 @export var yaw_speed := 7.5
-@export var min_pitch_degrees := 4.0
+@export var min_pitch_degrees := 1.0
 @export var max_pitch_degrees := 55.0
 @export var pitch_degrees := 18.0
+@export var automatic_ballistic_pitch := true
+@export var pitch_speed_deg_sec := 12.0
+@export_range(-10.0, 10.0, 0.5) var manual_pitch_offset_deg := 0.0
 @export var muzzle_velocity := 36.0
 @export var reload_seconds := 1.2
 
@@ -40,7 +43,7 @@ func aim_at(world_point: Vector3) -> void:
 	has_aim_point = true
 
 func adjust_pitch(delta_degrees: float) -> void:
-	pitch_degrees = clampf(pitch_degrees + delta_degrees, min_pitch_degrees, max_pitch_degrees)
+	manual_pitch_offset_deg = clampf(manual_pitch_offset_deg + delta_degrees, -10.0, 10.0)
 
 func fire() -> bool:
 	if reload_left > 0.0 or muzzle == null:
@@ -85,6 +88,34 @@ func _turn_toward(world_point: Vector3, delta: float) -> void:
 		return
 	var desired_yaw := atan2(-flat_direction.x, -flat_direction.z)
 	global_rotation.y = lerp_angle(global_rotation.y, desired_yaw, clampf(yaw_speed * delta, 0.0, 1.0))
+	if automatic_ballistic_pitch:
+		var ballistic_pitch: Variant = _calculate_ballistic_pitch_deg(world_point)
+		if ballistic_pitch != null:
+			var desired_pitch: float = clampf(
+				float(ballistic_pitch) + manual_pitch_offset_deg,
+				min_pitch_degrees,
+				max_pitch_degrees
+			)
+			pitch_degrees = move_toward(pitch_degrees, desired_pitch, pitch_speed_deg_sec * delta)
+
+func _calculate_ballistic_pitch_deg(world_point: Vector3) -> Variant:
+	if muzzle == null:
+		return null
+	var muzzle_position := muzzle.global_position
+	var horizontal_offset := Vector2(world_point.x - muzzle_position.x, world_point.z - muzzle_position.z)
+	var horizontal_distance := horizontal_offset.length()
+	if horizontal_distance < 0.01:
+		return null
+	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	var speed_squared := muzzle_velocity * muzzle_velocity
+	var vertical_offset := world_point.y - muzzle_position.y
+	var discriminant := speed_squared * speed_squared - gravity * (
+		gravity * horizontal_distance * horizontal_distance + 2.0 * vertical_offset * speed_squared
+	)
+	if discriminant < 0.0:
+		return null
+	var tangent := (speed_squared - sqrt(discriminant)) / (gravity * horizontal_distance)
+	return rad_to_deg(atan(tangent))
 
 func _apply_team_materials(team_color: Color) -> void:
 	var base_material := StandardMaterial3D.new()

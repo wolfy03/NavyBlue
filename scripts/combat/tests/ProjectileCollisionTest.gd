@@ -66,18 +66,23 @@ func _run() -> void:
 		and absf(target.get_defense_stats().current_hp - EXPECTED_HP) <= EPSILON
 	if passed:
 		print("PROJECTILE_COLLISION_TEST PASS")
-		quit(0)
-		return
-	push_error(
-		"PROJECTILE_COLLISION_TEST FAIL hit=%s result=%d part=%d hp=%.2f position=%s local=%s direction=%s normal=%s" % [
-			target.last_hit_info != null,
-			target.last_penetration_result,
-			target.last_hit_info.armor_part if target.last_hit_info != null else -1,
-			target.get_defense_stats().current_hp,
-			target.last_hit_info.hit_position if target.last_hit_info != null else Vector3.ZERO,
-			target.to_local(target.last_hit_info.hit_position) if target.last_hit_info != null else Vector3.ZERO,
-			target.last_hit_info.shell_direction if target.last_hit_info != null else Vector3.ZERO,
-			target.last_hit_info.hit_normal if target.last_hit_info != null else Vector3.ZERO,
-		]
-	)
-	quit(1)
+	else:
+		push_error(
+			"PROJECTILE_COLLISION_TEST FAIL hit=%s result=%d part=%d hp=%.2f position=%s local=%s direction=%s normal=%s" % [
+				target.last_hit_info != null,
+				target.last_penetration_result,
+				target.last_hit_info.armor_part if target.last_hit_info != null else -1,
+				target.get_defense_stats().current_hp,
+				target.last_hit_info.hit_position if target.last_hit_info != null else Vector3.ZERO,
+				target.to_local(target.last_hit_info.hit_position) if target.last_hit_info != null else Vector3.ZERO,
+				target.last_hit_info.shell_direction if target.last_hit_info != null else Vector3.ZERO,
+				target.last_hit_info.hit_normal if target.last_hit_info != null else Vector3.ZERO,
+			]
+		)
+	if is_instance_valid(projectile):
+		projectile.queue_free()
+	target.queue_free()
+	await process_frame
+	await physics_frame
+	await process_frame
+	quit(0 if passed else 1)
