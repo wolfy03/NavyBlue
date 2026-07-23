@@ -4,7 +4,7 @@ class_name ShipUnit
 const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 
 @export var ship_id := "dd_bluewind"
-@export var ship_data: Resource
+@export var ship_data: ShipData
 @export var team: StringName = &"neutral"
 @export var player_controlled := false
 @export var team_color := Color(0.2, 0.55, 1.0)
@@ -30,7 +30,7 @@ var _player_rudder_axis := 0.0
 var _player_fire_pressed := false
 var _is_sinking: bool = false
 
-func setup(data: Resource, team_name: StringName, is_player: bool, color: Color) -> void:
+func setup(data: ShipData, team_name: StringName, is_player: bool, color: Color) -> void:
 	ship_data = data
 	ship_id = ship_data.id
 	team = team_name

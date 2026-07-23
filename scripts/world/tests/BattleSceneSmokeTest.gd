@@ -24,7 +24,7 @@ func _run() -> void:
 	var enemies: Array = scene.get("enemies")
 	var reward_system = load("res://scripts/meta/RewardSystem.gd").new()
 	var rewards: Array = reward_system.roll_upgrade_rewards(3, "test_rewards")
-	var reward_json := JSON.stringify(rewards)
+	var reward_resources_ok := rewards.all(func(reward): return reward is UpgradeData)
 	var object_pool = load("res://scripts/core/ObjectPool.gd").new()
 	root.add_child(object_pool)
 	var projectile_scene := load("res://scenes/weapon/projectile.tscn") as PackedScene
@@ -40,7 +40,7 @@ func _run() -> void:
 		and allies.size() == 2 \
 		and enemies.size() == 3 \
 		and rewards.size() == 3 \
-		and not reward_json.is_empty() \
+		and reward_resources_ok \
 		and pool_spawn_ok
 
 	print(

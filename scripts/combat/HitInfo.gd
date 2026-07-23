@@ -7,6 +7,7 @@ var hit_position: Vector3 = Vector3.ZERO
 var hit_normal: Vector3 = Vector3.UP
 var shell_direction: Vector3 = Vector3.FORWARD
 var armor_part: ArmorPart.Type = ArmorPart.Type.BELT
+var projectile_info: Dictionary = {}
 
 
 func setup(

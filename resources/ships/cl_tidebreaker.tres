@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="ShipData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ShipData.gd" id="1_ship"]
+[ext_resource type="Script" path="res://scripts/combat/ShipDefenseStats.gd" id="2_defense"]
+
+[sub_resource type="Resource" id="Resource_defense"]
+resource_local_to_scene = true
+script = ExtResource("2_defense")
+max_hp = 280.0
+current_hp = 280.0
+belt_armor = 85.0
+deck_armor = 42.0
+bow_armor = 35.0
+stern_armor = 30.0
+superstructure_armor = 18.0
+damage_reduction = 0.05
+
+[resource]
+script = ExtResource("1_ship")
+id = "cl_tidebreaker"
+display_name = "Tidebreaker CL"
+ship_class = 1
+max_speed_mps = 34.0
+cruise_speed_mps = 27.0
+max_reverse_speed_mps = 8.0
+acceleration_mps2 = 1.25
+deceleration_mps2 = 1.8
+max_turn_rate_deg_sec = 5.0
+turn_acceleration_deg_sec2 = 1.8
+arrival_slowdown_distance_m = 900.0
+minimum_turning_speed_mps = 7.0
+navigation_safety_radius_m = 130.0
+max_forward_speed = 34.0
+max_reverse_speed = 8.0
+engine_response = 0.62
+turn_rate_degrees = 5.0
+hull_size = Vector3(23, 9, 190)
+turret_count = 3
+turret_spacing = 52.0
+shell_muzzle_velocity = 820.0
+reload_seconds = 8.0
+default_weapon_id = "cruiser_cannon"
+defense_stats = SubResource("Resource_defense")

@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="ShipData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ShipData.gd" id="1_ship"]
+[ext_resource type="Script" path="res://scripts/combat/ShipDefenseStats.gd" id="2_defense"]
+
+[sub_resource type="Resource" id="Resource_defense"]
+resource_local_to_scene = true
+script = ExtResource("2_defense")
+max_hp = 140.0
+current_hp = 140.0
+belt_armor = 45.0
+deck_armor = 24.0
+bow_armor = 20.0
+stern_armor = 18.0
+superstructure_armor = 10.0
+damage_reduction = 0.02
+
+[resource]
+script = ExtResource("1_ship")
+id = "dd_bluewind"
+display_name = "Bluewind DD"
+ship_class = 0
+max_speed_mps = 46.0
+cruise_speed_mps = 36.0
+max_reverse_speed_mps = 10.0
+acceleration_mps2 = 2.4
+deceleration_mps2 = 3.4
+max_turn_rate_deg_sec = 8.0
+turn_acceleration_deg_sec2 = 3.2
+arrival_slowdown_distance_m = 650.0
+minimum_turning_speed_mps = 8.0
+navigation_safety_radius_m = 90.0
+max_forward_speed = 46.0
+max_reverse_speed = 10.0
+engine_response = 0.8
+turn_rate_degrees = 8.0
+hull_size = Vector3(18, 7, 125)
+turret_count = 2
+turret_spacing = 54.0
+shell_muzzle_velocity = 760.0
+reload_seconds = 4.5
+default_weapon_id = "destroyer_cannon"
+defense_stats = SubResource("Resource_defense")

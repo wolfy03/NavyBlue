@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UpgradeData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/UpgradeData.gd" id="1_upgrade"]
+
+[resource]
+script = ExtResource("1_upgrade")
+id = "hull_reinforcement_1"
+display_name = "Hull Reinforcement I"
+description = "Increase ship health."
+upgrade_type = "multiply"
+target_stat = "max_health"
+value = 1.12
+is_percent = true
+modifiers = {"max_health": 1.12}

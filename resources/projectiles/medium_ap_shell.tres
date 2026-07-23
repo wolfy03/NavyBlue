@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ProjectileData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ProjectileData.gd" id="1_projectile"]
+
+[resource]
+script = ExtResource("1_projectile")
+id = "medium_ap_shell"
+display_name = "Medium AP Shell"
+projectile_type = "ap"
+damage = 62.0
+penetration = 165.0
+muzzle_velocity = 820.0
+gravity_scale = 1.0
+lifetime_seconds = 30.0
+splash_strength = 1.15
+explosion_radius = 0.0
+armor_damage_multiplier = 1.5
+non_penetration_damage_multiplier = 0.05
+always_damage_multiplier = 0.0

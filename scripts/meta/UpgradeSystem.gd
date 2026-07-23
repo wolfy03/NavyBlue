@@ -57,7 +57,10 @@ func get_modified_stat(base_value: float, stat_name: String, upgrades: Array) ->
 	return result
 
 func find_upgrade(upgrade_id: String) -> UpgradeData:
-	return REWARD_SYSTEM_SCRIPT.new().get_upgrade(upgrade_id)
+	var reward_system := REWARD_SYSTEM_SCRIPT.new()
+	var upgrade := reward_system.get_upgrade(upgrade_id)
+	reward_system.free()
+	return upgrade
 
 func _resolve_upgrade(value) -> UpgradeData:
 	if value is UpgradeData:

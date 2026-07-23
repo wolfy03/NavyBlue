@@ -31,12 +31,12 @@ func _test_battle_clear_and_reward_selection() -> void:
 	_check(game_manager != null and game_manager.get_mode_name() == "REWARD", "enemy wipe enters reward mode")
 	_check(run_manager != null and run_manager.pending_rewards.size() == 3, "battle clear stores three pending rewards")
 	if run_manager != null and not run_manager.pending_rewards.is_empty():
-		var reward: Dictionary = run_manager.pending_rewards[0]
+		var reward_id := str(run_manager.pending_rewards[0])
 		var reward_system: Node = load("res://scripts/meta/RewardSystem.gd").new()
 		root.add_child(reward_system)
-		var selected: bool = reward_system.select_reward(str(reward.get("id", "")))
+		var selected: bool = reward_system.select_reward(reward_id)
 		_check(selected, "reward selection returns true")
-		_check(run_manager.active_upgrades.has(str(reward.get("id", ""))), "selected reward is added to active upgrades")
+		_check(run_manager.active_upgrades.has(reward_id), "selected reward is added to active upgrades")
 		_check(run_manager.pending_rewards.is_empty(), "reward selection clears pending rewards")
 		reward_system.queue_free()
 	scene.queue_free()

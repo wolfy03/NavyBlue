@@ -24,7 +24,7 @@ func start_new_run(config: Dictionary = {}) -> void:
 	current_stage_id = config.get("stage_id", DEFAULT_STAGE_ID)
 	current_stage_index = int(config.get("stage_index", 0))
 	active_upgrades = _to_string_array(config.get("upgrades", []))
-	pending_rewards = config.get("rewards", [])
+	pending_rewards = _to_upgrade_id_array(config.get("rewards", []))
 	difficulty = float(config.get("difficulty", 1.0))
 	currency = config.get("currency", {"gold": 0, "scrap": 0})
 	player_ship_state = config.get("player_ship_state", {})
@@ -67,7 +67,7 @@ func add_upgrade(upgrade_id: String) -> void:
 	_emit_updated()
 
 func set_pending_rewards(rewards: Array) -> void:
-	pending_rewards = rewards.duplicate(true)
+	pending_rewards = _to_upgrade_id_array(rewards)
 	_emit_updated()
 
 func clear_pending_rewards() -> void:
@@ -131,7 +131,7 @@ func restore_from_save_data(data: Dictionary) -> void:
 	current_stage_id = data.get("current_stage_id", "")
 	current_stage_index = int(data.get("current_stage_index", 0))
 	active_upgrades = _to_string_array(data.get("active_upgrades", []))
-	pending_rewards = data.get("pending_rewards", [])
+	pending_rewards = _to_upgrade_id_array(data.get("pending_rewards", []))
 	difficulty = float(data.get("difficulty", 1.0))
 	currency = data.get("currency", {"gold": 0, "scrap": 0})
 	player_ship_state = data.get("player_ship_state", {})
@@ -163,6 +163,23 @@ func _to_string_array(value) -> Array[String]:
 	if value is Array:
 		for item in value:
 			result.append(str(item))
+	return result
+
+func _to_upgrade_id_array(value) -> Array[String]:
+	var result: Array[String] = []
+	if not value is Array:
+		return result
+	for item in value:
+		if item is String:
+			if not item.is_empty():
+				result.append(item)
+		elif item is UpgradeData:
+			if not item.id.is_empty():
+				result.append(item.id)
+		elif item is Dictionary:
+			var upgrade_id := str(item.get("id", ""))
+			if not upgrade_id.is_empty():
+				result.append(upgrade_id)
 	return result
 
 func _vector3_to_dictionary(value: Vector3) -> Dictionary:

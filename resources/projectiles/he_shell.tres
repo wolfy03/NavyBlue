@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="ProjectileData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ProjectileData.gd" id="1_projectile"]
+
+[resource]
+script = ExtResource("1_projectile")
+id = "he_shell"
+display_name = "High Explosive Shell"
+projectile_type = "he"
+damage = 46.0
+penetration = 35.0
+muzzle_velocity = 720.0
+gravity_scale = 1.0
+lifetime_seconds = 30.0
+splash_strength = 1.5
+explosion_radius = 5.0
+armor_damage_multiplier = 2.0
+non_penetration_damage_multiplier = 0.8
+always_damage_multiplier = 0.5

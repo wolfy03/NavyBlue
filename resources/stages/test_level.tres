@@ -1,0 +1,53 @@
+[gd_resource type="Resource" script_class="StageData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
+
+[resource]
+script = ExtResource("1_stage")
+id = "test_level"
+display_name = "Test Level"
+sea_id = "test_sea"
+difficulty = 1.0
+player_ship_id = "dd_bluewind"
+player_spawn = {
+"is_player": true,
+"name": "Player",
+"position": Vector3(0, 0, 1800),
+"rotation_y": 0.0,
+"ship_id": "dd_bluewind",
+"team": "player"
+}
+ally_spawns = [{
+"name": "AllyCruiser",
+"position": Vector3(-450, 0, 2050),
+"rotation_y": -15.0,
+"ship_id": "cl_tidebreaker",
+"team": "ally"
+}, {
+"name": "AllyCarrier",
+"position": Vector3(520, 0, 2250),
+"rotation_y": 10.0,
+"ship_id": "cv_seabastion",
+"team": "ally"
+}]
+enemy_spawns = [{
+"name": "EnemyDestroyer",
+"position": Vector3(-650, 0, -3600),
+"rotation_y": 175.0,
+"ship_id": "dd_bluewind",
+"team": "enemy"
+}, {
+"name": "EnemyCruiser",
+"position": Vector3(0, 0, -3900),
+"rotation_y": 180.0,
+"ship_id": "cl_tidebreaker",
+"team": "enemy"
+}, {
+"name": "EnemyBattleship",
+"position": Vector3(800, 0, -4200),
+"rotation_y": -170.0,
+"ship_id": "bb_ironwake",
+"team": "enemy"
+}]
+reward_table_id = "test_rewards"
+next_stage_candidates = Array[String](["test_level"])

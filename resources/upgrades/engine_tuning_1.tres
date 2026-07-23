@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UpgradeData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/UpgradeData.gd" id="1_upgrade"]
+
+[resource]
+script = ExtResource("1_upgrade")
+id = "engine_tuning_1"
+display_name = "Engine Tuning I"
+description = "Increase maximum forward speed."
+upgrade_type = "multiply"
+target_stat = "max_forward_speed"
+value = 1.08
+is_percent = true
+modifiers = {"max_forward_speed": 1.08}

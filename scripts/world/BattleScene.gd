@@ -80,7 +80,7 @@ func _initialize_battle(stage_data: StageData) -> void:
 	else:
 		push_warning("BattleStateController is missing or invalid. Battle result detection is disabled.")
 
-func _spawn_test_fleets() -> Dictionary:
+func _spawn_test_fleets_legacy() -> Dictionary:
 	if spawn_system == null or not spawn_system.has_method("spawn_stage"):
 		return {}
 	if ships_root == null:

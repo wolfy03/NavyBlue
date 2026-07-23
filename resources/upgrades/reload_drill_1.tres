@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UpgradeData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/UpgradeData.gd" id="1_upgrade"]
+
+[resource]
+script = ExtResource("1_upgrade")
+id = "reload_drill_1"
+display_name = "Reload Drill I"
+description = "Reduce reload time."
+upgrade_type = "multiply"
+target_stat = "reload_seconds"
+value = 0.92
+is_percent = true
+modifiers = {"reload_seconds": 0.92}

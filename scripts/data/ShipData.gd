@@ -33,4 +33,5 @@ enum ShipClass {
 @export var turret_spacing := 1.8
 @export var shell_muzzle_velocity := 34.0
 @export var reload_seconds := 1.2
+@export var default_weapon_id: String = "destroyer_cannon"
 @export var defense_stats: ShipDefenseStats

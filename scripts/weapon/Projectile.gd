@@ -12,6 +12,9 @@ signal ship_hit_resolved(result: DamageResult)
 @export var max_water_splash_strength := 4.0
 @export var velocity_strength_reference := 800.0
 @export var shell_stats: ShellStats = DEFAULT_AP_SHELL
+@export var projectile_data: ProjectileData
+@export var lifetime_seconds: float = LIFETIME_SECONDS
+@export var explosion_radius: float = 0.0
 @export_range(0.0, 1.0, 0.01) var deck_normal_threshold: float = 0.65
 @export_range(0.1, 1.0, 0.01) var end_section_ratio: float = 0.68
 @export_range(0.1, 3.0, 0.05) var superstructure_height_ratio: float = 1.05
@@ -24,14 +27,31 @@ var water_impact_processed := false
 var ship_impact_processed: bool = false
 var last_travel_direction: Vector3 = Vector3.FORWARD
 var _despawn_requested := false
+var _default_collision_layer: int = 1
+var _default_collision_mask: int = 1
+var _default_splash_strength: float = 1.0
 
 func _ready() -> void:
-	gravity_scale = 1.0
+	_default_collision_layer = collision_layer
+	_default_collision_mask = collision_mask
+	_default_splash_strength = base_water_splash_strength
 	contact_monitor = true
 	max_contacts_reported = 4
 	continuous_cd = true
 	previous_position = global_position
 	previous_position_initialized = true
+	if projectile_data != null:
+		setup_projectile_data(projectile_data)
+
+func setup_projectile_data(data: ProjectileData) -> void:
+	projectile_data = data
+	if projectile_data == null:
+		return
+	gravity_scale = projectile_data.gravity_scale
+	lifetime_seconds = projectile_data.lifetime_seconds
+	base_water_splash_strength = projectile_data.splash_strength
+	explosion_radius = projectile_data.explosion_radius
+	shell_stats = _make_shell_stats(projectile_data)
 
 func launch(start_velocity: Vector3, owner_team: StringName, fired_shell_stats: ShellStats = null) -> void:
 	team = owner_team
@@ -85,7 +105,7 @@ func _physics_process(delta: float) -> void:
 		despawn()
 		return
 
-	if age >= LIFETIME_SECONDS:
+	if age >= lifetime_seconds:
 		despawn()
 		return
 
@@ -118,6 +138,7 @@ func _process_ship_contact(
 		direction,
 		_determine_armor_part(target_ship, hit_position, hit_normal)
 	)
+	hit_info.projectile_info = _get_projectile_damage_info()
 	var damage_result: DamageResult = DamageResolver.resolve_hit(hit_info)
 	ship_hit_resolved.emit(damage_result)
 	call_deferred(&"despawn")
@@ -142,15 +163,62 @@ func on_spawned_from_pool() -> void:
 	ship_impact_processed = false
 	previous_position = global_position
 	previous_position_initialized = true
+	projectile_data = null
+	shell_stats = DEFAULT_AP_SHELL
+	gravity_scale = 1.0
+	lifetime_seconds = LIFETIME_SECONDS
+	base_water_splash_strength = _default_splash_strength
+	explosion_radius = 0.0
+	team = &"neutral"
+	collision_layer = _default_collision_layer
+	collision_mask = _default_collision_mask
 	freeze = false
 	sleeping = false
 	contact_monitor = true
 	max_contacts_reported = 4
+	show()
+	set_process(true)
+	set_physics_process(true)
 
 func on_recycled_to_pool() -> void:
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	sleeping = true
+	collision_layer = 0
+	collision_mask = 0
+	team = &"neutral"
+	projectile_data = null
+	hide()
+	set_process(false)
+	set_physics_process(false)
+
+func _make_shell_stats(data: ProjectileData) -> ShellStats:
+	var stats := DEFAULT_AP_SHELL.duplicate(true) as ShellStats
+	stats.shell_type = ShellStats.ShellType.HE if data.projectile_type.to_lower() == "he" else ShellStats.ShellType.AP
+	stats.penetration = data.penetration
+	stats.base_damage = data.damage
+	stats.penetration_damage_multiplier = data.armor_damage_multiplier
+	stats.non_penetration_damage_multiplier = data.non_penetration_damage_multiplier
+	stats.ricochet_damage_multiplier = data.always_damage_multiplier
+	stats.explosion_damage = data.damage * data.always_damage_multiplier if stats.shell_type == ShellStats.ShellType.HE else 0.0
+	stats.explosion_radius = data.explosion_radius
+	return stats
+
+func _get_projectile_damage_info() -> Dictionary:
+	if projectile_data == null:
+		return {
+			"projectile_id": "legacy_shell",
+			"projectile_type": String(shell_stats.get_shell_type_name()) if shell_stats != null else "unknown",
+			"damage": shell_stats.base_damage if shell_stats != null else 0.0,
+			"penetration": shell_stats.penetration if shell_stats != null else 0.0,
+		}
+	return {
+		"projectile_id": projectile_data.id,
+		"projectile_type": projectile_data.projectile_type,
+		"damage": projectile_data.damage,
+		"penetration": projectile_data.penetration,
+		"explosion_radius": projectile_data.explosion_radius,
+	}
 
 
 func _find_ship_damage_target(collider: Object) -> Node3D:

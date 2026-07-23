@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="ShipData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ShipData.gd" id="1_ship"]
+[ext_resource type="Script" path="res://scripts/combat/ShipDefenseStats.gd" id="2_defense"]
+
+[sub_resource type="Resource" id="Resource_defense"]
+resource_local_to_scene = true
+script = ExtResource("2_defense")
+max_hp = 420.0
+current_hp = 420.0
+belt_armor = 70.0
+deck_armor = 55.0
+bow_armor = 38.0
+stern_armor = 32.0
+superstructure_armor = 16.0
+damage_reduction = 0.06
+
+[resource]
+script = ExtResource("1_ship")
+id = "cv_seabastion"
+display_name = "Seabastion CV"
+ship_class = 3
+max_speed_mps = 29.0
+cruise_speed_mps = 23.0
+max_reverse_speed_mps = 5.0
+acceleration_mps2 = 0.65
+deceleration_mps2 = 0.9
+max_turn_rate_deg_sec = 2.7
+turn_acceleration_deg_sec2 = 0.8
+arrival_slowdown_distance_m = 1400.0
+minimum_turning_speed_mps = 6.0
+navigation_safety_radius_m = 200.0
+max_forward_speed = 29.0
+max_reverse_speed = 5.0
+engine_response = 0.32
+turn_rate_degrees = 2.7
+hull_size = Vector3(40, 15, 300)
+turret_count = 1
+turret_spacing = 1.0
+shell_muzzle_velocity = 760.0
+reload_seconds = 4.5
+default_weapon_id = "destroyer_cannon"
+defense_stats = SubResource("Resource_defense")

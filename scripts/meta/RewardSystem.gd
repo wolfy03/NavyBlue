@@ -1,29 +1,50 @@
 extends Node
 class_name RewardSystem
 
-const UPGRADE_DATA_SCRIPT := preload("res://scripts/data/UpgradeData.gd")
+const UPGRADE_PATHS := {
+	"hull_reinforcement_1": "res://resources/upgrades/hull_reinforcement_1.tres",
+	"engine_tuning_1": "res://resources/upgrades/engine_tuning_1.tres",
+	"reload_drill_1": "res://resources/upgrades/reload_drill_1.tres",
+	"fire_control_1": "res://resources/upgrades/fire_control_1.tres",
+}
 
 func roll_rewards() -> Array:
 	return roll_upgrade_rewards(3, "")
 
-func roll_upgrade_rewards(count: int = 3, reward_table_id: String = "") -> Array:
-	var definitions := _upgrade_definitions(reward_table_id)
-	var ids := definitions.keys()
+func roll_upgrade_rewards(count: int = 3, _reward_table_id: String = "") -> Array:
+	var ids := UPGRADE_PATHS.keys()
 	ids.shuffle()
 	var rewards: Array = []
-	for index in range(mini(count, ids.size())):
-		var upgrade_id := str(ids[index])
-		rewards.append(_upgrade_to_dictionary(_make_upgrade(upgrade_id, definitions[upgrade_id])))
+	for index in range(mini(maxi(count, 0), ids.size())):
+		var upgrade := get_upgrade(str(ids[index]))
+		if upgrade != null:
+			rewards.append(upgrade)
 	return rewards
 
 func get_upgrade(upgrade_id: String) -> UpgradeData:
-	var definitions := _upgrade_definitions("")
-	if not definitions.has(upgrade_id):
+	var path := str(UPGRADE_PATHS.get(upgrade_id, ""))
+	if path.is_empty():
 		return null
-	return _make_upgrade(upgrade_id, definitions[upgrade_id])
+	var upgrade := load(path) as UpgradeData
+	if upgrade == null:
+		push_warning("Failed to load upgrade data: %s" % path)
+	return upgrade
+
+func get_reward_ids(rewards: Array) -> Array[String]:
+	var ids: Array[String] = []
+	for reward in rewards:
+		if reward is UpgradeData and not reward.id.is_empty():
+			ids.append(reward.id)
+		elif reward is String and not reward.is_empty():
+			ids.append(reward)
+		elif reward is Dictionary:
+			var reward_id := str(reward.get("id", ""))
+			if not reward_id.is_empty():
+				ids.append(reward_id)
+	return ids
 
 func select_reward(upgrade_id: String) -> bool:
-	if upgrade_id.is_empty():
+	if get_upgrade(upgrade_id) == null:
 		return false
 	if has_node("/root/RunManager"):
 		var run_manager = get_node("/root/RunManager")
@@ -36,59 +57,3 @@ func select_reward(upgrade_id: String) -> bool:
 		get_node("/root/EventBus").reward_selected.emit(upgrade_id)
 	# TODO: Continue to the next stage selection flow when the reward UI exists.
 	return true
-
-func _make_upgrade(id: String, definition: Dictionary) -> UpgradeData:
-	var upgrade := UPGRADE_DATA_SCRIPT.new() as UpgradeData
-	upgrade.id = id
-	upgrade.display_name = definition.get("display_name", id)
-	upgrade.description = definition.get("description", "")
-	upgrade.upgrade_type = definition.get("upgrade_type", "multiply")
-	upgrade.value = float(definition.get("value", 0.0))
-	upgrade.target_stat = definition.get("target_stat", "")
-	upgrade.is_percent = bool(definition.get("is_percent", false))
-	upgrade.modifiers = definition.get("modifiers", {})
-	return upgrade
-
-func _upgrade_to_dictionary(upgrade: UpgradeData) -> Dictionary:
-	return {
-		"id": upgrade.id,
-		"display_name": upgrade.display_name,
-		"description": upgrade.description,
-		"upgrade_type": upgrade.upgrade_type,
-		"value": upgrade.value,
-		"target_stat": upgrade.target_stat,
-		"is_percent": upgrade.is_percent,
-		"modifiers": upgrade.modifiers.duplicate(true),
-	}
-
-func _upgrade_definitions(_reward_table_id: String) -> Dictionary:
-	return {
-		"hull_reinforcement_1": {
-			"display_name": "Hull Reinforcement I",
-			"description": "Increase ship health.",
-			"upgrade_type": "multiply",
-			"value": 1.12,
-			"target_stat": "max_health",
-		},
-		"engine_tuning_1": {
-			"display_name": "Engine Tuning I",
-			"description": "Increase maximum forward speed.",
-			"upgrade_type": "multiply",
-			"value": 1.08,
-			"target_stat": "max_forward_speed",
-		},
-		"reload_drill_1": {
-			"display_name": "Reload Drill I",
-			"description": "Reduce reload time.",
-			"upgrade_type": "multiply",
-			"value": 0.92,
-			"target_stat": "reload_seconds",
-		},
-		"fire_control_1": {
-			"display_name": "Fire Control I",
-			"description": "Increase shell muzzle velocity.",
-			"upgrade_type": "multiply",
-			"value": 1.06,
-			"target_stat": "shell_muzzle_velocity",
-		},
-	}

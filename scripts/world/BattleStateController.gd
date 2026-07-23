@@ -97,14 +97,15 @@ func _clear_battle() -> void:
 	if result_emitted:
 		return
 	result_emitted = true
-	battle_active = false
+	stop_battle()
 	var reward_system := REWARD_SYSTEM_SCRIPT.new()
 	var rewards: Array = reward_system.roll_upgrade_rewards(3, reward_table_id)
+	var reward_ids: Array[String] = reward_system.get_reward_ids(rewards)
 	reward_system.free()
 	if has_node("/root/RunManager"):
 		var run_manager = get_node("/root/RunManager")
 		run_manager.capture_player_ship(player_ship)
-		run_manager.set_pending_rewards(rewards)
+		run_manager.set_pending_rewards(reward_ids)
 		var save_error: Error = run_manager.save_current_run()
 		if save_error != OK:
 			push_warning("Failed to save run after battle clear: %s" % save_error)
@@ -119,7 +120,7 @@ func _fail_battle() -> void:
 	if result_emitted:
 		return
 	result_emitted = true
-	battle_active = false
+	stop_battle()
 	if has_node("/root/RunManager"):
 		var run_manager = get_node("/root/RunManager")
 		run_manager.finish_run({
