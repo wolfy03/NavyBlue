@@ -107,6 +107,26 @@ func get_fleet_controllers() -> Array[FleetAIController]:
 	return result
 
 
+func get_incoming_attacker_count(target: ShipUnit) -> int:
+	return get_incoming_attackers(target).size()
+
+
+func get_incoming_attackers(target: ShipUnit) -> Array[ShipUnit]:
+	var result: Array[ShipUnit] = []
+	var included_ids: Dictionary = {}
+	if target == null:
+		return result
+	for controller in get_fleet_controllers():
+		if not FactionRelations.are_hostile(controller.team, target.team):
+			continue
+		for attacker in controller.assignment_tracker.get_attackers(target):
+			var attacker_id := attacker.get_instance_id()
+			if not included_ids.has(attacker_id):
+				included_ids[attacker_id] = true
+				result.append(attacker)
+	return result
+
+
 func _connect_unit_registry() -> void:
 	if ships_root == null:
 		ships_root = _get_or_create_node3d("Ships")
@@ -142,6 +162,11 @@ func _on_battle_unit_entered(node: Node) -> void:
 
 
 func _on_battle_unit_exiting(node: Node) -> void:
+	var ship := node as ShipUnit
+	if ship != null:
+		var controller := ship.get_fleet_controller()
+		if controller != null:
+			controller.unregister_member(ship)
 	_battle_units.erase(node)
 	allies.erase(node)
 	enemies.erase(node)
@@ -196,14 +221,28 @@ func _get_or_create_fleet_controller(ship: ShipUnit) -> FleetAIController:
 		ship.team,
 		Callable(self, &"get_battle_units"),
 		battlefield_bounds,
-		_resolve_ai_difficulty_profile()
+		_resolve_ai_difficulty_profile(),
+		Callable(self, &"get_incoming_attacker_count")
 	)
+	controller.became_empty.connect(_on_fleet_became_empty)
 	_fleet_controllers[resolved_fleet_id] = controller
 	if resolved_fleet_id == &"friendly_main":
 		friendly_fleet_ai = controller
 	elif resolved_fleet_id == &"enemy_main":
 		enemy_fleet_ai = controller
 	return controller
+
+
+func _on_fleet_became_empty(empty_fleet_id: StringName) -> void:
+	var controller := _fleet_controllers.get(empty_fleet_id) as FleetAIController
+	if controller == null or not controller.is_empty():
+		return
+	_fleet_controllers.erase(empty_fleet_id)
+	if friendly_fleet_ai == controller:
+		friendly_fleet_ai = null
+	if enemy_fleet_ai == controller:
+		enemy_fleet_ai = null
+	controller.queue_free()
 
 
 func _resolve_ai_difficulty_profile() -> AIDifficultyProfile:

@@ -58,6 +58,9 @@ var _fleet_controller_ref: WeakRef
 var _fleet_context: FleetMemberContext
 var _tactical_navigation_elapsed_sec := 0.0
 var _last_tactical_position := Vector3.ZERO
+var _last_tactical_heading := Vector3.FORWARD
+var _tactical_path_failure_elapsed_sec := 0.0
+var _tactical_path_failure_count := 0
 var tactical_navigation_update_count := 0
 
 
@@ -110,6 +113,7 @@ func update_ai(
 	_carrier_separation_elapsed_sec += delta
 	_behavior_state_elapsed_sec += delta
 	_tactical_navigation_elapsed_sec += delta
+	_tactical_path_failure_elapsed_sec += delta
 
 	if navigation.battlefield_bounds != null \
 			and not navigation.battlefield_bounds.is_inside_bounds(owner_ship.global_position):
@@ -251,6 +255,7 @@ func get_debug_data() -> Dictionary:
 		"tactical_side_sign": _fleet_context.tactical_side_sign \
 			if _fleet_context != null else 0.0,
 		"disengaging": behavior_state == BehaviorState.DISENGAGE,
+		"tactical_path_failure_count": _tactical_path_failure_count,
 	}
 
 
@@ -304,16 +309,12 @@ func _update_fleet_tactical_behavior(
 			)
 			return true
 		FleetMemberContext.TacticalRole.INTERCEPT:
-			_set_behavior_state(BehaviorState.INTERCEPT)
-			if distance_m > engagement_range_m:
-				_update_pursuit(owner_ship, target, navigation)
-			else:
-				_follow_fleet_tactical_position(
-					owner_ship,
-					movement,
-					navigation,
-					BehaviorState.INTERCEPT
-				)
+			_follow_fleet_tactical_position(
+				owner_ship,
+				movement,
+				navigation,
+				BehaviorState.INTERCEPT
+			)
 			return true
 		FleetMemberContext.TacticalRole.FLANKER:
 			_follow_fleet_tactical_position(
@@ -358,17 +359,31 @@ func _follow_fleet_tactical_position(
 	if offset.length_squared() <= 180.0 * 180.0:
 		if navigation.has_navigation_target:
 			navigation.clear_navigation_target()
-		var target_direction := target.global_position - owner_ship.global_position \
-			if _is_target_valid() else Vector3.ZERO
+		var desired_heading := _fleet_context.tactical_heading \
+			if _fleet_context.tactical_heading_valid else Vector3.ZERO
+		var cruise_output := 0.0
+		if _fleet_context.tactical_role == FleetMemberContext.TacticalRole.LINE_COMBATANT:
+			cruise_output = _role_profile.broadside_cruise_output if _role_profile != null else 0.12
 		movement.set_movement_command(
-			0.08 if state == BehaviorState.ENGAGE else 0.0,
-			movement.get_rudder_to_direction(target_direction)
+			cruise_output,
+			movement.get_rudder_to_direction(desired_heading)
 		)
+		_last_tactical_heading = desired_heading
 		return
 	var position_changed := _last_tactical_position.distance_squared_to(tactical_position) \
 		>= 180.0 * 180.0
 	var path_missing: bool = not bool(navigation.has_navigation_target) \
 		or (not navigation.has_valid_path() and not bool(navigation.path_calculation_failed_state))
+	if navigation.path_calculation_failed_state:
+		if _tactical_path_failure_elapsed_sec < maxf(navigation.failed_path_retry_interval_sec, 1.5):
+			movement.set_movement_command(0.0, 0.0)
+			return
+		_tactical_path_failure_elapsed_sec = 0.0
+		_tactical_path_failure_count += 1
+		var fleet_controller := _get_fleet_controller()
+		if fleet_controller != null and fleet_controller.has_method(&"report_tactical_path_failure"):
+			fleet_controller.call(&"report_tactical_path_failure", _owner_ship)
+		return
 	if path_missing or (
 		_tactical_navigation_elapsed_sec >= 2.0 and position_changed
 	):
@@ -376,6 +391,11 @@ func _follow_fleet_tactical_position(
 		_last_tactical_position = tactical_position
 		_tactical_navigation_elapsed_sec = 0.0
 		tactical_navigation_update_count += 1
+
+
+func _get_fleet_controller() -> FleetAIController:
+	return _fleet_controller_ref.get_ref() as FleetAIController \
+		if _fleet_controller_ref != null else null
 
 
 func _get_state_for_tactical_role(

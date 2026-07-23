@@ -127,6 +127,10 @@ func get_ai_debug_data() -> Dictionary:
 		if _fleet_tactical_context != null else &"none"
 	result["tactical_position"] = _fleet_tactical_context.tactical_position \
 		if _fleet_tactical_context != null else Vector3.ZERO
+	result["tactical_heading"] = _fleet_tactical_context.tactical_heading \
+		if _fleet_tactical_context != null else Vector3.FORWARD
+	result["tactical_position_was_clamped"] = _fleet_tactical_context.tactical_position_was_clamped \
+		if _fleet_tactical_context != null else false
 	return result
 
 

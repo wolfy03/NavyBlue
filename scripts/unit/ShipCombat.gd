@@ -57,6 +57,16 @@ func has_usable_weapon() -> bool:
 	return false
 
 
+func is_target_in_range(owner_ship: ShipUnit) -> bool:
+	var target_ship := target as Node3D
+	if owner_ship == null or target_ship == null:
+		return false
+	var range_m := get_max_weapon_range_m()
+	return range_m > 0.0 \
+		and owner_ship.global_position.distance_squared_to(target_ship.global_position) \
+			<= range_m * range_m
+
+
 func get_estimated_damage_per_second() -> float:
 	var total_damage_per_second := 0.0
 	for turret in turrets:

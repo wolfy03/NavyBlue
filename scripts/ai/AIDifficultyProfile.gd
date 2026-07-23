@@ -11,3 +11,4 @@ class_name AIDifficultyProfile
 @export var emergency_response_multiplier := 1.0
 @export var focus_fire_efficiency := 1.0
 @export var tactical_position_error_m := 150.0
+@export var tactical_error_hold_sec := 14.0

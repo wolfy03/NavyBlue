@@ -4,6 +4,10 @@ class_name ShipAIRoleProfile
 @export var role_id: StringName = &"default"
 @export_range(0.1, 1.0, 0.01) var preferred_range_ratio := 0.75
 @export var tactical_clearance_m := 300.0
+@export_range(0.0, 1.0, 0.01) var broadside_cruise_output := 0.12
+@export var minimum_side_hold_sec := 10.0
+@export var intercept_buffer_m := 500.0
+@export_range(0.0, 5.0, 0.1) var intercept_prediction_sec := 2.0
 
 @export_category("Target Weights")
 @export var distance_weight := 25.0

@@ -14,3 +14,4 @@ fleet_recommendation_multiplier = 1.2
 emergency_response_multiplier = 1.25
 focus_fire_efficiency = 1.2
 tactical_position_error_m = 60.0
+tactical_error_hold_sec = 10.0
