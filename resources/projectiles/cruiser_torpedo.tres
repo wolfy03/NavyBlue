@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="TorpedoProjectileData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/TorpedoProjectileData.gd" id="1_data"]
+
+[resource]
+script = ExtResource("1_data")
+id = "cruiser_torpedo"
+display_name = "610 mm Heavy Torpedo"
+damage = 360.0
+lifetime_seconds = 210.0
+explosion_radius = 16.0
+splash_strength = 3.0
+launch_speed_mps = 16.0
+max_speed_mps = 31.0
+acceleration_mps2 = 3.0
+running_depth_m = 2.5
+max_turn_rate_deg_sec = 0.0
+maximum_range_m = 8000.0
+direct_damage = 240.0
+explosion_damage = 120.0
+flooding_chance = 0.5
+flooding_duration_seconds = 18.0
+flooding_damage_per_second = 4.5
+arming_distance_m = 150.0

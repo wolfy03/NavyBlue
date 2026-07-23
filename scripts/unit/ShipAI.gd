@@ -33,6 +33,7 @@ enum BehaviorState {
 @export var fallback_minimum_separation_m := 350.0
 @export var fallback_target_safety_radius_m := 90.0
 @export_range(0.0, 10.0, 0.1) var minimum_state_hold_sec := 2.0
+@export_range(0.0, 1.0, 0.05) var torpedo_minimum_hit_probability := 0.35
 
 var target: ShipUnit
 var behavior_state: BehaviorState = BehaviorState.IDLE
@@ -152,6 +153,11 @@ func update_ai(
 	to_target.y = 0.0
 	var distance_m := to_target.length()
 	combat.set_aim_point(target.global_position)
+	combat.fire_torpedoes_at(
+		target,
+		navigation.battlefield_bounds,
+		torpedo_minimum_hit_probability
+	)
 
 	if distance_m <= minimum_separation_m:
 		_set_behavior_state(BehaviorState.RETREAT)

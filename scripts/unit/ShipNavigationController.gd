@@ -66,6 +66,21 @@ func update_navigation(delta: float) -> void:
 			and path_recalculation_elapsed_sec >= deviation_recalculation_cooldown_sec:
 		_calculate_path()
 
+
+func constrain_owner_to_bounds() -> bool:
+	if owner_ship == null:
+		return false
+	_resolve_bounds()
+	if battlefield_bounds == null \
+			or battlefield_bounds.is_inside_bounds(owner_ship.global_position):
+		return false
+	var constrained := battlefield_bounds.clamp_to_bounds(
+		owner_ship.global_position
+	)
+	constrained.y = _get_sea_level_m()
+	owner_ship.global_position = constrained
+	return true
+
 func set_navigation_target(target: Vector3) -> void:
 	if owner_ship == null:
 		return

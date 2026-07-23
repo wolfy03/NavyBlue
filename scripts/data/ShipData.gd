@@ -24,11 +24,16 @@ enum ShipClass {
 @export var navigation_safety_radius_m := 90.0
 
 @export var hull_size := Vector3(2.2, 0.8, 7.0)
+@export_category("Weapons")
+@export var weapon_slots: Array[ShipWeaponSlotData] = []
+
+@export_group("Legacy Weapon Configuration")
 @export var turret_count := 2
 @export var turret_spacing := 1.8
 @export var shell_muzzle_velocity := 34.0
 @export var reload_seconds := 1.2
 @export var default_weapon_id: String = "destroyer_cannon"
+@export_group("")
 @export var defense_stats: ShipDefenseStats
 @export var ai_role_profile: ShipAIRoleProfile
 @export_category("Combat Role")

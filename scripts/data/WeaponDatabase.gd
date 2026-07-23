@@ -7,6 +7,8 @@ const WEAPON_PATHS := {
 	"cruiser_cannon": "res://resources/weapons/cruiser_cannon.tres",
 	"battleship_cannon": "res://resources/weapons/battleship_cannon.tres",
 	"carrier_secondary": "res://resources/weapons/carrier_secondary.tres",
+	"destroyer_torpedo_launcher": "res://resources/weapons/destroyer_torpedo_launcher.tres",
+	"cruiser_torpedo_launcher": "res://resources/weapons/cruiser_torpedo_launcher.tres",
 }
 
 func get_weapon(id: String) -> WeaponData:
@@ -23,3 +25,9 @@ func get_weapon(id: String) -> WeaponData:
 	var fallback := WeaponData.new()
 	fallback.id = DEFAULT_WEAPON_ID
 	return fallback
+
+
+func find_weapon(id: String) -> WeaponData:
+	if not WEAPON_PATHS.has(id):
+		return null
+	return load(str(WEAPON_PATHS[id])) as WeaponData

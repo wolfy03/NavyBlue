@@ -1,14 +1,17 @@
-[gd_resource type="Resource" script_class="WeaponData" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="WeaponData" load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1_weapon"]
 [ext_resource type="Resource" path="res://resources/projectiles/medium_ap_shell.tres" id="2_projectile"]
-[ext_resource type="PackedScene" path="res://scenes/weapon/projectile.tscn" id="3_scene"]
+[ext_resource type="PackedScene" path="res://scenes/weapon/projectiles/shell_projectile.tscn" id="3_scene"]
+[ext_resource type="PackedScene" path="res://scenes/weapon/mounts/cannon_mount.tscn" id="4_mount"]
 
 [resource]
 script = ExtResource("1_weapon")
 id = "cruiser_cannon"
 display_name = "152 mm Naval Cannon"
-weapon_type = "cannon"
+weapon_type = 0
+required_slot_size = 1
+mount_scene = ExtResource("4_mount")
 reload_seconds = 8.0
 muzzle_velocity = 820.0
 turret_turn_speed_degrees = 15.0

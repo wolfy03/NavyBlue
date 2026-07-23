@@ -7,6 +7,8 @@ var hit_position: Vector3 = Vector3.ZERO
 var hit_normal: Vector3 = Vector3.UP
 var shell_direction: Vector3 = Vector3.FORWARD
 var armor_part: ArmorPart.Type = ArmorPart.Type.BELT
+var damage_type: DamageType.Type = DamageType.Type.SHELL_AP
+var torpedo_data: TorpedoProjectileData
 var projectile_info: Dictionary = {}
 var source_ship_instance_id := 0
 var source_weapon_id: StringName
@@ -27,6 +29,10 @@ func setup(
 	hit_normal = normal.normalized() if normal.length_squared() > 0.000001 else Vector3.UP
 	shell_direction = direction.normalized() if direction.length_squared() > 0.000001 else -hit_normal
 	armor_part = part
+	if shell_stats != null:
+		damage_type = DamageType.Type.SHELL_HE \
+			if shell_stats.shell_type == ShellStats.ShellType.HE \
+			else DamageType.Type.SHELL_AP
 	return self
 
 

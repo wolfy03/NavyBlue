@@ -2,6 +2,7 @@ extends CharacterBody3D
 class_name ShipUnit
 
 const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
+const WEAPON_DATABASE_SCRIPT := preload("res://scripts/data/WeaponDatabase.gd")
 
 @export var ship_id := "dd_bluewind"
 @export var ship_data: ShipData
@@ -11,17 +12,19 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 @export var team_color := Color(0.2, 0.55, 1.0)
 @export var engine_output_change_rate := 0.55
 @export var turret_scene: PackedScene = preload("res://scenes/weapon/turret.tscn")
+@export var weapon_loadout: ShipWeaponLoadout
 
 @onready var hull_collision: CollisionShape3D = $HullCollision
 @onready var hull_mesh: MeshInstance3D = $HullMesh
 @onready var bow_mesh: MeshInstance3D = $BowMesh
 @onready var deck_mesh: MeshInstance3D = $DeckMesh
-@onready var turret_mounts: Node3D = $TurretMounts
+@onready var weapon_mount_root: Node3D = $WeaponMountRoot
 @onready var movement: ShipMovement = $ShipMovement
 @onready var navigation: ShipNavigationController = $ShipNavigationController
 @onready var avoidance: ShipAvoidanceController = $ShipAvoidanceController
 @onready var combat: ShipCombat = $ShipCombat
 @onready var health: ShipHealth = $ShipHealth
+@onready var damage_status: ShipDamageStatus = $ShipDamageStatus
 @onready var targeting: ThreatTargetingComponent = $ThreatTargetingComponent
 @onready var ai: ShipAI = $ShipAI
 @onready var visual_builder: Node = $ShipVisualBuilder
@@ -29,18 +32,27 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 
 var _player_throttle_axis := 0.0
 var _player_rudder_axis := 0.0
-var _player_fire_pressed := false
+var _player_cannon_fire_pressed := false
+var _player_torpedo_fire_pressed := false
 var _is_sinking: bool = false
 var _ai_candidate_provider := Callable()
 var _fleet_controller_ref: WeakRef
 var _fleet_tactical_context: FleetMemberContext
+var _weapon_database := WEAPON_DATABASE_SCRIPT.new()
 
-func setup(data: ShipData, team_name: StringName, is_player: bool, color: Color) -> void:
+func setup(
+		data: ShipData,
+		team_name: StringName,
+		is_player: bool,
+		color: Color,
+		loadout: ShipWeaponLoadout = null
+) -> void:
 	ship_data = data
 	ship_id = ship_data.id
 	team = team_name
 	player_controlled = is_player
 	team_color = color
+	weapon_loadout = loadout.duplicate_loadout() if loadout != null else null
 	name = "%s_%s" % [ship_data.id, String(team)]
 	_register_groups()
 
@@ -67,8 +79,10 @@ func _physics_process(delta: float) -> void:
 		else:
 			movement.set_input(0.0, 0.0)
 			movement.apply_avoidance(avoidance.steering_offset, avoidance.speed_scale)
-		if _player_fire_pressed:
-			combat.fire_all()
+		if _player_cannon_fire_pressed:
+			combat.fire_cannons()
+		if _player_torpedo_fire_pressed:
+			combat.fire_torpedoes()
 	else:
 		ai.update_ai(self, movement, navigation, combat, ship_data, delta)
 		if navigation.has_navigation_target:
@@ -77,13 +91,20 @@ func _physics_process(delta: float) -> void:
 			movement.apply_avoidance(avoidance.steering_offset, avoidance.speed_scale)
 
 	movement.apply_movement(delta)
+	navigation.constrain_owner_to_bounds()
 	buoyancy.apply_buoyancy(self)
-	combat.update_turrets(self, player_controlled)
+	combat.update_weapon_mounts(self, player_controlled)
 
-func set_player_commands(throttle_axis: float, rudder_axis: float, fire_pressed: bool) -> void:
+func set_player_commands(
+		throttle_axis: float,
+		rudder_axis: float,
+		cannon_fire_pressed: bool,
+		torpedo_fire_pressed: bool = false
+) -> void:
 	_player_throttle_axis = clampf(throttle_axis, -1.0, 1.0)
 	_player_rudder_axis = clampf(rudder_axis, -1.0, 1.0)
-	_player_fire_pressed = fire_pressed
+	_player_cannon_fire_pressed = cannon_fire_pressed
+	_player_torpedo_fire_pressed = torpedo_fire_pressed
 
 func set_aim_point(world_point: Vector3) -> void:
 	combat.set_aim_point(world_point)
@@ -102,7 +123,36 @@ func adjust_turret_pitch(delta_degrees: float) -> void:
 	combat.adjust_turret_pitch(delta_degrees)
 
 func fire_turrets() -> void:
-	combat.fire_all()
+	fire_cannons()
+
+
+func fire_cannons() -> void:
+	combat.fire_cannons()
+
+
+func fire_torpedoes() -> void:
+	combat.fire_torpedoes()
+
+
+func equip_weapon(
+	slot_id: StringName,
+	weapon_id: String
+) -> WeaponMountValidationResult:
+	var slot := _find_weapon_slot(slot_id)
+	var weapon_data := _weapon_database.find_weapon(weapon_id)
+	var validation := WeaponMountValidator.validate(slot, weapon_data)
+	if not validation.valid:
+		return validation
+	if weapon_loadout == null:
+		weapon_loadout = ShipWeaponLoadout.from_ship_data(ship_data)
+	weapon_loadout.set_weapon_id(slot_id, weapon_id)
+	if is_node_ready():
+		_rebuild_weapon_mounts()
+	return validation
+
+
+func get_weapon_loadout_save_data() -> Dictionary:
+	return weapon_loadout.to_dictionary() if weapon_loadout != null else {}
 
 func set_ai_target(target) -> void:
 	targeting.force_target(target)
@@ -166,6 +216,10 @@ func get_fleet_tactical_context() -> FleetMemberContext:
 func get_turrets() -> Array:
 	return combat.turrets
 
+
+func get_weapon_mounts() -> Array[WeaponMount]:
+	return combat.weapon_mounts
+
 func get_engine_output() -> float:
 	return movement.engine_output
 
@@ -182,6 +236,14 @@ func get_defense_stats() -> ShipDefenseStats:
 
 func apply_damage(damage: float, penetration_result: int, hit_info: HitInfo) -> float:
 	return health.apply_damage(damage, penetration_result, hit_info)
+
+
+func apply_flooding(
+		duration_seconds: float,
+		damage_per_second: float,
+		source: HitInfo
+) -> void:
+	damage_status.apply_flooding(duration_seconds, damage_per_second, source)
 
 
 func get_current_hp() -> float:
@@ -220,13 +282,22 @@ func _register_groups() -> void:
 	add_to_group("team_%s" % String(team))
 
 func _setup_components() -> void:
-	visual_builder.setup(hull_collision, hull_mesh, bow_mesh, deck_mesh, turret_mounts)
-	var built_turrets: Array = visual_builder.build(
+	if weapon_loadout == null:
+		weapon_loadout = ShipWeaponLoadout.from_ship_data(ship_data)
+	visual_builder.setup(
+		hull_collision,
+		hull_mesh,
+		bow_mesh,
+		deck_mesh,
+		weapon_mount_root
+	)
+	var built_mounts: Array[WeaponMount] = visual_builder.build(
 		ship_data,
+		weapon_loadout,
 		team,
 		team_color,
-		turret_scene,
-		self
+		self,
+		turret_scene
 	)
 	var bounds := get_tree().get_first_node_in_group(&"battlefield_bounds") as BattlefieldBounds
 	var settings := bounds.settings if bounds != null else preload("res://resources/settings/default_battlefield_settings.tres")
@@ -234,7 +305,7 @@ func _setup_components() -> void:
 	navigation.setup(self, settings, bounds)
 	avoidance.setup(self, settings)
 	buoyancy.water_height = settings.sea_level_m
-	combat.setup(self, built_turrets)
+	combat.setup(self, built_mounts)
 	health.setup(ship_data.defense_stats if ship_data != null else null)
 	targeting.setup(self, ship_data.ai_role_profile if ship_data != null else null, _ai_candidate_provider)
 	ai.setup(self, ship_data)
@@ -244,6 +315,30 @@ func _setup_components() -> void:
 		health.died.connect(_on_health_died)
 	if not health.damage_applied.is_connected(_on_damage_applied):
 		health.damage_applied.connect(_on_damage_applied)
+
+
+func _rebuild_weapon_mounts() -> void:
+	var previous_target = combat.target
+	var built_mounts: Array[WeaponMount] = visual_builder.build(
+		ship_data,
+		weapon_loadout,
+		team,
+		team_color,
+		self,
+		turret_scene
+	)
+	combat.setup(self, built_mounts)
+	if is_instance_valid(previous_target):
+		combat.set_target(previous_target)
+
+
+func _find_weapon_slot(slot_id: StringName) -> ShipWeaponSlotData:
+	if ship_data == null:
+		return null
+	for slot in ship_data.weapon_slots:
+		if slot != null and slot.slot_id == slot_id:
+			return slot
+	return null
 
 
 func _on_health_died() -> void:

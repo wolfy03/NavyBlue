@@ -34,8 +34,15 @@ func _physics_process(_delta: float) -> void:
 		return
 	var throttle_axis := Input.get_axis(&"ship_throttle_reverse", &"ship_throttle_forward")
 	var rudder_axis := Input.get_axis(&"ship_rudder_right", &"ship_rudder_left")
-	var fire_pressed := Input.is_action_pressed(&"ship_fire")
-	controlled_ship.set_player_commands(throttle_axis, rudder_axis, fire_pressed)
+	var cannon_fire_pressed := Input.is_action_pressed(&"ship_fire_cannon") \
+		or Input.is_action_pressed(&"ship_fire")
+	var torpedo_fire_pressed := Input.is_action_just_pressed(&"ship_fire_torpedo")
+	controlled_ship.set_player_commands(
+		throttle_axis,
+		rudder_axis,
+		cannon_fire_pressed,
+		torpedo_fire_pressed
+	)
 	if Input.is_action_just_pressed(&"turret_pitch_up"):
 		_adjust_selected_turret_pitch(pitch_step_degrees)
 	if Input.is_action_just_pressed(&"turret_pitch_down"):

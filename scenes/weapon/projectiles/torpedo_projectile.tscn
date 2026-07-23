@@ -1,0 +1,34 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/projectile/TorpedoProjectile.gd" id="1_projectile"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape_torpedo"]
+radius = 0.35
+height = 3.0
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_torpedo"]
+radius = 0.35
+height = 3.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial_torpedo"]
+albedo_color = Color(0.12, 0.16, 0.14, 1)
+metallic = 0.3
+roughness = 0.65
+
+[node name="TorpedoProjectile" type="RigidBody3D"]
+collision_layer = 4
+collision_mask = 0
+gravity_scale = 0.0
+continuous_cd = true
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("1_projectile")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+rotation = Vector3(1.5708, 0, 0)
+shape = SubResource("CapsuleShape_torpedo")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("CapsuleMesh_torpedo")
+surface_material_override/0 = SubResource("StandardMaterial_torpedo")

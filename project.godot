@@ -111,6 +111,14 @@ ship_fire={
 "deadzone": 0.2,
 "events": []
 }
+ship_fire_cannon={
+"deadzone": 0.2,
+"events": []
+}
+ship_fire_torpedo={
+"deadzone": 0.2,
+"events": []
+}
 turret_pitch_up={
 "deadzone": 0.2,
 "events": []

@@ -1,8 +1,9 @@
-[gd_resource type="Resource" script_class="ShipData" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="ShipData" load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/ShipData.gd" id="1_ship"]
 [ext_resource type="Script" path="res://scripts/combat/ShipDefenseStats.gd" id="2_defense"]
 [ext_resource type="Resource" path="res://resources/ai_roles/battleship_ai_role.tres" id="3_role"]
+[ext_resource type="Script" path="res://scripts/data/ShipWeaponSlotData.gd" id="4_slot"]
 
 [sub_resource type="Resource" id="Resource_defense"]
 resource_local_to_scene = true
@@ -15,6 +16,52 @@ bow_armor = 80.0
 stern_armor = 70.0
 superstructure_armor = 30.0
 damage_reduction = 0.1
+
+[sub_resource type="Resource" id="Resource_slot_front_outer"]
+script = ExtResource("4_slot")
+slot_id = &"front_outer"
+display_name = "Forward outer mount"
+local_position = Vector3(0, 12.6, -93)
+local_scale = Vector3(11, 11, 11)
+slot_size = 2
+allowed_weapon_types = Array[int]([0])
+default_weapon_id = "battleship_cannon"
+elevation_max_degrees = 65.0
+
+[sub_resource type="Resource" id="Resource_slot_front_inner"]
+script = ExtResource("4_slot")
+slot_id = &"front_inner"
+display_name = "Forward inner mount"
+local_position = Vector3(0, 12.6, -31)
+local_scale = Vector3(11, 11, 11)
+slot_size = 2
+allowed_weapon_types = Array[int]([0])
+default_weapon_id = "battleship_cannon"
+elevation_max_degrees = 65.0
+
+[sub_resource type="Resource" id="Resource_slot_rear_inner"]
+script = ExtResource("4_slot")
+slot_id = &"rear_inner"
+display_name = "Aft inner mount"
+local_position = Vector3(0, 12.6, 31)
+local_rotation_degrees = Vector3(0, 180, 0)
+local_scale = Vector3(11, 11, 11)
+slot_size = 2
+allowed_weapon_types = Array[int]([0])
+default_weapon_id = "battleship_cannon"
+elevation_max_degrees = 65.0
+
+[sub_resource type="Resource" id="Resource_slot_rear_outer"]
+script = ExtResource("4_slot")
+slot_id = &"rear_outer"
+display_name = "Aft outer mount"
+local_position = Vector3(0, 12.6, 93)
+local_rotation_degrees = Vector3(0, 180, 0)
+local_scale = Vector3(11, 11, 11)
+slot_size = 2
+allowed_weapon_types = Array[int]([0])
+default_weapon_id = "battleship_cannon"
+elevation_max_degrees = 65.0
 
 [resource]
 script = ExtResource("1_ship")
@@ -32,6 +79,7 @@ arrival_slowdown_distance_m = 1300.0
 minimum_turning_speed_mps = 6.0
 navigation_safety_radius_m = 180.0
 hull_size = Vector3(33, 12, 270)
+weapon_slots = Array[ExtResource("4_slot")]([SubResource("Resource_slot_front_outer"), SubResource("Resource_slot_front_inner"), SubResource("Resource_slot_rear_inner"), SubResource("Resource_slot_rear_outer")])
 turret_count = 4
 turret_spacing = 62.0
 shell_muzzle_velocity = 790.0

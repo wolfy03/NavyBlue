@@ -1,0 +1,29 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/mount/TorpedoMount.gd" id="1_mount"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_mount"]
+size = Vector3(1.8, 0.55, 2.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial_mount"]
+albedo_color = Color(0.16, 0.2, 0.24, 1)
+metallic = 0.2
+roughness = 0.7
+
+[node name="TorpedoMount" type="Node3D"]
+script = ExtResource("1_mount")
+
+[node name="Base" type="MeshInstance3D" parent="."]
+mesh = SubResource("BoxMesh_mount")
+surface_material_override/0 = SubResource("StandardMaterial_mount")
+
+[node name="Muzzles" type="Node3D" parent="."]
+
+[node name="Muzzle0" type="Node3D" parent="Muzzles"]
+position = Vector3(-0.55, 0, -1.25)
+
+[node name="Muzzle1" type="Node3D" parent="Muzzles"]
+position = Vector3(0, 0, -1.25)
+
+[node name="Muzzle2" type="Node3D" parent="Muzzles"]
+position = Vector3(0.55, 0, -1.25)

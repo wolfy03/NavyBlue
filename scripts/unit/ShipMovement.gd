@@ -53,6 +53,7 @@ func apply_movement(delta: float) -> void:
 		engine_output = clampf(engine_output + _throttle_axis * engine_output_change_rate * delta, -1.0, 1.0)
 
 	var speed_limit: float = ship_data.max_speed_mps if engine_output >= 0.0 else ship_data.max_reverse_speed_mps
+	speed_limit *= _get_status_speed_multiplier()
 	var desired_speed_mps := engine_output * speed_limit
 	var speed_change_rate: float = ship_data.acceleration_mps2 if absf(desired_speed_mps) > absf(current_speed_mps) else ship_data.deceleration_mps2
 	current_speed_mps = move_toward(current_speed_mps, desired_speed_mps, speed_change_rate * delta)
@@ -108,3 +109,16 @@ func _get_signed_heading_error(world_direction: Vector3) -> float:
 		return 0.0
 	var forward: Vector3 = -owner_ship.global_transform.basis.z.normalized()
 	return forward.signed_angle_to(world_direction.normalized(), Vector3.UP)
+
+
+func _get_status_speed_multiplier() -> float:
+	if owner_ship == null:
+		return 1.0
+	var status := owner_ship.get_node_or_null("ShipDamageStatus")
+	if status != null and status.has_method(&"get_movement_speed_multiplier"):
+		return clampf(
+			float(status.call(&"get_movement_speed_multiplier")),
+			0.1,
+			1.0
+		)
+	return 1.0

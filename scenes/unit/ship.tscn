@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://dtiv3xr6a37g4"]
+[gd_scene load_steps=19 format=3 uid="uid://dtiv3xr6a37g4"]
 
 [ext_resource type="Script" path="res://scripts/unit/ShipUnit.gd" id="1_ship"]
 [ext_resource type="Script" path="res://scripts/unit/ShipMovement.gd" id="2_movement"]
@@ -11,6 +11,8 @@
 [ext_resource type="Script" path="res://scripts/unit/ShipNavigationController.gd" id="9_navigation"]
 [ext_resource type="Script" path="res://scripts/unit/ShipAvoidanceController.gd" id="10_avoidance"]
 [ext_resource type="Script" path="res://scripts/ai/ThreatTargetingComponent.gd" id="11_targeting"]
+[ext_resource type="Script" path="res://scripts/unit/ShipDamageStatus.gd" id="12_damage_status"]
+[ext_resource type="Script" path="res://scripts/weapon/TorpedoAimPreview.gd" id="13_torpedo_preview"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
 size = Vector3(2.2, 0.8, 7)
@@ -56,7 +58,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.92, 0.12)
 mesh = SubResource("BoxMesh_deck")
 surface_material_override/0 = SubResource("StandardMaterial3D_deck")
 
-[node name="TurretMounts" type="Node3D" parent="." unique_id=457494772]
+[node name="WeaponMountRoot" type="Node3D" parent="." unique_id=457494772]
+
+[node name="TorpedoAimPreview" type="MeshInstance3D" parent="."]
+script = ExtResource("13_torpedo_preview")
 
 [node name="ShipMovement" type="Node" parent="."]
 script = ExtResource("2_movement")
@@ -73,6 +78,9 @@ script = ExtResource("3_combat")
 [node name="ShipHealth" type="Node" parent="."]
 script = ExtResource("4_health")
 defense_stats = ExtResource("7_defense")
+
+[node name="ShipDamageStatus" type="Node" parent="."]
+script = ExtResource("12_damage_status")
 
 [node name="ThreatTargetingComponent" type="Node" parent="."]
 script = ExtResource("11_targeting")

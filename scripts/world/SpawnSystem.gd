@@ -39,6 +39,12 @@ func spawn_player_ship(ship_id: String, spawn_info: Dictionary, parent: Node) ->
 	info["team"] = str(info.get("team", "player"))
 	info["is_player"] = true
 	info["color"] = info.get("color", Color(0.18, 0.48, 0.95))
+	if has_node("/root/RunManager"):
+		var run_manager := get_node("/root/RunManager")
+		var player_state: Dictionary = run_manager.player_ship_state
+		var saved_ship_id := str(player_state.get("ship_id", ""))
+		if saved_ship_id.is_empty() or saved_ship_id == str(info["ship_id"]):
+			info["weapon_loadout"] = player_state.get("weapon_loadout", {})
 	return _spawn_ship_from_info(info, parent)
 
 func spawn_ally_fleet(ally_spawns: Array, parent: Node) -> Array:
@@ -116,7 +122,13 @@ func _spawn_ship_from_info(spawn_info: Dictionary, parent: Node) -> Node:
 	var team := StringName(str(spawn_info.get("team", "neutral")))
 	var is_player := bool(spawn_info.get("is_player", false))
 	var color: Color = spawn_info.get("color", _default_color_for_team(team))
-	ship.setup(ship_data, team, is_player, color)
+	var loadout: ShipWeaponLoadout = null
+	var loadout_value: Variant = spawn_info.get("weapon_loadout", null)
+	if loadout_value is ShipWeaponLoadout:
+		loadout = (loadout_value as ShipWeaponLoadout).duplicate_loadout()
+	elif loadout_value is Dictionary and not loadout_value.is_empty():
+		loadout = ShipWeaponLoadout.from_dictionary(loadout_value)
+	ship.setup(ship_data, team, is_player, color, loadout)
 	ship.fleet_id = StringName(str(spawn_info.get("fleet_id", "")))
 	spawn_parent.add_child(ship)
 	ship.global_transform = _get_spawn_transform(spawn_info)

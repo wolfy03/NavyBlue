@@ -136,9 +136,21 @@ func _resource_has_property(data: Resource, property_name: StringName) -> bool:
 func _apply_weapon_stats_to_turrets(combat: Node, ship_data: ShipData) -> void:
 	if combat == null or ship_data == null:
 		return
-	var turrets: Array = combat.get(&"turrets") if combat.get(&"turrets") is Array else []
-	for turret in turrets:
-		if not is_instance_valid(turret):
+	var mounts: Array = combat.get(&"weapon_mounts") \
+		if combat.get(&"weapon_mounts") is Array else []
+	for mount in mounts:
+		if not is_instance_valid(mount):
 			continue
-		turret.set(&"muzzle_velocity", ship_data.shell_muzzle_velocity)
-		turret.set(&"reload_seconds", ship_data.reload_seconds)
+		var weapon_data := mount.get(&"weapon_data") as WeaponData
+		if weapon_data == null:
+			continue
+		weapon_data = weapon_data.duplicate(true) as WeaponData
+		weapon_data.reload_seconds = ship_data.reload_seconds
+		if weapon_data.weapon_type == WeaponData.WeaponType.CANNON:
+			weapon_data.muzzle_velocity = ship_data.shell_muzzle_velocity
+			if weapon_data.projectile_data != null:
+				weapon_data.projectile_data = weapon_data.projectile_data.duplicate(true)
+				var shell_data := weapon_data.projectile_data as ShellProjectileData
+				if shell_data != null:
+					shell_data.muzzle_velocity = ship_data.shell_muzzle_velocity
+		mount.set(&"weapon_data", weapon_data)

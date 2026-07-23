@@ -35,9 +35,14 @@ func _process(_delta: float) -> void:
 	var turrets: Array = target_ship.get_turrets()
 	if not turrets.is_empty():
 		turret_pitch = turrets[0].pitch_degrees
-	status_label.text = "%s | %s\nEngine %d%% | Speed %.1f | Gun %.1f deg" % [
+	var damage_status := target_ship.get_node_or_null("ShipDamageStatus") \
+		as ShipDamageStatus
+	var status_suffix := " | FLOODING %.1fs" % damage_status.flooding_time_left \
+		if damage_status != null and damage_status.is_flooding() else ""
+	status_label.text = "%s | %s%s\nEngine %d%% | Speed %.1f | Gun %.1f deg" % [
 		data.display_name,
 		ship_database.class_label(data.ship_class),
+		status_suffix,
 		roundi(target_ship.get_engine_output() * 100.0),
 		target_ship.get_speed_knots_style(),
 		turret_pitch,

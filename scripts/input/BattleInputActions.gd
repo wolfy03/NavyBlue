@@ -18,6 +18,8 @@ const KEY_ACTIONS := {
 	&"ship_rudder_left": [KEY_J],
 	&"ship_rudder_right": [KEY_L],
 	&"ship_fire": [KEY_CTRL],
+	&"ship_fire_cannon": [KEY_CTRL],
+	&"ship_fire_torpedo": [KEY_T],
 	&"turret_pitch_up": [KEY_U],
 	&"turret_pitch_down": [KEY_O],
 	&"debug_toggle": [KEY_F10],

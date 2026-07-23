@@ -1,8 +1,9 @@
-[gd_resource type="Resource" script_class="ShipData" load_steps=4 format=3]
+[gd_resource type="Resource" script_class="ShipData" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/ShipData.gd" id="1_ship"]
 [ext_resource type="Script" path="res://scripts/combat/ShipDefenseStats.gd" id="2_defense"]
 [ext_resource type="Resource" path="res://resources/ai_roles/carrier_ai_role.tres" id="3_role"]
+[ext_resource type="Script" path="res://scripts/data/ShipWeaponSlotData.gd" id="4_slot"]
 
 [sub_resource type="Resource" id="Resource_defense"]
 resource_local_to_scene = true
@@ -15,6 +16,16 @@ bow_armor = 38.0
 stern_armor = 32.0
 superstructure_armor = 16.0
 damage_reduction = 0.06
+
+[sub_resource type="Resource" id="Resource_slot_secondary"]
+script = ExtResource("4_slot")
+slot_id = &"secondary"
+display_name = "Secondary battery"
+local_position = Vector3(0, 15.75, 0)
+local_scale = Vector3(13, 13, 13)
+allowed_weapon_types = Array[int]([0, 3])
+default_weapon_id = "carrier_secondary"
+elevation_max_degrees = 80.0
 
 [resource]
 script = ExtResource("1_ship")
@@ -32,6 +43,7 @@ arrival_slowdown_distance_m = 1400.0
 minimum_turning_speed_mps = 6.0
 navigation_safety_radius_m = 200.0
 hull_size = Vector3(40, 15, 300)
+weapon_slots = Array[ExtResource("4_slot")]([SubResource("Resource_slot_secondary")])
 turret_count = 1
 turret_spacing = 1.0
 shell_muzzle_velocity = 760.0
