@@ -8,17 +8,22 @@ func get_stage(stage_id: String) -> StageData:
 	if not definitions.has(stage_id):
 		push_warning("Unknown stage id '%s'. Falling back to test_level." % stage_id)
 		stage_id = "test_level"
+	if not definitions.has(stage_id):
+		push_warning("StageDatabase is missing fallback test_level. Returning empty StageData.")
+		var fallback_stage := STAGE_DATA_SCRIPT.new() as StageData
+		fallback_stage.id = "test_level"
+		return fallback_stage
 
 	var definition: Dictionary = definitions[stage_id]
 	var stage := STAGE_DATA_SCRIPT.new() as StageData
 	stage.id = stage_id
-	stage.display_name = definition.get("display_name", stage_id)
-	stage.sea_id = definition.get("sea_id", "test_sea")
+	stage.display_name = str(definition.get("display_name", stage_id))
+	stage.sea_id = str(definition.get("sea_id", "test_sea"))
 	stage.difficulty = float(definition.get("difficulty", 1.0))
-	stage.player_ship_id = definition.get("player_ship_id", "dd_bluewind")
+	stage.player_ship_id = str(definition.get("player_ship_id", "dd_bluewind"))
 	stage.ally_spawns = definition.get("ally_spawns", []).duplicate(true)
 	stage.enemy_spawns = definition.get("enemy_spawns", []).duplicate(true)
-	stage.reward_table_id = definition.get("reward_table_id", "")
+	stage.reward_table_id = str(definition.get("reward_table_id", ""))
 	stage.next_stage_candidates = _to_string_array(definition.get("next_stage_candidates", []))
 	return stage
 

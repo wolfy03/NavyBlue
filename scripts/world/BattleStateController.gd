@@ -13,15 +13,28 @@ var result_emitted := false
 var player_ship: Node
 var allies: Array = []
 var enemies: Array = []
+var _death_connections: Array[Dictionary] = []
 
 func start_battle(stage_data: StageData, next_player_ship: Node, next_allies: Array, next_enemies: Array) -> void:
+	stop_battle()
+	result_emitted = false
+	if stage_data == null:
+		push_warning("BattleStateController.start_battle() received null StageData.")
+		_fail_battle()
+		return
 	stage_id = stage_data.id
 	reward_table_id = stage_data.reward_table_id
 	player_ship = next_player_ship
 	allies = next_allies.duplicate()
-	enemies = next_enemies.duplicate()
+	enemies = []
+	for enemy in next_enemies:
+		if _is_ship_alive(enemy):
+			enemies.append(enemy)
+	if not _is_ship_alive(player_ship):
+		push_warning("BattleStateController cannot start battle without a live player ship.")
+		_fail_battle()
+		return
 	battle_active = true
-	result_emitted = false
 	_connect_ship_death(player_ship, Callable(self, "_on_player_died"))
 	for enemy in enemies:
 		_connect_ship_death(enemy, Callable(self, "_on_enemy_died").bind(enemy))
@@ -31,15 +44,25 @@ func start_battle(stage_data: StageData, next_player_ship: Node, next_allies: Ar
 
 func stop_battle() -> void:
 	battle_active = false
+	for connection in _death_connections:
+		var health: Node = connection.get("health")
+		var callback: Callable = connection.get("callback")
+		if health != null and is_instance_valid(health) and health.is_connected("died", callback):
+			health.disconnect("died", callback)
+	_death_connections.clear()
 
 func _connect_ship_death(ship: Node, callback: Callable) -> void:
-	if ship == null:
+	if not is_instance_valid(ship):
 		return
 	var health := ship.get_node_or_null("ShipHealth")
 	if health == null or not health.has_signal("died"):
 		return
 	if not health.is_connected("died", callback):
 		health.connect("died", callback)
+		_death_connections.append({
+			"health": health,
+			"callback": callback,
+		})
 
 func _on_player_died() -> void:
 	_fail_battle()
@@ -75,12 +98,16 @@ func _clear_battle() -> void:
 		return
 	result_emitted = true
 	battle_active = false
-	var rewards := REWARD_SYSTEM_SCRIPT.new().roll_upgrade_rewards(3, reward_table_id)
+	var reward_system := REWARD_SYSTEM_SCRIPT.new()
+	var rewards: Array = reward_system.roll_upgrade_rewards(3, reward_table_id)
+	reward_system.free()
 	if has_node("/root/RunManager"):
 		var run_manager = get_node("/root/RunManager")
 		run_manager.capture_player_ship(player_ship)
 		run_manager.set_pending_rewards(rewards)
-		run_manager.save_current_run()
+		var save_error: Error = run_manager.save_current_run()
+		if save_error != OK:
+			push_warning("Failed to save run after battle clear: %s" % save_error)
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").battle_cleared.emit(stage_id)
 	battle_cleared.emit(stage_id)
@@ -99,7 +126,9 @@ func _fail_battle() -> void:
 			"success": false,
 			"stage_id": stage_id,
 		})
-		run_manager.clear_saved_run()
+		var clear_error: Error = run_manager.clear_saved_run()
+		if clear_error != OK:
+			push_warning("Failed to clear saved run after battle failure: %s" % clear_error)
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").battle_failed.emit(stage_id)
 	battle_failed.emit(stage_id)

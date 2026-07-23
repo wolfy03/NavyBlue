@@ -130,9 +130,10 @@ func despawn() -> void:
 
 func _recycle_self() -> void:
 	if has_node("/root/ObjectPool"):
-		get_node("/root/ObjectPool").recycle(self)
-	else:
-		queue_free()
+		var recycled: bool = get_node("/root/ObjectPool").recycle(self)
+		if recycled:
+			return
+	queue_free()
 
 func on_spawned_from_pool() -> void:
 	_despawn_requested = false
@@ -141,10 +142,15 @@ func on_spawned_from_pool() -> void:
 	ship_impact_processed = false
 	previous_position = global_position
 	previous_position_initialized = true
+	freeze = false
+	sleeping = false
+	contact_monitor = true
+	max_contacts_reported = 4
 
 func on_recycled_to_pool() -> void:
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
+	sleeping = true
 
 
 func _find_ship_damage_target(collider: Object) -> Node3D:

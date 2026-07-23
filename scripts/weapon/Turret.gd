@@ -53,9 +53,13 @@ func fire() -> bool:
 	var projectile: Projectile
 	if has_node("/root/ObjectPool"):
 		projectile = get_node("/root/ObjectPool").spawn(projectile_scene, projectile_parent) as Projectile
-	else:
+	if projectile == null:
+		if projectile_scene == null or projectile_parent == null:
+			push_warning("Turret cannot fire because projectile scene or parent is missing.")
+			return false
 		projectile = projectile_scene.instantiate() as Projectile
-		projectile_parent.add_child(projectile)
+		if projectile != null:
+			projectile_parent.add_child(projectile)
 	if projectile == null:
 		push_warning("Turret projectile scene must instantiate Projectile.")
 		return false
@@ -67,6 +71,8 @@ func fire() -> bool:
 	return true
 
 func _get_projectile_parent() -> Node:
+	if get_tree() == null:
+		return null
 	var current_scene := get_tree().current_scene
 	if current_scene != null:
 		var projectiles := current_scene.get_node_or_null("Projectiles")

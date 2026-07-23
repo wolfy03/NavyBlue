@@ -1,7 +1,7 @@
 extends Node
 class_name RewardSystem
 
-const UPGRADE_DATA_SCRIPT := preload("res://scripts/meta/UpgradeData.gd")
+const UPGRADE_DATA_SCRIPT := preload("res://scripts/data/UpgradeData.gd")
 
 func roll_rewards() -> Array:
 	return roll_upgrade_rewards(3, "")
@@ -16,30 +16,49 @@ func roll_upgrade_rewards(count: int = 3, reward_table_id: String = "") -> Array
 		rewards.append(_upgrade_to_dictionary(_make_upgrade(upgrade_id, definitions[upgrade_id])))
 	return rewards
 
-func get_upgrade(upgrade_id: String) -> Resource:
+func get_upgrade(upgrade_id: String) -> UpgradeData:
 	var definitions := _upgrade_definitions("")
 	if not definitions.has(upgrade_id):
 		return null
 	return _make_upgrade(upgrade_id, definitions[upgrade_id])
 
-func _make_upgrade(id: String, definition: Dictionary) -> Resource:
-	var upgrade: Resource = UPGRADE_DATA_SCRIPT.new()
-	upgrade.set("id", id)
-	upgrade.set("display_name", definition.get("display_name", id))
-	upgrade.set("description", definition.get("description", ""))
-	upgrade.set("upgrade_type", definition.get("upgrade_type", "add"))
-	upgrade.set("value", float(definition.get("value", 0.0)))
-	upgrade.set("target_stat", definition.get("target_stat", ""))
+func select_reward(upgrade_id: String) -> bool:
+	if upgrade_id.is_empty():
+		return false
+	if has_node("/root/RunManager"):
+		var run_manager = get_node("/root/RunManager")
+		run_manager.add_upgrade(upgrade_id)
+		run_manager.clear_pending_rewards()
+		var save_error: Error = run_manager.save_current_run()
+		if save_error != OK:
+			push_warning("Failed to save run after selecting reward '%s': %s" % [upgrade_id, save_error])
+	if has_node("/root/EventBus"):
+		get_node("/root/EventBus").reward_selected.emit(upgrade_id)
+	# TODO: Continue to the next stage selection flow when the reward UI exists.
+	return true
+
+func _make_upgrade(id: String, definition: Dictionary) -> UpgradeData:
+	var upgrade := UPGRADE_DATA_SCRIPT.new() as UpgradeData
+	upgrade.id = id
+	upgrade.display_name = definition.get("display_name", id)
+	upgrade.description = definition.get("description", "")
+	upgrade.upgrade_type = definition.get("upgrade_type", "multiply")
+	upgrade.value = float(definition.get("value", 0.0))
+	upgrade.target_stat = definition.get("target_stat", "")
+	upgrade.is_percent = bool(definition.get("is_percent", false))
+	upgrade.modifiers = definition.get("modifiers", {})
 	return upgrade
 
-func _upgrade_to_dictionary(upgrade: Resource) -> Dictionary:
+func _upgrade_to_dictionary(upgrade: UpgradeData) -> Dictionary:
 	return {
-		"id": str(upgrade.get("id")),
-		"display_name": str(upgrade.get("display_name")),
-		"description": str(upgrade.get("description")),
-		"upgrade_type": str(upgrade.get("upgrade_type")),
-		"value": float(upgrade.get("value")),
-		"target_stat": str(upgrade.get("target_stat")),
+		"id": upgrade.id,
+		"display_name": upgrade.display_name,
+		"description": upgrade.description,
+		"upgrade_type": upgrade.upgrade_type,
+		"value": upgrade.value,
+		"target_stat": upgrade.target_stat,
+		"is_percent": upgrade.is_percent,
+		"modifiers": upgrade.modifiers.duplicate(true),
 	}
 
 func _upgrade_definitions(_reward_table_id: String) -> Dictionary:
