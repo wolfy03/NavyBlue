@@ -39,3 +39,5 @@ reload_seconds = 8.0
 default_weapon_id = "cruiser_cannon"
 defense_stats = SubResource("Resource_defense")
 ai_role_profile = ExtResource("3_role")
+strategic_value = 0.9
+combat_role = &"escort"

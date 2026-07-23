@@ -39,3 +39,5 @@ reload_seconds = 4.5
 default_weapon_id = "destroyer_cannon"
 defense_stats = SubResource("Resource_defense")
 ai_role_profile = ExtResource("3_role")
+strategic_value = 0.7
+combat_role = &"screen"

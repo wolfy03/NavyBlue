@@ -7,8 +7,6 @@ class_name ShipAIRoleProfile
 
 @export_category("Target Weights")
 @export var distance_weight := 25.0
-@export var recent_damage_to_self_weight := 0.8
-@export var recent_damage_to_allies_weight := 0.25
 @export var combat_power_weight := 15.0
 @export var strategic_value_weight := 10.0
 @export var current_target_bonus := 15.0
@@ -16,10 +14,25 @@ class_name ShipAIRoleProfile
 @export var low_health_finish_bonus := 8.0
 @export var focus_fire_penalty_weight := 10.0
 
+@export_category("Damage Threat")
+@export var maximum_recent_self_damage_score := 40.0
+@export var maximum_recent_ally_damage_score := 18.0
+@export var maximum_damage_ratio_for_scoring := 0.35
+
 @export_category("Target Switching")
 @export var minimum_target_lock_sec := 8.0
 @export var target_switch_ratio := 1.25
 @export var emergency_threat_threshold := 40.0
+
+@export_category("Emergency Targeting")
+@export var emergency_target_lock_sec := 3.0
+@export var emergency_switch_ratio := 1.15
+@export_range(0.0, 1.0, 0.05) var emergency_focus_penalty_multiplier := 0.5
+
+@export_category("Damage Response")
+@export_range(0.0, 1.0, 0.01) var caution_health_ratio := 0.5
+@export_range(0.0, 1.0, 0.01) var disengage_health_ratio := 0.25
+@export var damaged_preferred_range_multiplier := 1.15
 
 @export_category("Class Preferences")
 @export var target_class_weights: Dictionary = {}

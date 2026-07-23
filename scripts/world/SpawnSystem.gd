@@ -117,6 +117,7 @@ func _spawn_ship_from_info(spawn_info: Dictionary, parent: Node) -> Node:
 	var is_player := bool(spawn_info.get("is_player", false))
 	var color: Color = spawn_info.get("color", _default_color_for_team(team))
 	ship.setup(ship_data, team, is_player, color)
+	ship.fleet_id = StringName(str(spawn_info.get("fleet_id", "")))
 	spawn_parent.add_child(ship)
 	ship.global_transform = _get_spawn_transform(spawn_info)
 	var spawn_name := str(spawn_info.get("name", spawn_info.get("spawn_name", "")))

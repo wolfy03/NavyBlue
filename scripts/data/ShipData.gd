@@ -31,3 +31,6 @@ enum ShipClass {
 @export var default_weapon_id: String = "destroyer_cannon"
 @export var defense_stats: ShipDefenseStats
 @export var ai_role_profile: ShipAIRoleProfile
+@export_category("Combat Role")
+@export var strategic_value := 1.0
+@export var combat_role: StringName = &"line_combatant"

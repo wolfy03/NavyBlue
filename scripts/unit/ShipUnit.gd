@@ -6,6 +6,7 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 @export var ship_id := "dd_bluewind"
 @export var ship_data: ShipData
 @export var team: StringName = &"neutral"
+@export var fleet_id: StringName = &""
 @export var player_controlled := false
 @export var team_color := Color(0.2, 0.55, 1.0)
 @export var engine_output_change_rate := 0.55
@@ -31,6 +32,8 @@ var _player_rudder_axis := 0.0
 var _player_fire_pressed := false
 var _is_sinking: bool = false
 var _ai_candidate_provider := Callable()
+var _fleet_controller_ref: WeakRef
+var _fleet_tactical_context: FleetMemberContext
 
 func setup(data: ShipData, team_name: StringName, is_player: bool, color: Color) -> void:
 	ship_data = data
@@ -119,11 +122,42 @@ func get_ai_debug_data() -> Dictionary:
 	var result := targeting.get_debug_snapshot()
 	result.merge(ai.get_debug_data(), true)
 	result["navigation_path_calculation_count"] = navigation.path_calculation_count
+	result["fleet_id"] = fleet_id
+	result["tactical_role"] = _fleet_tactical_context.get_role_name() \
+		if _fleet_tactical_context != null else &"none"
+	result["tactical_position"] = _fleet_tactical_context.tactical_position \
+		if _fleet_tactical_context != null else Vector3.ZERO
 	return result
 
 
 func set_ai_debug_enabled(enabled: bool) -> void:
 	targeting.debug_enabled = enabled
+
+
+func set_fleet_controller(controller: FleetAIController) -> void:
+	_fleet_controller_ref = weakref(controller) if controller != null else null
+	if controller != null:
+		targeting.set_assignment_tracker(controller.assignment_tracker)
+	else:
+		targeting.set_assignment_tracker(FleetTargetAssignmentTracker.new())
+	targeting.set_fleet_controller(controller)
+	if ai.has_method(&"set_fleet_controller"):
+		ai.call(&"set_fleet_controller", controller)
+
+
+func get_fleet_controller() -> FleetAIController:
+	return _fleet_controller_ref.get_ref() as FleetAIController \
+		if _fleet_controller_ref != null else null
+
+
+func on_fleet_tactical_context_changed(context: FleetMemberContext) -> void:
+	_fleet_tactical_context = context
+	if ai.has_method(&"set_fleet_tactical_context"):
+		ai.call(&"set_fleet_tactical_context", context)
+
+
+func get_fleet_tactical_context() -> FleetMemberContext:
+	return _fleet_tactical_context
 
 func get_turrets() -> Array:
 	return combat.turrets
@@ -204,10 +238,28 @@ func _setup_components() -> void:
 		targeting.target_changed.connect(_on_target_changed)
 	if not health.died.is_connected(_on_health_died):
 		health.died.connect(_on_health_died)
+	if not health.damage_applied.is_connected(_on_damage_applied):
+		health.damage_applied.connect(_on_damage_applied)
 
 
 func _on_health_died() -> void:
 	sink()
+
+
+func _on_damage_applied(
+		amount: float,
+		_penetration_result: int,
+		hit_info: HitInfo
+) -> void:
+	if hit_info == null:
+		return
+	var attacker := hit_info.get_attacker_ship()
+	if attacker == null:
+		return
+	var damage_info := hit_info.projectile_info.duplicate(true)
+	damage_info["source_ship_instance_id"] = hit_info.source_ship_instance_id
+	damage_info["weapon_id"] = hit_info.source_weapon_id
+	targeting.register_damage_source(attacker, amount, damage_info)
 
 
 func _on_target_changed(_previous_target: Node3D, next_target: Node3D) -> void:

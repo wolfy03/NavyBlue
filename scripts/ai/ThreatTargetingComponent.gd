@@ -15,6 +15,7 @@ signal target_changed(previous_target: Node3D, next_target: Node3D)
 @export_range(0.1, 2.0, 0.05) var debug_update_interval_sec := 0.4
 
 var target_evaluation_count := 0
+var target_change_count := 0
 var current_target_score := 0.0
 var best_candidate: ShipUnit
 var best_candidate_score := 0.0
@@ -26,6 +27,8 @@ var _candidate_provider := Callable()
 var _current_target: ShipUnit
 var _selector := ShipTargetSelector.new()
 var _memory := ThreatMemory.new()
+var _assignment_tracker := FleetTargetAssignmentTracker.new()
+var _fleet_controller_ref: WeakRef
 var _evaluation_elapsed_sec := 0.0
 var _current_evaluation_interval_sec := 1.0
 var _evaluation_requested := false
@@ -49,7 +52,21 @@ func setup(
 		maxf(initial_evaluation_offset_max_sec, 0.0)
 	)
 	_schedule_next_interval()
-	_connect_event_bus()
+
+
+func set_assignment_tracker(tracker: FleetTargetAssignmentTracker) -> void:
+	if tracker == null or tracker == _assignment_tracker:
+		return
+	_assignment_tracker.unassign(_owner_ship)
+	_assignment_tracker = tracker
+	if _current_target != null:
+		_assignment_tracker.assign(_owner_ship, _current_target)
+
+
+func set_fleet_controller(controller: Node) -> void:
+	_fleet_controller_ref = weakref(controller) \
+		if controller != null and is_instance_valid(controller) else null
+	request_immediate_evaluation()
 
 
 func set_candidate_provider(provider: Callable) -> void:
@@ -95,12 +112,30 @@ func register_damage_source(
 	request_immediate_evaluation()
 
 
+func register_ally_damage_source(
+		attacker: Node,
+		damage: float,
+		damaged_max_health: float,
+		damage_info: Dictionary = {}
+) -> void:
+	if not _is_hostile_attacker(attacker):
+		return
+	_memory.register_damage(
+		attacker,
+		damage,
+		false,
+		damage_info,
+		-1.0,
+		damaged_max_health
+	)
+
+
 func request_immediate_evaluation() -> void:
 	_evaluation_requested = true
 
 
 func get_current_target() -> ShipUnit:
-	return _current_target
+	return _current_target if is_instance_valid(_current_target) else null
 
 
 func clear_target() -> void:
@@ -150,7 +185,6 @@ func _evaluate_candidates() -> void:
 	_schedule_next_interval()
 	target_evaluation_count += 1
 	_memory.cleanup()
-	TargetAssignmentTracker.cleanup()
 	_last_score_breakdowns.clear()
 
 	var candidates := _collect_candidates()
@@ -195,8 +229,18 @@ func _should_switch_target(current_breakdown: Dictionary) -> bool:
 		{}
 	)
 	var best_is_emergency := bool(best_breakdown.get("is_emergency_threat", false))
-	if best_is_emergency and best_candidate_score > current_target_score:
-		return true
+	var current_is_emergency := bool(
+		current_breakdown.get("is_emergency_threat", false)
+	)
+	if best_is_emergency and current_is_emergency:
+		if current_target_lock_sec < _role_profile.emergency_target_lock_sec:
+			return false
+		if current_target_score <= 0.0:
+			return best_candidate_score > current_target_score + 2.0
+		return best_candidate_score \
+			> current_target_score * _role_profile.emergency_switch_ratio
+	if best_is_emergency:
+		return best_candidate_score > current_target_score
 	if _is_current_target_excessively_far():
 		return true
 	if current_target_lock_sec < _role_profile.minimum_target_lock_sec:
@@ -207,14 +251,16 @@ func _should_switch_target(current_breakdown: Dictionary) -> bool:
 
 
 func _change_target(next_target: ShipUnit) -> void:
-	if _current_target == next_target:
+	if is_instance_valid(_current_target) and _current_target == next_target:
 		return
-	var previous_target := _current_target
-	TargetAssignmentTracker.unassign(_owner_ship)
+	var previous_target: ShipUnit = _current_target \
+		if is_instance_valid(_current_target) else null
+	_assignment_tracker.unassign(_owner_ship)
 	_current_target = next_target
 	if _current_target != null:
-		TargetAssignmentTracker.assign(_owner_ship, _current_target)
+		_assignment_tracker.assign(_owner_ship, _current_target)
 	current_target_lock_sec = 0.0
+	target_change_count += 1
 	target_changed.emit(previous_target, _current_target)
 
 
@@ -224,7 +270,19 @@ func _collect_candidates() -> Array[ShipUnit]:
 	var values: Variant = _candidate_provider.call()
 	if not values is Array:
 		return []
-	return _selector.collect_valid_candidates(_owner_ship, values as Array)
+	var candidates := _selector.collect_valid_candidates(_owner_ship, values as Array)
+	var fleet_controller := get_fleet_controller()
+	if fleet_controller != null and fleet_controller.has_method(&"filter_candidates_for_member"):
+		var filtered: Variant = fleet_controller.call(
+			&"filter_candidates_for_member",
+			_owner_ship,
+			candidates,
+			_current_target,
+			_memory
+		)
+		if filtered is Array:
+			return filtered as Array[ShipUnit]
+	return candidates
 
 
 func _calculate_score_breakdown(candidate: ShipUnit) -> Dictionary:
@@ -241,6 +299,7 @@ func _calculate_score_breakdown(candidate: ShipUnit) -> Dictionary:
 	var low_health_score := _score_low_health_target(context)
 	var approach_cost := _score_approach_cost(context)
 	var focus_fire_penalty := _score_focus_fire_penalty(context)
+	var fleet_recommendation_score := _score_fleet_recommendation(context)
 	var final_score := distance_score \
 		+ recent_damage_score \
 		+ combat_power_score \
@@ -250,7 +309,8 @@ func _calculate_score_breakdown(candidate: ShipUnit) -> Dictionary:
 		+ current_target_score_value \
 		+ low_health_score \
 		+ approach_cost \
-		+ focus_fire_penalty
+		+ focus_fire_penalty \
+		+ fleet_recommendation_score
 	return {
 		"final_score": final_score,
 		"distance_score": distance_score,
@@ -263,6 +323,7 @@ func _calculate_score_breakdown(candidate: ShipUnit) -> Dictionary:
 		"low_health_score": low_health_score,
 		"approach_cost": approach_cost,
 		"focus_fire_penalty": focus_fire_penalty,
+		"fleet_recommendation_score": fleet_recommendation_score,
 		"recent_damage_to_owner": context.recent_damage_to_owner,
 		"recent_damage_to_allies": context.recent_damage_to_allies,
 		"distance_m": context.distance_m,
@@ -283,19 +344,25 @@ func _build_context(candidate: ShipUnit) -> TargetEvaluationContext:
 	context.preferred_distance_m = context.weapon_range_m * _role_profile.preferred_range_ratio
 	context.owner_health_ratio = _get_health_ratio(_owner_ship)
 	context.candidate_health_ratio = _get_health_ratio(candidate)
-	context.attackers_on_candidate = TargetAssignmentTracker.get_attacker_count(candidate)
+	context.attackers_on_candidate = _assignment_tracker.get_attacker_count(candidate)
 	var memory_snapshot := _memory.get_snapshot(candidate)
 	context.recent_damage_to_owner = float(memory_snapshot["damage_to_owner"])
 	context.recent_damage_to_allies = float(memory_snapshot["damage_to_allies"])
+	context.recent_damage_to_owner_ratio = context.recent_damage_to_owner \
+		/ maxf(_owner_ship.health.max_health, 1.0)
+	context.recent_damage_to_allies_ratio = float(
+		memory_snapshot["damage_to_allies_ratio"]
+	)
 	context.candidate_combat_power = _get_combat_power(candidate)
 	context.candidate_strategic_value = _get_strategic_value(candidate)
 	context.is_current_target = candidate == _current_target
 	context.candidate_is_aiming_at_owner = candidate.get_ai_target() == _owner_ship
-	var damage_threat := context.recent_damage_to_owner \
-		* _role_profile.recent_damage_to_self_weight
+	_apply_fleet_recommendation(context)
+	var damage_threat := _score_recent_damage(context)
 	var emergency_distance := _get_combined_safety_radius_m(candidate) \
 		+ _role_profile.tactical_clearance_m
-	context.is_emergency_threat = damage_threat >= _role_profile.emergency_threat_threshold \
+	context.is_emergency_threat = context.is_emergency_threat \
+		or damage_threat >= _role_profile.emergency_threat_threshold \
 		or context.distance_m <= emergency_distance
 	return context
 
@@ -314,8 +381,18 @@ func _score_distance(context: TargetEvaluationContext) -> float:
 
 
 func _score_recent_damage(context: TargetEvaluationContext) -> float:
-	return context.recent_damage_to_owner * _role_profile.recent_damage_to_self_weight \
-		+ context.recent_damage_to_allies * _role_profile.recent_damage_to_allies_weight
+	var ratio_cap := maxf(_role_profile.maximum_damage_ratio_for_scoring, 0.01)
+	var self_score := clampf(
+		context.recent_damage_to_owner_ratio / ratio_cap,
+		0.0,
+		1.0
+	) * _role_profile.maximum_recent_self_damage_score
+	var ally_score := clampf(
+		context.recent_damage_to_allies_ratio / ratio_cap,
+		0.0,
+		1.0
+	) * _role_profile.maximum_recent_ally_damage_score
+	return self_score + ally_score
 
 
 func _score_combat_power(context: TargetEvaluationContext) -> float:
@@ -360,8 +437,6 @@ func _score_approach_cost(context: TargetEvaluationContext) -> float:
 
 
 func _score_focus_fire_penalty(context: TargetEvaluationContext) -> float:
-	if context.is_emergency_threat:
-		return 0.0
 	var other_attackers := context.attackers_on_candidate
 	if context.is_current_target:
 		other_attackers = maxi(other_attackers - 1, 0)
@@ -373,7 +448,14 @@ func _score_focus_fire_penalty(context: TargetEvaluationContext) -> float:
 		base_penalty = 18.0
 	elif joining_slot >= 4:
 		base_penalty = 18.0 + float(joining_slot - 3) * 12.0
-	return -base_penalty * (_role_profile.focus_fire_penalty_weight / 10.0)
+	var penalty := -base_penalty * (_role_profile.focus_fire_penalty_weight / 10.0)
+	if context.is_emergency_threat:
+		penalty *= _role_profile.emergency_focus_penalty_multiplier
+	return penalty
+
+
+func _score_fleet_recommendation(context: TargetEvaluationContext) -> float:
+	return context.fleet_recommendation_score
 
 
 func _get_owner_weapon_range_m() -> float:
@@ -400,17 +482,8 @@ func _get_combat_power(ship: ShipUnit) -> float:
 
 func _get_strategic_value(ship: ShipUnit) -> float:
 	if ship == null or ship.ship_data == null:
-		return 0.5
-	match ship.ship_data.ship_class:
-		ShipData.ShipClass.DESTROYER:
-			return 0.5
-		ShipData.ShipClass.CRUISER:
-			return 0.7
-		ShipData.ShipClass.BATTLESHIP:
-			return 0.9
-		ShipData.ShipClass.AIRCRAFT_CARRIER:
-			return 1.0
-	return 0.5
+		return 1.0
+	return maxf(ship.ship_data.strategic_value, 0.0)
 
 
 func _get_combined_safety_radius_m(candidate: ShipUnit) -> float:
@@ -441,13 +514,14 @@ func _get_ship_class_key(data: ShipData) -> String:
 	return "unknown"
 
 
-func _is_valid_candidate(candidate: ShipUnit) -> bool:
+func _is_valid_candidate(candidate) -> bool:
 	if candidate == null or _owner_ship == null or not is_instance_valid(candidate):
 		return false
-	if candidate == _owner_ship or candidate.is_queued_for_deletion() \
-		or not candidate.is_inside_tree() or not candidate.is_alive():
+	var ship := candidate as ShipUnit
+	if ship == null or ship == _owner_ship or ship.is_queued_for_deletion() \
+		or not ship.is_inside_tree() or not ship.is_alive():
 		return false
-	return _owner_ship.is_hostile_to(candidate)
+	return _owner_ship.is_hostile_to(ship)
 
 
 func _is_hostile_attacker(attacker: Node) -> bool:
@@ -470,30 +544,31 @@ func _schedule_next_interval() -> void:
 	)
 
 
-func _connect_event_bus() -> void:
-	if not has_node("/root/EventBus"):
-		return
-	var event_bus := get_node("/root/EventBus")
-	if not event_bus.ship_damaged.is_connected(_on_ship_damaged):
-		event_bus.ship_damaged.connect(_on_ship_damaged)
+func get_fleet_controller() -> Node:
+	if _fleet_controller_ref == null:
+		return null
+	return _fleet_controller_ref.get_ref() as Node
 
 
-func _on_ship_damaged(ship: Node, damage: float, damage_info: Dictionary) -> void:
-	if _owner_ship == null or ship == null:
+func _apply_fleet_recommendation(context: TargetEvaluationContext) -> void:
+	var fleet_controller := get_fleet_controller()
+	if fleet_controller == null \
+			or not fleet_controller.has_method(&"get_target_recommendation"):
 		return
-	var attacker := damage_info.get("attacker_ship") as Node
-	if not _is_hostile_attacker(attacker):
+	var recommendation: Variant = fleet_controller.call(
+		&"get_target_recommendation",
+		_owner_ship,
+		context.candidate
+	)
+	if not recommendation is Dictionary:
 		return
-	if ship == _owner_ship:
-		register_damage_source(attacker, damage, damage_info)
-		return
-	var damaged_ship := ship as ShipUnit
-	if damaged_ship == null or _owner_ship.is_hostile_to(damaged_ship):
-		return
-	var share_radius_squared := ally_damage_share_radius_m * ally_damage_share_radius_m
-	if _owner_ship.global_position.distance_squared_to(damaged_ship.global_position) \
-			<= share_radius_squared:
-		_memory.register_damage(attacker, damage, false, damage_info)
+	var data := recommendation as Dictionary
+	context.fleet_recommendation_score = float(data.get("score", 0.0))
+	context.fleet_is_primary_target = bool(data.get("is_primary", false))
+	context.fleet_is_secondary_target = bool(data.get("is_secondary", false))
+	context.fleet_is_emergency_target = bool(data.get("is_emergency", false))
+	context.is_emergency_threat = context.is_emergency_threat \
+		or context.fleet_is_emergency_target
 
 
 func _refresh_debug_snapshot() -> void:
@@ -506,13 +581,10 @@ func _refresh_debug_snapshot() -> void:
 		"next_evaluation_sec": get_time_until_next_evaluation_sec(),
 		"current_breakdown": get_debug_score_breakdown(_current_target),
 		"target_evaluation_count": target_evaluation_count,
+		"target_change_count": target_change_count,
 		"threat_memory_entries": _memory.get_entry_count(),
 	}
 
 
 func _exit_tree() -> void:
-	TargetAssignmentTracker.unassign(_owner_ship)
-	if has_node("/root/EventBus"):
-		var event_bus := get_node("/root/EventBus")
-		if event_bus.ship_damaged.is_connected(_on_ship_damaged):
-			event_bus.ship_damaged.disconnect(_on_ship_damaged)
+	_assignment_tracker.unassign(_owner_ship)

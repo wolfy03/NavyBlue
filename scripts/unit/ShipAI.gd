@@ -6,6 +6,15 @@ enum BehaviorState {
 	CHASE,
 	ATTACK,
 	RETREAT,
+	ACQUIRE_TARGET,
+	APPROACH,
+	ENGAGE,
+	REPOSITION,
+	ESCORT,
+	INTERCEPT,
+	FLANK,
+	DISENGAGE,
+	SUPPORT,
 }
 
 @export_category("Pursuit")
@@ -45,6 +54,11 @@ var _ship_data: ShipData
 var _role_profile: ShipAIRoleProfile
 var _weapon_database := WeaponDatabase.new()
 var _behavior_state_elapsed_sec := 0.0
+var _fleet_controller_ref: WeakRef
+var _fleet_context: FleetMemberContext
+var _tactical_navigation_elapsed_sec := 0.0
+var _last_tactical_position := Vector3.ZERO
+var tactical_navigation_update_count := 0
 
 
 func setup(owner_ship: ShipUnit, data: ShipData) -> void:
@@ -69,6 +83,17 @@ func clear_target() -> void:
 	set_target(null)
 
 
+func set_fleet_controller(controller: FleetAIController) -> void:
+	_fleet_controller_ref = weakref(controller) if controller != null else null
+
+
+func set_fleet_tactical_context(context: FleetMemberContext) -> void:
+	if _fleet_context != context:
+		_fleet_context = context
+		_tactical_navigation_elapsed_sec = 2.0
+		_last_tactical_position = Vector3.ZERO
+
+
 func update_ai(
 		owner_ship: Node3D,
 		movement,
@@ -84,12 +109,31 @@ func update_ai(
 	pursuit_update_elapsed_sec += delta
 	_carrier_separation_elapsed_sec += delta
 	_behavior_state_elapsed_sec += delta
+	_tactical_navigation_elapsed_sec += delta
 
 	if navigation.battlefield_bounds != null \
 			and not navigation.battlefield_bounds.is_inside_bounds(owner_ship.global_position):
-		_set_behavior_state(BehaviorState.CHASE, true)
+		_set_behavior_state(BehaviorState.REPOSITION, true)
+		return
+	if _fleet_context != null \
+			and _fleet_context.tactical_role == FleetMemberContext.TacticalRole.DISENGAGE:
+		_follow_fleet_tactical_position(
+			owner_ship,
+			movement,
+			navigation,
+			BehaviorState.DISENGAGE
+		)
 		return
 	if not _is_target_valid():
+		if _fleet_context != null and _fleet_context.tactical_position_valid:
+			var no_target_state := _get_state_for_tactical_role(_fleet_context.tactical_role)
+			_follow_fleet_tactical_position(
+				owner_ship,
+				movement,
+				navigation,
+				no_target_state
+			)
+			return
 		_stop_without_target(movement, navigation)
 		return
 
@@ -113,6 +157,16 @@ func update_ai(
 		movement.set_movement_command(0.5, movement.get_rudder_to_direction(-to_target))
 		return
 
+	if _fleet_context != null and _fleet_context.tactical_position_valid:
+		if _update_fleet_tactical_behavior(
+			owner_ship,
+			movement,
+			navigation,
+			combat,
+			distance_m
+		):
+			return
+
 	if _is_aircraft_carrier(active_ship_data):
 		_update_carrier_behavior(owner_ship, movement, navigation, combat, distance_m, to_target)
 		return
@@ -124,7 +178,7 @@ func update_ai(
 			navigation.clear_navigation_target()
 			movement.set_movement_command(0.45, movement.get_rudder_to_direction(-to_target))
 			return
-		_set_behavior_state(BehaviorState.ATTACK)
+		_set_behavior_state(BehaviorState.ENGAGE)
 		navigation.clear_navigation_target()
 		var attack_engine_output := 0.12 if distance_ratio > 0.9 else 0.0
 		movement.set_movement_command(
@@ -134,7 +188,7 @@ func update_ai(
 		combat.fire_all()
 		return
 
-	_set_behavior_state(BehaviorState.CHASE)
+	_set_behavior_state(BehaviorState.APPROACH)
 	_update_pursuit(owner_ship, target, navigation)
 
 
@@ -189,7 +243,158 @@ func get_debug_data() -> Dictionary:
 		"pursuit_navigation_update_count": pursuit_navigation_update_count,
 		"last_pursuit_position": last_pursuit_position,
 		"carrier_separation_update_count": carrier_separation_update_count,
+		"tactical_navigation_update_count": tactical_navigation_update_count,
+		"tactical_role": _fleet_context.get_role_name() \
+			if _fleet_context != null else &"none",
+		"tactical_position": _fleet_context.tactical_position \
+			if _fleet_context != null else Vector3.ZERO,
+		"tactical_side_sign": _fleet_context.tactical_side_sign \
+			if _fleet_context != null else 0.0,
+		"disengaging": behavior_state == BehaviorState.DISENGAGE,
 	}
+
+
+func get_preferred_broadside_angle_deg() -> float:
+	if _ship_data == null:
+		return 70.0
+	match _ship_data.ship_class:
+		ShipData.ShipClass.BATTLESHIP, ShipData.ShipClass.CRUISER:
+			return 80.0
+		ShipData.ShipClass.DESTROYER:
+			return 60.0
+		ShipData.ShipClass.AIRCRAFT_CARRIER:
+			return 0.0
+	return 70.0
+
+
+func _update_fleet_tactical_behavior(
+		owner_ship: Node3D,
+		movement,
+		navigation,
+		combat,
+		distance_m: float
+) -> bool:
+	var role := _fleet_context.tactical_role
+	if distance_m <= engagement_range_m and combat.has_usable_weapon():
+		combat.fire_all()
+	match role:
+		FleetMemberContext.TacticalRole.LINE_COMBATANT:
+			_follow_fleet_tactical_position(
+				owner_ship,
+				movement,
+				navigation,
+				BehaviorState.ENGAGE if distance_m <= engagement_range_m \
+					else BehaviorState.APPROACH
+			)
+			return true
+		FleetMemberContext.TacticalRole.ESCORT:
+			_follow_fleet_tactical_position(
+				owner_ship,
+				movement,
+				navigation,
+				BehaviorState.ESCORT
+			)
+			return true
+		FleetMemberContext.TacticalRole.SCREEN:
+			_follow_fleet_tactical_position(
+				owner_ship,
+				movement,
+				navigation,
+				BehaviorState.REPOSITION
+			)
+			return true
+		FleetMemberContext.TacticalRole.INTERCEPT:
+			_set_behavior_state(BehaviorState.INTERCEPT)
+			if distance_m > engagement_range_m:
+				_update_pursuit(owner_ship, target, navigation)
+			else:
+				_follow_fleet_tactical_position(
+					owner_ship,
+					movement,
+					navigation,
+					BehaviorState.INTERCEPT
+				)
+			return true
+		FleetMemberContext.TacticalRole.FLANKER:
+			_follow_fleet_tactical_position(
+				owner_ship,
+				movement,
+				navigation,
+				BehaviorState.FLANK
+			)
+			return true
+		FleetMemberContext.TacticalRole.SUPPORT:
+			_follow_fleet_tactical_position(
+				owner_ship,
+				movement,
+				navigation,
+				BehaviorState.SUPPORT
+			)
+			return true
+		FleetMemberContext.TacticalRole.DISENGAGE:
+			_follow_fleet_tactical_position(
+				owner_ship,
+				movement,
+				navigation,
+				BehaviorState.DISENGAGE
+			)
+			return true
+	return false
+
+
+func _follow_fleet_tactical_position(
+		owner_ship: Node3D,
+		movement,
+		navigation,
+		state: BehaviorState
+) -> void:
+	_set_behavior_state(state)
+	if _fleet_context == null or not _fleet_context.tactical_position_valid:
+		movement.set_movement_command(0.0, 0.0)
+		return
+	var tactical_position := _fleet_context.tactical_position
+	var offset := tactical_position - owner_ship.global_position
+	offset.y = 0.0
+	if offset.length_squared() <= 180.0 * 180.0:
+		if navigation.has_navigation_target:
+			navigation.clear_navigation_target()
+		var target_direction := target.global_position - owner_ship.global_position \
+			if _is_target_valid() else Vector3.ZERO
+		movement.set_movement_command(
+			0.08 if state == BehaviorState.ENGAGE else 0.0,
+			movement.get_rudder_to_direction(target_direction)
+		)
+		return
+	var position_changed := _last_tactical_position.distance_squared_to(tactical_position) \
+		>= 180.0 * 180.0
+	var path_missing: bool = not bool(navigation.has_navigation_target) \
+		or (not navigation.has_valid_path() and not bool(navigation.path_calculation_failed_state))
+	if path_missing or (
+		_tactical_navigation_elapsed_sec >= 2.0 and position_changed
+	):
+		navigation.set_navigation_target(tactical_position)
+		_last_tactical_position = tactical_position
+		_tactical_navigation_elapsed_sec = 0.0
+		tactical_navigation_update_count += 1
+
+
+func _get_state_for_tactical_role(
+		role: FleetMemberContext.TacticalRole
+) -> BehaviorState:
+	match role:
+		FleetMemberContext.TacticalRole.ESCORT:
+			return BehaviorState.ESCORT
+		FleetMemberContext.TacticalRole.SCREEN:
+			return BehaviorState.REPOSITION
+		FleetMemberContext.TacticalRole.FLANKER:
+			return BehaviorState.FLANK
+		FleetMemberContext.TacticalRole.SUPPORT:
+			return BehaviorState.SUPPORT
+		FleetMemberContext.TacticalRole.INTERCEPT:
+			return BehaviorState.INTERCEPT
+		FleetMemberContext.TacticalRole.DISENGAGE:
+			return BehaviorState.DISENGAGE
+	return BehaviorState.REPOSITION
 
 
 func _update_pursuit(

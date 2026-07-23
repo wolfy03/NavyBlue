@@ -58,6 +58,7 @@ func _redraw() -> void:
 	_draw_grid_and_bounds()
 	for ship in _ships:
 		_draw_ship_navigation(ship)
+	_draw_fleet_tactics()
 	_draw_camera_focus()
 	_immediate_mesh.surface_end()
 
@@ -113,6 +114,30 @@ func _draw_camera_focus() -> void:
 		return
 	_add_cross(_camera.focus_position + Vector3.UP * 8.0, 80.0, Color(0.85, 0.25, 1.0, 1.0))
 
+
+func _draw_fleet_tactics() -> void:
+	var battle_scene := get_parent() as BattleScene
+	if battle_scene == null:
+		return
+	for fleet in battle_scene.get_fleet_controllers():
+		var center := fleet.fleet_center + Vector3.UP * 10.0
+		var fleet_color := Color(0.2, 0.75, 1.0, 0.9) \
+			if fleet.fleet_id == &"friendly_main" \
+			else Color(1.0, 0.3, 0.2, 0.9)
+		_add_cross(center, 120.0, fleet_color)
+		_add_line(
+			center,
+			center + fleet.fleet_average_forward * 500.0,
+			fleet_color
+		)
+		for ship in fleet.get_alive_members():
+			var context := fleet.get_member_context(ship)
+			if context == null or not context.tactical_position_valid:
+				continue
+			var tactical_position := context.tactical_position + Vector3.UP * 7.0
+			_add_cross(tactical_position, 55.0, fleet_color)
+			_add_line(ship.global_position + Vector3.UP * 7.0, tactical_position, fleet_color)
+
 func _draw_circle(center: Vector3, radius: float, color: Color) -> void:
 	var previous := center + Vector3(radius, 0.0, 0.0)
 	for index in range(1, avoidance_circle_segments + 1):
@@ -135,12 +160,24 @@ func _update_debug_label() -> void:
 	if _debug_label == null or _camera == null:
 		return
 	var data := _camera.get_camera_debug_data()
-	_debug_label.text = "Battlefield debug\nCamera center: (%.0f, %.0f)m\nHeight: %.0fm\nMove speed: %.0fm/s\nShips: %d" % [
+	var fleet_summary := ""
+	var battle_scene := get_parent() as BattleScene
+	if battle_scene != null:
+		for fleet in battle_scene.get_fleet_controllers():
+			var fleet_data := fleet.get_debug_data()
+			fleet_summary += "\n%s: %d ships, eval %d, cleanup %d" % [
+				String(fleet.fleet_id),
+				int(fleet_data["member_count"]),
+				int(fleet_data["fleet_evaluation_count"]),
+				int(fleet_data["tracker_cleanup_count"]),
+			]
+	_debug_label.text = "Battlefield debug\nCamera center: (%.0f, %.0f)m\nHeight: %.0fm\nMove speed: %.0fm/s\nShips: %d%s" % [
 		data["focus_position"].x,
 		data["focus_position"].z,
 		data["height_m"],
 		data["move_speed_mps"],
 		_ships.size(),
+		fleet_summary,
 	]
 
 func _cache_initial_ships() -> void:

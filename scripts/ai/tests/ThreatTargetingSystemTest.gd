@@ -23,6 +23,7 @@ var _failures: Array[String] = []
 var _check_count := 0
 var _arena: Node3D
 var _provider_units: Array = []
+var _shared_tracker := FleetTargetAssignmentTracker.new()
 var _ship_scene := preload("res://scenes/unit/ship.tscn")
 var _ship_database := ShipDatabase.new()
 
@@ -158,7 +159,7 @@ func _test_si_upgrades_and_run_serialization() -> void:
 
 func _test_focus_fire_distribution_and_role_scores() -> void:
 	_begin_arena()
-	TargetAssignmentTracker.clear_all()
+	_shared_tracker.clear_all()
 	var allies: Array[ShipUnit] = []
 	var enemies: Array[ShipUnit] = []
 	for index in 3:
@@ -193,9 +194,9 @@ func _test_focus_fire_distribution_and_role_scores() -> void:
 		"three equal AI attackers distribute across three equal targets"
 	)
 	_check(
-		TargetAssignmentTracker.get_attacker_count(enemies[0]) == 1
-			and TargetAssignmentTracker.get_attacker_count(enemies[1]) == 1
-			and TargetAssignmentTracker.get_attacker_count(enemies[2]) == 1,
+		_shared_tracker.get_attacker_count(enemies[0]) == 1
+			and _shared_tracker.get_attacker_count(enemies[1]) == 1
+			and _shared_tracker.get_attacker_count(enemies[2]) == 1,
 		"target assignment counts remain consistent"
 	)
 
@@ -233,7 +234,7 @@ func _test_focus_fire_distribution_and_role_scores() -> void:
 
 func _test_target_lock_and_emergency_switch() -> void:
 	_begin_arena()
-	TargetAssignmentTracker.clear_all()
+	_shared_tracker.clear_all()
 	var owner := _spawn_ship("dd_bluewind", &"ally", Vector3.ZERO)
 	var locked_target := _spawn_ship("dd_bluewind", &"enemy", Vector3(15000.0, 0.0, 0.0))
 	var challenger := _spawn_ship("dd_bluewind", &"enemy", Vector3(6800.0, 0.0, 0.0))
@@ -347,7 +348,7 @@ func _test_projectile_source_reset() -> void:
 
 func _test_debug_and_long_duration_simulation() -> void:
 	_begin_arena()
-	TargetAssignmentTracker.clear_all()
+	_shared_tracker.clear_all()
 	var owner := _spawn_ship("cl_tidebreaker", &"ally", Vector3.ZERO)
 	var enemy := _spawn_ship("dd_bluewind", &"enemy", Vector3(9000.0, 0.0, 0.0))
 	owner.set_physics_process(false)
@@ -384,10 +385,11 @@ func _begin_arena() -> void:
 	_arena = Node3D.new()
 	root.add_child(_arena)
 	_provider_units.clear()
+	_shared_tracker = FleetTargetAssignmentTracker.new()
 
 
 func _end_arena() -> void:
-	TargetAssignmentTracker.clear_all()
+	_shared_tracker.clear_all()
 	_provider_units.clear()
 	if _arena != null and is_instance_valid(_arena):
 		_arena.queue_free()
@@ -407,6 +409,7 @@ func _spawn_ship(
 	ship.setup(source_data.duplicate(true) as ShipData, team, is_player, Color.WHITE)
 	_arena.add_child(ship)
 	ship.global_position = position
+	ship.targeting.set_assignment_tracker(_shared_tracker)
 	return ship
 
 

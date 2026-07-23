@@ -73,6 +73,28 @@ func get_estimated_damage_per_second() -> float:
 	return total_damage_per_second
 
 
+func estimate_available_turret_ratio(target_direction: Vector3) -> float:
+	if turrets.is_empty() or target_direction.length_squared() < 0.01:
+		return 0.0
+	var owner_ship := turrets[0].get_owner_ship() as ShipUnit \
+		if turrets[0].has_method(&"get_owner_ship") else null
+	if owner_ship == null:
+		return 1.0
+	target_direction.y = 0.0
+	var forward := -owner_ship.global_transform.basis.z
+	forward.y = 0.0
+	var angle_deg := rad_to_deg(absf(forward.angle_to(target_direction.normalized())))
+	var broadside_angle_deg := owner_ship.ai.get_preferred_broadside_angle_deg() \
+		if owner_ship.ai != null else 70.0
+	if broadside_angle_deg <= 0.0:
+		return 0.5
+	return clampf(
+		1.0 - absf(angle_deg - broadside_angle_deg) / 100.0,
+		0.25,
+		1.0
+	)
+
+
 func get_primary_impact_point(gravity: float) -> Variant:
 	if turrets.is_empty():
 		return null

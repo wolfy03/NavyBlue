@@ -23,6 +23,9 @@ var enemies: Array = []
 var gravity := 9.8
 var stage_database := STAGE_DATABASE_SCRIPT.new()
 var _battle_units: Array[Node3D] = []
+var friendly_fleet_ai: FleetAIController
+var enemy_fleet_ai: FleetAIController
+var _fleet_controllers: Dictionary = {}
 
 func _ready() -> void:
 	BattleInputActions.ensure_defaults()
@@ -95,6 +98,15 @@ func get_battle_units() -> Array:
 	return _battle_units.duplicate()
 
 
+func get_fleet_controllers() -> Array[FleetAIController]:
+	var result: Array[FleetAIController] = []
+	for controller_value in _fleet_controllers.values():
+		var controller := controller_value as FleetAIController
+		if controller != null and is_instance_valid(controller):
+			result.append(controller)
+	return result
+
+
 func _connect_unit_registry() -> void:
 	if ships_root == null:
 		ships_root = _get_or_create_node3d("Ships")
@@ -141,6 +153,9 @@ func _register_battle_unit(node) -> void:
 	var ship := node as Node3D
 	if ship == null or not ship is ShipUnit:
 		return
+	if not ship.is_node_ready():
+		call_deferred(&"_register_battle_unit", ship)
+		return
 	if not _battle_units.has(ship):
 		_battle_units.append(ship)
 	match StringName(str(ship.get(&"team"))):
@@ -155,6 +170,8 @@ func _register_battle_unit(node) -> void:
 				enemies.append(ship)
 	if ship.has_method(&"configure_ai_target_provider"):
 		ship.call(&"configure_ai_target_provider", Callable(self, &"get_battle_units"))
+	var fleet_controller := _get_or_create_fleet_controller(ship as ShipUnit)
+	fleet_controller.register_member(ship as ShipUnit)
 
 
 func _prune_battle_units() -> void:
@@ -162,6 +179,42 @@ func _prune_battle_units() -> void:
 		var ship := _battle_units[index]
 		if not is_instance_valid(ship) or ship.is_queued_for_deletion() or not ship.is_inside_tree():
 			_battle_units.remove_at(index)
+
+
+func _get_or_create_fleet_controller(ship: ShipUnit) -> FleetAIController:
+	var resolved_fleet_id := ship.fleet_id
+	if resolved_fleet_id.is_empty():
+		resolved_fleet_id = &"enemy_main" if ship.team == FactionRelations.ENEMY \
+			else &"friendly_main"
+	if _fleet_controllers.has(resolved_fleet_id):
+		return _fleet_controllers[resolved_fleet_id] as FleetAIController
+	var controller := FleetAIController.new()
+	controller.name = "FleetAI_%s" % String(resolved_fleet_id)
+	add_child(controller)
+	controller.setup(
+		resolved_fleet_id,
+		ship.team,
+		Callable(self, &"get_battle_units"),
+		battlefield_bounds,
+		_resolve_ai_difficulty_profile()
+	)
+	_fleet_controllers[resolved_fleet_id] = controller
+	if resolved_fleet_id == &"friendly_main":
+		friendly_fleet_ai = controller
+	elif resolved_fleet_id == &"enemy_main":
+		enemy_fleet_ai = controller
+	return controller
+
+
+func _resolve_ai_difficulty_profile() -> AIDifficultyProfile:
+	var difficulty := 1.0
+	if has_node("/root/RunManager"):
+		difficulty = float(get_node("/root/RunManager").get(&"difficulty"))
+	if difficulty < 0.85:
+		return load("res://resources/ai_difficulty/easy.tres") as AIDifficultyProfile
+	if difficulty > 1.25:
+		return load("res://resources/ai_difficulty/hard.tres") as AIDifficultyProfile
+	return load("res://resources/ai_difficulty/normal.tres") as AIDifficultyProfile
 
 func _update_impact_marker() -> void:
 	if impact_marker == null or player_ship == null:
