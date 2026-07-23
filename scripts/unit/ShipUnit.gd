@@ -234,7 +234,7 @@ func _setup_components() -> void:
 	navigation.setup(self, settings, bounds)
 	avoidance.setup(self, settings)
 	buoyancy.water_height = settings.sea_level_m
-	combat.setup(built_turrets)
+	combat.setup(self, built_turrets)
 	health.setup(ship_data.defense_stats if ship_data != null else null)
 	targeting.setup(self, ship_data.ai_role_profile if ship_data != null else null, _ai_candidate_provider)
 	ai.setup(self, ship_data)

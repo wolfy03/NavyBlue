@@ -30,9 +30,18 @@ func _test_three_vs_three_battle_scene() -> void:
 	await process_frame
 	await physics_frame
 	var fleets := scene.get_fleet_controllers()
-	_check(fleets.size() == 2, "battle scene creates separate friendly and enemy fleets")
 	_check(
-		scene.friendly_fleet_ai.get_alive_members().size() == 3
+		fleets.size() == 3,
+		"battle scene separates player, ally, and enemy controllers by team and fleet ID"
+	)
+	var player_fleet: FleetAIController
+	for fleet in fleets:
+		if fleet.team == FactionRelations.PLAYER:
+			player_fleet = fleet
+	_check(
+		player_fleet != null
+			and player_fleet.get_alive_members().size() == 1
+			and scene.friendly_fleet_ai.get_alive_members().size() == 2
 			and scene.enemy_fleet_ai.get_alive_members().size() == 3,
 		"3v3 participants register in the correct fleet"
 	)
@@ -114,8 +123,8 @@ func _test_three_vs_three_battle_scene() -> void:
 	var event_bus: Node = root.get_node("EventBus")
 	var damage_connections: Array = event_bus.ship_damaged.get_connections()
 	_check(
-		damage_connections.size() == 2,
-		"only two fleet coordinators subscribe to the global damage event"
+		damage_connections.size() == 3,
+		"only the three team-separated fleet coordinators subscribe to global damage"
 	)
 	scene.queue_free()
 	await process_frame

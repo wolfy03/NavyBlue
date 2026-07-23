@@ -23,3 +23,4 @@ var fleet_recommendation_score := 0.0
 var fleet_is_primary_target := false
 var fleet_is_secondary_target := false
 var fleet_is_emergency_target := false
+var tactical_assigned_target := false

@@ -196,7 +196,8 @@ func _register_battle_unit(node) -> void:
 	if ship.has_method(&"configure_ai_target_provider"):
 		ship.call(&"configure_ai_target_provider", Callable(self, &"get_battle_units"))
 	var fleet_controller := _get_or_create_fleet_controller(ship as ShipUnit)
-	fleet_controller.register_member(ship as ShipUnit)
+	if fleet_controller != null:
+		fleet_controller.register_member(ship as ShipUnit)
 
 
 func _prune_battle_units() -> void:
@@ -211,10 +212,25 @@ func _get_or_create_fleet_controller(ship: ShipUnit) -> FleetAIController:
 	if resolved_fleet_id.is_empty():
 		resolved_fleet_id = &"enemy_main" if ship.team == FactionRelations.ENEMY \
 			else &"friendly_main"
-	if _fleet_controllers.has(resolved_fleet_id):
-		return _fleet_controllers[resolved_fleet_id] as FleetAIController
+	var fleet_key := _make_fleet_key(ship.team, resolved_fleet_id)
+	if _fleet_controllers.has(fleet_key):
+		var existing := _fleet_controllers[fleet_key] as FleetAIController
+		if existing == null:
+			_fleet_controllers.erase(fleet_key)
+		elif existing.team != ship.team:
+			push_error(
+				"Fleet controller team mismatch: fleet_id=%s, existing_team=%s, new_team=%s"
+				% [
+					String(resolved_fleet_id),
+					String(existing.team),
+					String(ship.team),
+				]
+			)
+			return null
+		else:
+			return existing
 	var controller := FleetAIController.new()
-	controller.name = "FleetAI_%s" % String(resolved_fleet_id)
+	controller.name = "FleetAI_%s_%s" % [String(ship.team), String(resolved_fleet_id)]
 	add_child(controller)
 	controller.setup(
 		resolved_fleet_id,
@@ -225,24 +241,44 @@ func _get_or_create_fleet_controller(ship: ShipUnit) -> FleetAIController:
 		Callable(self, &"get_incoming_attacker_count")
 	)
 	controller.became_empty.connect(_on_fleet_became_empty)
-	_fleet_controllers[resolved_fleet_id] = controller
-	if resolved_fleet_id == &"friendly_main":
-		friendly_fleet_ai = controller
-	elif resolved_fleet_id == &"enemy_main":
-		enemy_fleet_ai = controller
+	_fleet_controllers[fleet_key] = controller
+	_refresh_primary_fleet_references()
 	return controller
 
 
-func _on_fleet_became_empty(empty_fleet_id: StringName) -> void:
-	var controller := _fleet_controllers.get(empty_fleet_id) as FleetAIController
+func _make_fleet_key(team: StringName, fleet_id: StringName) -> StringName:
+	return StringName("%s::%s" % [String(team), String(fleet_id)])
+
+
+func _on_fleet_became_empty(
+		empty_team: StringName,
+		empty_fleet_id: StringName
+) -> void:
+	var fleet_key := _make_fleet_key(empty_team, empty_fleet_id)
+	var controller := _fleet_controllers.get(fleet_key) as FleetAIController
 	if controller == null or not controller.is_empty():
 		return
-	_fleet_controllers.erase(empty_fleet_id)
-	if friendly_fleet_ai == controller:
-		friendly_fleet_ai = null
-	if enemy_fleet_ai == controller:
-		enemy_fleet_ai = null
+	_fleet_controllers.erase(fleet_key)
+	_refresh_primary_fleet_references()
 	controller.queue_free()
+
+
+func _refresh_primary_fleet_references() -> void:
+	friendly_fleet_ai = null
+	enemy_fleet_ai = null
+	for controller_value in _fleet_controllers.values():
+		var controller := controller_value as FleetAIController
+		if controller == null or not is_instance_valid(controller) \
+				or controller.is_queued_for_deletion():
+			continue
+		if controller.fleet_id == &"enemy_main" \
+				and controller.team == FactionRelations.ENEMY:
+			enemy_fleet_ai = controller
+		elif controller.fleet_id == &"friendly_main" and (
+				friendly_fleet_ai == null \
+				or controller.team == FactionRelations.ALLY
+		):
+			friendly_fleet_ai = controller
 
 
 func _resolve_ai_difficulty_profile() -> AIDifficultyProfile:

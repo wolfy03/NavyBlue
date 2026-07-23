@@ -119,6 +119,11 @@ func update_ai(
 			and not navigation.battlefield_bounds.is_inside_bounds(owner_ship.global_position):
 		_set_behavior_state(BehaviorState.REPOSITION, true)
 		return
+	if _is_tactical_position_temporarily_invalid():
+		if navigation.has_navigation_target:
+			navigation.clear_navigation_target()
+		movement.set_movement_command(0.0, 0.0)
+		return
 	if _fleet_context != null \
 			and _fleet_context.tactical_role == FleetMemberContext.TacticalRole.DISENGAGE:
 		_follow_fleet_tactical_position(
@@ -350,6 +355,11 @@ func _follow_fleet_tactical_position(
 		state: BehaviorState
 ) -> void:
 	_set_behavior_state(state)
+	if _is_tactical_position_temporarily_invalid():
+		if navigation.has_navigation_target:
+			navigation.clear_navigation_target()
+		movement.set_movement_command(0.0, 0.0)
+		return
 	if _fleet_context == null or not _fleet_context.tactical_position_valid:
 		movement.set_movement_command(0.0, 0.0)
 		return
@@ -396,6 +406,13 @@ func _follow_fleet_tactical_position(
 func _get_fleet_controller() -> FleetAIController:
 	return _fleet_controller_ref.get_ref() as FleetAIController \
 		if _fleet_controller_ref != null else null
+
+
+func _is_tactical_position_temporarily_invalid() -> bool:
+	if _fleet_context == null:
+		return false
+	var now_sec := float(Time.get_ticks_msec()) * 0.001
+	return now_sec < _fleet_context.tactical_position_invalid_until_sec
 
 
 func _get_state_for_tactical_role(

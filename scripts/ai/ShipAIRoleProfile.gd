@@ -17,6 +17,7 @@ class_name ShipAIRoleProfile
 @export var aiming_at_self_bonus := 12.0
 @export var low_health_finish_bonus := 8.0
 @export var focus_fire_penalty_weight := 10.0
+@export var tactical_assignment_bonus := 35.0
 
 @export_category("Damage Threat")
 @export var maximum_recent_self_damage_score := 40.0

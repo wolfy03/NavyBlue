@@ -106,7 +106,7 @@ func _run() -> void:
 		_failures.append("fleet tactical roles changed too frequently")
 
 	print(
-		"FLEET_AI_6V6 frames=%d elapsed_sec=%.2f processing_fps=%.1f live_peak=%d fleet_eval=%d/%d role_eval=%d/%d role_changes=%d/%d primary_changes=%d/%d tactical_updates=%d/%d max_interceptors=%d max_target_eval=%d max_target_changes=%d max_path=%d max_tactical_nav=%d max_spread=%.1f boundary_violations=%d failures=%d" % [
+		"FLEET_AI_6V6 frames=%d elapsed_sec=%.2f processing_fps=%.1f live_peak=%d fleet_eval=%d/%d role_eval=%d/%d role_changes=%d/%d primary_changes=%d/%d tactical_updates=%d/%d tracker_cleanup=%d/%d tactical_path_failures=%d/%d empty_cleanup=%d/%d max_interceptors=%d max_target_eval=%d max_target_changes=%d max_path=%d max_tactical_nav=%d max_spread=%.1f boundary_violations=%d failures=%d" % [
 			simulation_frames,
 			elapsed_sec,
 			average_processing_fps,
@@ -121,6 +121,12 @@ func _run() -> void:
 			fleet_b.target_change_count,
 			fleet_a.tactical_position_update_count,
 			fleet_b.tactical_position_update_count,
+			fleet_a.assignment_tracker.cleanup_count,
+			fleet_b.assignment_tracker.cleanup_count,
+			fleet_a.tactical_path_failure_report_count,
+			fleet_b.tactical_path_failure_report_count,
+			fleet_a.empty_fleet_cleanup_count,
+			fleet_b.empty_fleet_cleanup_count,
 			int(metrics["max_interceptors"]),
 			int(metrics["max_target_evaluations"]),
 			int(metrics["max_target_changes"]),

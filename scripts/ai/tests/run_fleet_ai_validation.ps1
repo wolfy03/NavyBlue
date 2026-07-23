@@ -37,7 +37,8 @@ if ($LASTEXITCODE -ne 0) {
 
 foreach ($test in $tests) {
 	if ($test -eq "res://scripts/ai/tests/FleetAI6v6LongRunTest.gd") {
-		& $GodotBin --headless --fixed-fps 600 --path $projectRoot --script $test
+		# 36,000 frames at 60 Hz represents ten minutes of battle simulation.
+		& $GodotBin --headless --fixed-fps 60 --path $projectRoot --script $test
 	} else {
 		& $GodotBin --headless --path $projectRoot --script $test
 	}

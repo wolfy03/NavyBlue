@@ -19,6 +19,7 @@ func _run() -> void:
 	await _test_stable_difficulty_error_and_primary_hysteresis()
 	await _test_deterministic_roles_and_average_forward()
 	await _test_boundary_side_switch()
+	await _test_path_failure_cooldown_and_error_boundary()
 	await _test_debug_throttle_and_empty_lifecycle()
 	print("FLEET_AI_STABILIZATION checks=%d failures=%d" % [
 		_check_count,
@@ -118,6 +119,7 @@ func _test_broadside_heading_and_intercept_position() -> void:
 	var intercept_context := FleetMemberContext.new().setup(interceptor)
 	intercept_context.tactical_role = FleetMemberContext.TacticalRole.INTERCEPT
 	intercept_context.set_protected_ship(protected)
+	intercept_context.set_assigned_target(threat)
 	intercept_context.apply_tactical_result(intercept_result, threat, 0.0)
 	interceptor.on_fleet_tactical_context_changed(intercept_context)
 	interceptor.set_ai_target(threat)
@@ -137,6 +139,17 @@ func _test_broadside_heading_and_intercept_position() -> void:
 	_check(
 		interceptor.navigation.target_position.distance_to(threat.global_position) > 300.0,
 		"ShipAI does not replace the intercept point with the threat center"
+	)
+	_check(
+		interceptor.combat.is_target_in_range(threat),
+		"ShipCombat range queries use the requested target instead of self-distance"
+	)
+	interceptor.targeting.request_immediate_evaluation()
+	interceptor.targeting.update_targeting(0.0)
+	var assigned_breakdown := interceptor.targeting.get_debug_score_breakdown(threat)
+	_check(
+		is_equal_approx(float(assigned_breakdown["tactical_assignment_score"]), 35.0),
+		"INTERCEPT assigned threat receives the tactical combat-target bonus"
 	)
 	_end_arena()
 
@@ -195,6 +208,46 @@ func _test_battlefield_incoming_attackers() -> void:
 			> scene.friendly_fleet_ai.get_protected_ship_score(cruiser),
 		"incoming attackers increase the protected-ship score"
 	)
+	var ally_alpha := _ship_scene.instantiate() as ShipUnit
+	ally_alpha.setup(
+		_ship_database.get_ship("dd_bluewind").duplicate(true) as ShipData,
+		&"ally",
+		false,
+		Color.WHITE
+	)
+	ally_alpha.fleet_id = &"alpha"
+	scene.ships_root.add_child(ally_alpha)
+	var enemy_alpha := _ship_scene.instantiate() as ShipUnit
+	enemy_alpha.setup(
+		_ship_database.get_ship("dd_bluewind").duplicate(true) as ShipData,
+		&"enemy",
+		false,
+		Color.WHITE
+	)
+	enemy_alpha.fleet_id = &"alpha"
+	scene.ships_root.add_child(enemy_alpha)
+	await process_frame
+	var alpha_controllers: Array[FleetAIController] = []
+	for fleet in scene.get_fleet_controllers():
+		if fleet.fleet_id == &"alpha":
+			alpha_controllers.append(fleet)
+	_check(
+		alpha_controllers.size() == 2
+			and alpha_controllers[0].team != alpha_controllers[1].team,
+		"identical fleet IDs on different teams create independent controllers"
+	)
+	var ally_alpha_controller := ally_alpha.get_fleet_controller()
+	var enemy_alpha_controller := enemy_alpha.get_fleet_controller()
+	ally_alpha_controller.set_process(false)
+	ally_alpha_controller.empty_fleet_grace_sec = 0.0
+	ally_alpha_controller.unregister_member(ally_alpha)
+	ally_alpha_controller.update_fleet(0.1)
+	await process_frame
+	_check(
+		is_instance_valid(enemy_alpha_controller)
+			and scene.get_fleet_controllers().has(enemy_alpha_controller),
+		"removing ALLY/alpha does not remove ENEMY/alpha"
+	)
 	scene.queue_free()
 	await process_frame
 	await physics_frame
@@ -232,6 +285,25 @@ func _test_limited_emergency_interceptors() -> void:
 	fleet.update_fleet(10.0)
 	fleet.register_emergency_threat(threat, 45.0, &"capital_ship_proximity")
 	fleet.update_fleet(5.0)
+	var suitability_ship := members[2]
+	suitability_ship.set_ai_target(null)
+	var idle_suitability := float(fleet.call(
+		&"_get_interceptor_suitability",
+		suitability_ship,
+		threat,
+		members[0]
+	))
+	suitability_ship.set_ai_target(threat)
+	var engaged_suitability := float(fleet.call(
+		&"_get_interceptor_suitability",
+		suitability_ship,
+		threat,
+		members[0]
+	))
+	_check(
+		is_equal_approx(idle_suitability - engaged_suitability, 8.0),
+		"an in-range current combat target adds the intended INTERCEPT role-change cost"
+	)
 	var intercept_count := _count_role(members, fleet, FleetMemberContext.TacticalRole.INTERCEPT)
 	var screen_count := _count_role(members, fleet, FleetMemberContext.TacticalRole.SCREEN)
 	var escort_count := _count_role(members, fleet, FleetMemberContext.TacticalRole.ESCORT)
@@ -453,6 +525,97 @@ func _test_boundary_side_switch() -> void:
 	_end_arena()
 
 
+func _test_path_failure_cooldown_and_error_boundary() -> void:
+	_begin_arena()
+	var bounds := _add_bounds()
+	var easy := load("res://resources/ai_difficulty/easy.tres") as AIDifficultyProfile
+	var fleet := FleetAIController.new()
+	_arena.add_child(fleet)
+	fleet.setup(
+		&"failure_test",
+		&"ally",
+		Callable(self, &"_get_provider_units"),
+		bounds,
+		easy
+	)
+	fleet.set_process(false)
+	var ship := _spawn_ship("bb_ironwake", &"ally", Vector3(8500.0, 0.0, 0.0))
+	var target := _spawn_ship("bb_ironwake", &"enemy", Vector3(9000.0, 0.0, 0.0))
+	for unit in [ship, target]:
+		unit.set_physics_process(false)
+	_provider_units = [ship, target]
+	ship.configure_ai_target_provider(Callable(self, &"_get_provider_units"))
+	fleet.register_member(ship)
+	var context := fleet.get_member_context(ship)
+	context.tactical_position = Vector3(9200.0, 0.0, 0.0)
+	context.tactical_heading = Vector3.RIGHT
+	context.tactical_position_valid = true
+	context.tactical_heading_valid = true
+	ship.on_fleet_tactical_context_changed(context)
+	ship.navigation.set_navigation_target(context.tactical_position)
+	fleet.report_tactical_path_failure(ship)
+	var now_sec := float(Time.get_ticks_msec()) * 0.001
+	_check(
+		not context.tactical_position_valid
+			and not context.tactical_heading_valid
+			and context.tactical_position_invalid_until_sec > now_sec,
+		"path failure invalidates both tactical position and heading for a cooldown"
+	)
+	_check(
+		not ship.navigation.has_navigation_target,
+		"path failure clears the failed navigation target immediately"
+	)
+	ship.navigation.set_navigation_target(Vector3(9200.0, 0.0, 0.0))
+	ship.ai.update_ai(
+		ship,
+		ship.movement,
+		ship.navigation,
+		ship.combat,
+		ship.ship_data,
+		0.1
+	)
+	_check(
+		not ship.navigation.has_navigation_target
+			and is_zero_approx(ship.movement.engine_output),
+		"ShipAI does not re-request a stale tactical position during cooldown"
+	)
+
+	var result := TacticalPositionResult.new()
+	result.valid = true
+	result.position = Vector3(9700.0, 0.0, 0.0)
+	context.tactical_role = FleetMemberContext.TacticalRole.LINE_COMBATANT
+	context.tactical_side_sign = 1.0
+	context.tactical_error_offset = Vector3(350.0, 0.0, 0.0)
+	context.tactical_error_expire_sec = now_sec + 1000.0
+	context.tactical_error_target_instance_id = target.get_instance_id()
+	context.tactical_error_role = context.tactical_role
+	context.tactical_error_side_sign = context.tactical_side_sign
+	context.tactical_error_profile_id = easy.difficulty_id
+	fleet.call(
+		&"_apply_difficulty_error_with_bounds",
+		result,
+		ship,
+		context,
+		target,
+		now_sec
+	)
+	_check(
+		bounds.is_inside_bounds(result.position)
+			and result.position.distance_to(Vector3(9700.0, 0.0, 0.0)) < 1.0,
+		"boundary-unsafe difficulty error is reduced without displacing the base slot"
+	)
+	fleet.set(&"_primary_target_ref", weakref(target))
+	fleet.register_emergency_threat(target, 50.0, &"cache_validation")
+	target.health.current_health = 0.0
+	_check(
+		fleet.get_primary_target() == null
+			and fleet.get_emergency_targets().is_empty()
+			and (fleet.get(&"_emergency_target_ids") as Dictionary).is_empty(),
+		"destroyed primary and emergency targets are removed from public results and caches"
+	)
+	_end_arena()
+
+
 func _test_debug_throttle_and_empty_lifecycle() -> void:
 	_begin_arena()
 	var bounds := _add_bounds()
@@ -478,16 +641,27 @@ func _test_debug_throttle_and_empty_lifecycle() -> void:
 	)
 	var empty_events := [0]
 	fleet.became_empty.connect(
-		func(_fleet_id: StringName) -> void:
+		func(_team: StringName, _fleet_id: StringName) -> void:
 			empty_events[0] += 1
 	)
 	fleet.empty_fleet_grace_sec = 1.0
 	fleet.unregister_member(member)
 	fleet.update_fleet(0.6)
+	fleet.register_member(member)
 	fleet.update_fleet(0.5)
 	_check(
-		empty_events[0] == 1 and fleet.assignment_tracker.get_assignment_count() == 0,
-		"empty fleet emits once after its grace period and clears assignments"
+		empty_events[0] == 0,
+		"reinforcement before the grace deadline reactivates the existing fleet"
+	)
+	fleet.unregister_member(member)
+	fleet.update_fleet(0.6)
+	fleet.update_fleet(0.5)
+	_check(
+		empty_events[0] == 1
+			and fleet.assignment_tracker.get_assignment_count() == 0
+			and fleet.get_primary_target() == null
+			and fleet.get_emergency_targets().is_empty(),
+		"empty fleet emits once after accumulated grace time and clears target caches"
 	)
 	_end_arena()
 

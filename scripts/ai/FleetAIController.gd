@@ -1,7 +1,7 @@
 extends Node
 class_name FleetAIController
 
-signal became_empty(fleet_id: StringName)
+signal became_empty(team: StringName, fleet_id: StringName)
 
 const DEFAULT_DIFFICULTY := preload("res://resources/ai_difficulty/normal.tres")
 
@@ -19,6 +19,8 @@ const DEFAULT_DIFFICULTY := preload("res://resources/ai_difficulty/normal.tres")
 @export var primary_target_current_bonus := 8.0
 @export var emergency_primary_hold_sec := 3.0
 @export var emergency_primary_switch_ratio := 1.1
+@export_range(0.5, 10.0, 0.5) var tactical_path_failure_cooldown_sec := 2.0
+@export var maximum_error_clamp_distance_m := 100.0
 @export var empty_fleet_grace_sec := 10.0
 @export var debug_enabled := false
 @export_range(0.1, 2.0, 0.05) var debug_update_interval_sec := 0.4
@@ -34,6 +36,8 @@ var tactical_position_update_count := 0
 var target_change_count := 0
 var role_change_count := 0
 var debug_snapshot_update_count := 0
+var tactical_path_failure_report_count := 0
+var empty_fleet_cleanup_count := 0
 
 var _member_contexts: Dictionary = {}
 var _candidate_provider := Callable()
@@ -54,6 +58,7 @@ var _cleanup_elapsed_sec := 0.0
 var _debug_elapsed_sec := 0.0
 var _empty_elapsed_sec := 0.0
 var _empty_signal_emitted := false
+var _empty_state_cleared := false
 var _primary_target_lock_sec := 0.0
 var _primary_target_score := 0.0
 var _primary_target_is_emergency := false
@@ -91,13 +96,17 @@ func update_fleet(delta: float) -> void:
 	_primary_target_lock_sec += delta
 	_debug_elapsed_sec += delta
 	if is_empty():
+		if not _empty_state_cleared:
+			_clear_empty_fleet_state()
+			_empty_state_cleared = true
 		_empty_elapsed_sec += delta
 		if _empty_elapsed_sec >= empty_fleet_grace_sec and not _empty_signal_emitted:
 			_empty_signal_emitted = true
-			became_empty.emit(fleet_id)
+			became_empty.emit(team, fleet_id)
 		return
 	_empty_elapsed_sec = 0.0
 	_empty_signal_emitted = false
+	_empty_state_cleared = false
 	_fleet_update_elapsed_sec += delta
 	_role_update_elapsed_sec += delta
 	_tactical_update_elapsed_sec += delta
@@ -143,6 +152,7 @@ func register_member(ship: ShipUnit) -> void:
 	_member_contexts[ship_id] = context
 	_empty_elapsed_sec = 0.0
 	_empty_signal_emitted = false
+	_empty_state_cleared = false
 	set_process(true)
 	ship.fleet_id = fleet_id
 	ship.set_fleet_controller(self)
@@ -176,7 +186,17 @@ func get_alive_members() -> Array[ShipUnit]:
 
 
 func is_empty() -> bool:
-	return get_alive_members().is_empty()
+	for context_value in _member_contexts.values():
+		var context := context_value as FleetMemberContext
+		if context == null:
+			continue
+		var ship := context.get_ship()
+		if ship != null \
+				and is_instance_valid(ship) \
+				and ship.is_alive() \
+				and not ship.is_queued_for_deletion():
+			return false
+	return true
 
 
 func owns_member(ship: ShipUnit) -> bool:
@@ -190,26 +210,44 @@ func get_member_context(ship: ShipUnit) -> FleetMemberContext:
 
 
 func get_primary_target() -> ShipUnit:
-	return _primary_target_ref.get_ref() as ShipUnit \
-		if _primary_target_ref != null else null
+	if _primary_target_ref == null:
+		return null
+	var target := _primary_target_ref.get_ref() as ShipUnit
+	if not _is_alive_tree_ship(target):
+		_primary_target_ref = null
+		_primary_target_score = 0.0
+		_primary_target_is_emergency = false
+		return null
+	return target
 
 
 func get_secondary_targets() -> Array[ShipUnit]:
 	var result: Array[ShipUnit] = []
+	var valid_refs: Array[WeakRef] = []
+	var valid_ids: Dictionary = {}
 	for target_ref in _secondary_target_refs:
 		var target := target_ref.get_ref() as ShipUnit
-		if target != null and is_instance_valid(target) and target.is_alive():
+		if _is_alive_tree_ship(target):
 			result.append(target)
+			valid_refs.append(target_ref)
+			valid_ids[target.get_instance_id()] = true
+	_secondary_target_refs = valid_refs
+	_secondary_target_ids = valid_ids
 	return result
 
 
 func get_emergency_targets() -> Array[ShipUnit]:
 	var result: Array[ShipUnit] = []
 	var now_sec := _now_sec()
-	for threat_value in _emergency_threats.values():
-		var threat := threat_value as FleetThreatContext
-		if threat.is_active(now_sec):
-			result.append(threat.get_target())
+	for target_id in _emergency_threats.keys():
+		var threat := _emergency_threats[target_id] as FleetThreatContext
+		var target := threat.get_target() if threat != null else null
+		if threat == null or not threat.is_active(now_sec) \
+				or not _is_alive_tree_ship(target):
+			_emergency_threats.erase(target_id)
+			_emergency_target_ids.erase(target_id)
+			continue
+		result.append(target)
 	return result
 
 
@@ -374,19 +412,24 @@ func _evaluate_fleet_targets() -> void:
 			if candidate.ship_data != null else 1.0
 		var combat_power := candidate.combat.get_estimated_damage_per_second()
 		var distance_score := 24.0 * maxf(1.0 - distance_m / 24000.0, 0.0)
-		var score := strategic_value * 28.0 \
+		var raw_score := strategic_value * 28.0 \
 			+ minf(combat_power / 8.0, 20.0) \
 			+ distance_score
 		if _is_emergency_target(candidate):
-			score += 35.0
+			raw_score += 35.0
+		raw_score -= float(assignment_tracker.get_attacker_count(candidate)) * 4.0
+		var selection_score := raw_score
 		if candidate == current_primary:
-			score += primary_target_current_bonus
-		score -= float(assignment_tracker.get_attacker_count(candidate)) * 4.0
-		scored.append({"target": candidate, "score": score})
+			selection_score += primary_target_current_bonus
+		scored.append({
+			"target": candidate,
+			"raw_score": raw_score,
+			"selection_score": selection_score,
+		})
 	scored.sort_custom(
 		func(first: Dictionary, second: Dictionary) -> bool:
-			var first_score := float(first["score"])
-			var second_score := float(second["score"])
+			var first_score := float(first["selection_score"])
+			var second_score := float(second["selection_score"])
 			if not is_equal_approx(first_score, second_score):
 				return first_score > second_score
 			return (first["target"] as ShipUnit).get_instance_id() \
@@ -419,39 +462,40 @@ func _select_primary_with_hysteresis(
 		_primary_target_score = 0.0
 		return null
 	var best_target := scored[0]["target"] as ShipUnit
-	var best_score := float(scored[0]["score"])
+	var best_raw_score := float(scored[0]["raw_score"])
 	var current_score := -INF
 	for entry in scored:
 		if entry["target"] == current_primary:
-			current_score = float(entry["score"])
+			current_score = float(entry["raw_score"])
 			break
 	if not _is_valid_hostile_target(current_primary) or current_score == -INF:
-		_primary_target_score = best_score
+		_primary_target_score = best_raw_score
 		return best_target
 	if best_target == current_primary:
 		_primary_target_score = current_score
 		return current_primary
 	if _is_primary_out_of_combat_range(current_primary):
-		_primary_target_score = best_score
+		_primary_target_score = best_raw_score
 		return best_target
 	var best_is_emergency := _is_emergency_target(best_target)
 	var current_is_emergency := _is_emergency_target(current_primary)
 	if best_is_emergency and not current_is_emergency:
-		_primary_target_score = best_score
+		_primary_target_score = best_raw_score
 		return best_target
 	var minimum_hold := emergency_primary_hold_sec \
 		if current_is_emergency else primary_target_minimum_hold_sec
 	var switch_ratio := emergency_primary_switch_ratio \
 		if current_is_emergency and best_is_emergency else primary_target_switch_ratio
-	if _primary_target_lock_sec < minimum_hold or best_score <= current_score * switch_ratio:
+	if _primary_target_lock_sec < minimum_hold \
+			or best_raw_score <= current_score * switch_ratio:
 		_primary_target_score = current_score
 		return current_primary
-	_primary_target_score = best_score
+	_primary_target_score = best_raw_score
 	return best_target
 
 
 func _is_valid_hostile_target(target: ShipUnit) -> bool:
-	if target == null or not is_instance_valid(target) or not target.is_alive():
+	if not _is_alive_tree_ship(target):
 		return false
 	var members := get_alive_members()
 	return not members.is_empty() and members[0].is_hostile_to(target)
@@ -552,6 +596,8 @@ func _assign_tactical_roles(force: bool, preserve_existing_roles := true) -> voi
 		context.formation_slot_index = int(role_slots.get(context.tactical_role, 0))
 		role_slots[context.tactical_role] = context.formation_slot_index + 1
 		ship.on_fleet_tactical_context_changed(context)
+		if context.tactical_role == FleetMemberContext.TacticalRole.INTERCEPT:
+			ship.targeting.request_immediate_evaluation()
 
 
 func _select_emergency_interceptors(
@@ -663,7 +709,11 @@ func _get_interceptor_suitability(
 			role_cost = 14.0
 		FleetMemberContext.TacticalRole.LINE_COMBATANT:
 			role_cost = 8.0
-	if ship.get_ai_target() != null and ship.combat.is_target_in_range(ship):
+	var current_target := ship.get_ai_target() as ShipUnit
+	if current_target != null \
+			and is_instance_valid(current_target) \
+			and current_target.is_alive() \
+			and ship.combat.is_target_in_range(current_target):
 		role_cost += 8.0
 	return distance_score + speed_score + health_score - role_cost
 
@@ -824,44 +874,35 @@ func _update_tactical_positions() -> void:
 			context.last_side_change_sec = now_sec
 		context.set_assigned_target(target)
 		if result.valid:
-			result.position += _get_difficulty_position_error(ship, context, target, now_sec)
-			if _battlefield_bounds != null:
-				var clamped := _battlefield_bounds.clamp_to_bounds(result.position, 300.0)
-				result.was_clamped = result.was_clamped \
-					or result.position.distance_squared_to(clamped) > 1.0
-				result.position = clamped
+			_apply_difficulty_error_with_bounds(result, ship, context, target, now_sec)
 		context.apply_tactical_result(result, target, now_sec)
 		ship.on_fleet_tactical_context_changed(context)
+		if context.tactical_role == FleetMemberContext.TacticalRole.INTERCEPT:
+			ship.targeting.request_immediate_evaluation()
 
 
 func report_tactical_path_failure(ship: ShipUnit) -> void:
 	var context := get_member_context(ship)
 	if context == null:
 		return
+	tactical_path_failure_report_count += 1
 	var now_sec := _now_sec()
 	if now_sec - context.last_tactical_path_failure_sec > 8.0:
 		context.tactical_path_failure_count = 0
 	context.tactical_path_failure_count += 1
 	context.last_tactical_path_failure_sec = now_sec
-	context.tactical_position_invalid_until_sec = now_sec + 2.0
-	ship.navigation.clear_navigation_target()
+	context.tactical_position_valid = false
+	context.tactical_heading_valid = false
+	context.tactical_position_invalid_until_sec = \
+		now_sec + tactical_path_failure_cooldown_sec
+	if ship.navigation.has_navigation_target:
+		ship.navigation.clear_navigation_target()
 	if context.tactical_path_failure_count >= 2 \
 			and now_sec - context.last_side_change_sec >= _get_minimum_side_hold_sec(ship):
 		context.tactical_side_sign *= -1.0
 		context.last_side_change_sec = now_sec
 		context.tactical_path_failure_count = 0
-		context.tactical_position_valid = false
-		_tactical_update_elapsed_sec = difficulty_profile.tactical_position_update_interval_sec
-		return
-	var toward_fleet := fleet_center - ship.global_position
-	toward_fleet.y = 0.0
-	if toward_fleet.length_squared() > 1.0:
-		context.tactical_position = _position_solver.clamp_position(
-			ship.global_position + toward_fleet.normalized() * 800.0
-		)
-		context.tactical_heading = toward_fleet.normalized()
-		context.tactical_position_valid = true
-		context.tactical_heading_valid = true
+	_tactical_update_elapsed_sec = difficulty_profile.tactical_position_update_interval_sec
 
 
 func _select_protected_ship() -> ShipUnit:
@@ -1060,9 +1101,11 @@ func _get_highest_emergency_target() -> ShipUnit:
 	var now_sec := _now_sec()
 	for threat_value in _emergency_threats.values():
 		var threat := threat_value as FleetThreatContext
-		if threat.is_active(now_sec) and threat.threat_score > best_score:
+		var target := threat.get_target() if threat != null else null
+		if threat != null and threat.is_active(now_sec) \
+				and _is_alive_tree_ship(target) and threat.threat_score > best_score:
 			best_score = threat.threat_score
-			best_target = threat.get_target()
+			best_target = target
 	return best_target
 
 
@@ -1093,7 +1136,8 @@ func _get_sorted_emergency_targets() -> Array[ShipUnit]:
 
 
 func _is_emergency_target(target: ShipUnit) -> bool:
-	if target == null or not _emergency_threats.has(target.get_instance_id()):
+	if not _is_alive_tree_ship(target) \
+			or not _emergency_threats.has(target.get_instance_id()):
 		return false
 	var threat := _emergency_threats[target.get_instance_id()] as FleetThreatContext
 	return threat.is_active(_now_sec())
@@ -1103,7 +1147,9 @@ func _cleanup_emergency_threats() -> void:
 	var now_sec := _now_sec()
 	for target_id in _emergency_threats.keys():
 		var threat := _emergency_threats[target_id] as FleetThreatContext
-		if not threat.is_active(now_sec):
+		var target := threat.get_target() if threat != null else null
+		if threat == null or not threat.is_active(now_sec) \
+				or not _is_alive_tree_ship(target):
 			_emergency_threats.erase(target_id)
 			_emergency_target_ids.erase(target_id)
 			_emergency_cooldowns[target_id] = now_sec + 2.0
@@ -1111,6 +1157,22 @@ func _cleanup_emergency_threats() -> void:
 	for target_id in _emergency_cooldowns.keys():
 		if now_sec >= float(_emergency_cooldowns[target_id]):
 			_emergency_cooldowns.erase(target_id)
+
+
+func _clear_empty_fleet_state() -> void:
+	empty_fleet_cleanup_count += 1
+	_primary_target_ref = null
+	_primary_target_score = 0.0
+	_primary_target_is_emergency = false
+	_primary_target_lock_sec = 0.0
+	_secondary_target_refs.clear()
+	_secondary_target_ids.clear()
+	_emergency_threats.clear()
+	_emergency_target_ids.clear()
+	_emergency_cooldowns.clear()
+	_hostile_candidate_cache.clear()
+	assignment_tracker.clear_all()
+	_debug_snapshot.clear()
 
 
 func _prune_members() -> void:
@@ -1182,6 +1244,44 @@ func _get_difficulty_position_error(
 	return context.tactical_error_offset
 
 
+func _apply_difficulty_error_with_bounds(
+		result: TacticalPositionResult,
+		ship: ShipUnit,
+		context: FleetMemberContext,
+		target: ShipUnit,
+		now_sec: float
+) -> void:
+	var base_position := result.position
+	var error_offset := _get_difficulty_position_error(ship, context, target, now_sec)
+	if error_offset.length_squared() <= 0.01:
+		return
+	if _battlefield_bounds == null:
+		result.position = base_position + error_offset
+		return
+	var reduced_error := error_offset
+	for _attempt in range(3):
+		var attempted_position := base_position + reduced_error
+		var attempted_clamp := _battlefield_bounds.clamp_to_bounds(
+			attempted_position,
+			300.0
+		)
+		var clamp_distance_m := attempted_position.distance_to(attempted_clamp)
+		if clamp_distance_m <= maximum_error_clamp_distance_m:
+			result.position = attempted_clamp
+			result.was_clamped = result.was_clamped or clamp_distance_m > 1.0
+			return
+		reduced_error *= 0.5
+	result.position = base_position
+
+
+func _is_alive_tree_ship(ship: ShipUnit) -> bool:
+	return ship != null \
+		and is_instance_valid(ship) \
+		and ship.is_alive() \
+		and not ship.is_queued_for_deletion() \
+		and ship.is_inside_tree()
+
+
 func _get_minimum_side_hold_sec(ship: ShipUnit) -> float:
 	if ship != null and ship.ship_data != null and ship.ship_data.ai_role_profile != null:
 		return maxf(ship.ship_data.ai_role_profile.minimum_side_hold_sec, 1.0)
@@ -1227,6 +1327,8 @@ func _refresh_debug_snapshot() -> void:
 		"target_change_count": target_change_count,
 		"role_change_count": role_change_count,
 		"debug_snapshot_update_count": debug_snapshot_update_count,
+		"tactical_path_failure_report_count": tactical_path_failure_report_count,
+		"empty_fleet_cleanup_count": empty_fleet_cleanup_count,
 	}
 
 

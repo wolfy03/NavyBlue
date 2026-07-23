@@ -300,6 +300,7 @@ func _calculate_score_breakdown(candidate: ShipUnit) -> Dictionary:
 	var approach_cost := _score_approach_cost(context)
 	var focus_fire_penalty := _score_focus_fire_penalty(context)
 	var fleet_recommendation_score := _score_fleet_recommendation(context)
+	var tactical_assignment_score := _score_tactical_assignment(context)
 	var final_score := distance_score \
 		+ recent_damage_score \
 		+ combat_power_score \
@@ -310,7 +311,8 @@ func _calculate_score_breakdown(candidate: ShipUnit) -> Dictionary:
 		+ low_health_score \
 		+ approach_cost \
 		+ focus_fire_penalty \
-		+ fleet_recommendation_score
+		+ fleet_recommendation_score \
+		+ tactical_assignment_score
 	return {
 		"final_score": final_score,
 		"distance_score": distance_score,
@@ -324,6 +326,7 @@ func _calculate_score_breakdown(candidate: ShipUnit) -> Dictionary:
 		"approach_cost": approach_cost,
 		"focus_fire_penalty": focus_fire_penalty,
 		"fleet_recommendation_score": fleet_recommendation_score,
+		"tactical_assignment_score": tactical_assignment_score,
 		"recent_damage_to_owner": context.recent_damage_to_owner,
 		"recent_damage_to_allies": context.recent_damage_to_allies,
 		"distance_m": context.distance_m,
@@ -358,6 +361,10 @@ func _build_context(candidate: ShipUnit) -> TargetEvaluationContext:
 	context.is_current_target = candidate == _current_target
 	context.candidate_is_aiming_at_owner = candidate.get_ai_target() == _owner_ship
 	_apply_fleet_recommendation(context)
+	var fleet_context := _owner_ship.get_fleet_tactical_context()
+	context.tactical_assigned_target = fleet_context != null \
+		and fleet_context.tactical_role == FleetMemberContext.TacticalRole.INTERCEPT \
+		and fleet_context.get_assigned_target() == candidate
 	var damage_threat := _score_recent_damage(context)
 	var emergency_distance := _get_combined_safety_radius_m(candidate) \
 		+ _role_profile.tactical_clearance_m
@@ -456,6 +463,11 @@ func _score_focus_fire_penalty(context: TargetEvaluationContext) -> float:
 
 func _score_fleet_recommendation(context: TargetEvaluationContext) -> float:
 	return context.fleet_recommendation_score
+
+
+func _score_tactical_assignment(context: TargetEvaluationContext) -> float:
+	return _role_profile.tactical_assignment_bonus \
+		if context.tactical_assigned_target else 0.0
 
 
 func _get_owner_weapon_range_m() -> float:

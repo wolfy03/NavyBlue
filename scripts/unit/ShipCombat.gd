@@ -5,8 +5,11 @@ var target
 var aim_point := Vector3.ZERO
 var has_aim_point := false
 var turrets: Array = []
+var owner_ship: ShipUnit
 
-func setup(next_turrets: Array) -> void:
+
+func setup(next_owner_ship: ShipUnit, next_turrets: Array) -> void:
+	owner_ship = next_owner_ship
 	turrets = next_turrets
 
 func set_target(next_target) -> void:
@@ -57,9 +60,9 @@ func has_usable_weapon() -> bool:
 	return false
 
 
-func is_target_in_range(owner_ship: ShipUnit) -> bool:
-	var target_ship := target as Node3D
-	if owner_ship == null or target_ship == null:
+func is_target_in_range(target_ship: ShipUnit) -> bool:
+	if owner_ship == null or target_ship == null \
+			or not is_instance_valid(target_ship) or not target_ship.is_alive():
 		return false
 	var range_m := get_max_weapon_range_m()
 	return range_m > 0.0 \
