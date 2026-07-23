@@ -4,6 +4,8 @@ class_name TorpedoMount
 @export var tube_count := 3
 @export var spread_angle_degrees := 3.0
 @export var yaw_speed_degrees := 10.0
+@export var friendly_lane_half_width_m := 15.0
+@export var friendly_lane_safety_margin_m := 10.0
 @export var muzzle_paths: Array[NodePath] = [
 	NodePath("Muzzles/Muzzle0"),
 	NodePath("Muzzles/Muzzle1"),
@@ -23,20 +25,35 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	super._physics_process(delta)
 	if has_aim_point:
-		_turn_toward(aim_point, delta)
+		update_traverse_toward(
+			aim_point,
+			get_modified_traverse_speed(yaw_speed_degrees),
+			delta
+		)
 
 
-func can_fire_at(world_point: Vector3) -> bool:
-	return super.can_fire_at(world_point) \
-		and _is_inside_traverse_arc(world_point) \
-		and _is_aim_aligned(world_point) \
-		and not _has_friendly_in_launch_lane(world_point)
+func get_fire_readiness_at(
+		world_point: Vector3
+) -> WeaponFireReadiness.State:
+	var readiness := super.get_fire_readiness_at(world_point)
+	if readiness != WeaponFireReadiness.State.READY:
+		return readiness
+	if muzzles.is_empty():
+		return WeaponFireReadiness.State.NO_PROJECTILE
+	if not _is_aim_aligned(
+		world_point,
+		maxf(spread_angle_degrees, 4.0)
+	):
+		return WeaponFireReadiness.State.NOT_ALIGNED
+	if _has_friendly_in_launch_lane(world_point):
+		return WeaponFireReadiness.State.FRIENDLY_BLOCKED
+	return WeaponFireReadiness.State.READY
 
 
 func fire() -> bool:
 	if not can_fire_at(aim_point):
 		return false
-	var launch_count := mini(tube_count, muzzles.size())
+	var launch_count := get_salvo_projectile_count()
 	var launched := 0
 	for index in launch_count:
 		if _launch_torpedo(index, launch_count):
@@ -73,6 +90,7 @@ func _launch_torpedo(index: int, total_count: int) -> bool:
 	context.source_weapon_id = StringName(weapon_data.id)
 	context.initial_transform = launch_transform
 	context.aim_point = aim_point
+	context.runtime_stats = runtime_stats.duplicate_stats()
 	context.target = owner_ship.combat.target as Node3D \
 		if owner_ship != null and owner_ship.combat != null else null
 	torpedo.launch_with_context(context)
@@ -82,30 +100,22 @@ func _launch_torpedo(index: int, total_count: int) -> bool:
 	return true
 
 
-func _turn_toward(world_point: Vector3, delta: float) -> void:
-	var direction := world_point - global_position
-	direction.y = 0.0
-	if direction.length_squared() < 0.01:
-		return
-	var desired_yaw := atan2(-direction.x, -direction.z)
-	global_rotation.y = rotate_toward(
-		global_rotation.y,
-		desired_yaw,
-		deg_to_rad(yaw_speed_degrees) * delta
+func get_projectile_damage() -> float:
+	var data := weapon_data.projectile_data as TorpedoProjectileData \
+		if weapon_data != null else null
+	if data == null:
+		return super.get_projectile_damage()
+	return (
+		maxf(data.direct_damage, 0.0)
+		+ maxf(data.explosion_damage, 0.0)
+	) * maxf(runtime_stats.damage_multiplier, 0.0)
+
+
+func get_salvo_projectile_count() -> int:
+	return mini(
+		muzzles.size(),
+		maxi(0, tube_count + runtime_stats.projectile_count_bonus)
 	)
-
-
-func _is_aim_aligned(world_point: Vector3) -> bool:
-	var desired_direction := world_point - global_position
-	desired_direction.y = 0.0
-	var mount_forward := -global_transform.basis.z
-	mount_forward.y = 0.0
-	if desired_direction.length_squared() < 0.01 \
-			or mount_forward.length_squared() < 0.01:
-		return false
-	return rad_to_deg(
-		mount_forward.normalized().angle_to(desired_direction.normalized())
-	) <= maxf(spread_angle_degrees, 4.0)
 
 
 func _has_friendly_in_launch_lane(world_point: Vector3) -> bool:
@@ -114,21 +124,37 @@ func _has_friendly_in_launch_lane(world_point: Vector3) -> bool:
 	var direction := world_point - global_position
 	direction.y = 0.0
 	var distance := minf(direction.length(), get_range_m())
+	var torpedo_data := weapon_data.projectile_data as TorpedoProjectileData \
+		if weapon_data != null else null
+	if torpedo_data != null and torpedo_data.maximum_range_m > 0.0:
+		distance = minf(
+			distance,
+			torpedo_data.maximum_range_m * maxf(
+				runtime_stats.range_multiplier,
+				0.0
+			)
+		)
 	if distance <= 0.01:
 		return false
 	var lane_end := global_position + direction.normalized() * distance
-	var lane_width := maxf(owner_ship.get_navigation_safety_radius_m(), 60.0)
 	for candidate_value in get_tree().get_nodes_in_group(&"ships"):
 		var candidate := candidate_value as ShipUnit
 		if candidate == null or candidate == owner_ship \
+				or candidate.is_queued_for_deletion() \
+				or not candidate.is_inside_tree() \
 				or not candidate.is_alive() \
 				or FactionRelations.are_hostile(owner_team, candidate.team):
 			continue
+		var candidate_half_width := candidate.ship_data.hull_size.x * 0.5 \
+			if candidate.ship_data != null else 5.0
+		var blocked_distance := friendly_lane_half_width_m \
+			+ candidate_half_width \
+			+ friendly_lane_safety_margin_m
 		if _distance_to_segment_xz(
 			candidate.global_position,
 			global_position,
 			lane_end
-		) <= lane_width + candidate.get_navigation_safety_radius_m():
+		) <= blocked_distance:
 			return true
 	return false
 

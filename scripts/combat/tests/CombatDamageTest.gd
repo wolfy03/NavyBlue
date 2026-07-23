@@ -24,6 +24,9 @@ class DamageTarget:
 	func apply_damage(damage: float, penetration_result: int, hit_info: HitInfo) -> float:
 		return health.apply_damage(damage, penetration_result, hit_info)
 
+	func apply_damage_result(result: DamageResult) -> float:
+		return health.apply_damage_result(result)
+
 	func _on_died() -> void:
 		sink_called = true
 
@@ -50,6 +53,7 @@ func _run() -> void:
 	_test_case("HE penetration", target, he, 200.0, Vector3.LEFT, PenetrationResolver.Result.PENETRATED, 80.0)
 	_test_case("HE non-penetration", target, he, 35.0, Vector3.LEFT, PenetrationResolver.Result.NON_PENETRATED, 46.4)
 	_test_case("HE ricochet", target, he, 500.0, Vector3(-0.05, 0.0, 1.0), PenetrationResolver.Result.RICOCHET, 26.0)
+	_test_torpedo_outcome(target)
 
 	target.get_defense_stats().damage_reduction = 0.25
 	_test_case("Damage reduction", target, ap, 200.0, Vector3.LEFT, PenetrationResolver.Result.PENETRATED, 45.0)
@@ -79,7 +83,39 @@ func _test_case(
 	shell.penetration = penetration
 	var result: DamageResult = _resolve(target, shell, penetration, direction)
 	_expect_true("%s result" % label, result.penetration_result == expected_result)
+	_expect_true(
+		"%s outcome" % label,
+		result.hit_outcome
+			== HitOutcome.from_penetration_result(expected_result)
+	)
 	_expect_approx("%s damage" % label, result.applied_damage, expected_damage)
+
+
+func _test_torpedo_outcome(target: DamageTarget) -> void:
+	target.get_defense_stats().current_hp = target.get_defense_stats().max_hp
+	var torpedo_data := TorpedoProjectileData.new()
+	torpedo_data.direct_damage = 100.0
+	torpedo_data.explosion_damage = 0.0
+	torpedo_data.flooding_chance = 0.0
+	var hit_info := HitInfo.new()
+	hit_info.target_ship = target
+	hit_info.damage_type = DamageType.Type.TORPEDO
+	hit_info.torpedo_data = torpedo_data
+	hit_info.armor_part = ArmorPart.Type.BELT
+	var result := DamageResolver.resolve_hit(hit_info)
+	_expect_true(
+		"Torpedo damage type",
+		result.damage_type == DamageType.Type.TORPEDO
+	)
+	_expect_true(
+		"Torpedo hit outcome",
+		result.hit_outcome == HitOutcome.Type.TORPEDO_HIT
+	)
+	_expect_true(
+		"Torpedo is not AP penetration",
+		result.penetration_result != PenetrationResolver.Result.PENETRATED
+	)
+	_expect_approx("Torpedo damage", result.applied_damage, 100.0)
 
 
 func _resolve(

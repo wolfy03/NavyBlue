@@ -23,11 +23,13 @@ func _physics_process(delta: float) -> void:
 	flooding_time_left = maxf(0.0, flooding_time_left - delta)
 	var damage := flooding_damage_per_second * delta
 	if damage > 0.0:
-		health.apply_damage(
-			damage,
-			PenetrationResolver.Result.NON_PENETRATED,
-			flooding_source
-		)
+		var result := DamageResult.new()
+		result.hit_info = flooding_source
+		result.target_ship = get_parent() as Node3D
+		result.damage_type = DamageType.Type.FLOODING
+		result.hit_outcome = HitOutcome.Type.STATUS_DAMAGE
+		result.raw_damage = damage
+		health.apply_damage_result(result)
 	flooding_updated.emit(flooding_time_left)
 	if flooding_time_left <= 0.0:
 		_clear_flooding()

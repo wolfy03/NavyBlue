@@ -28,10 +28,15 @@ enum ShipClass {
 @export var weapon_slots: Array[ShipWeaponSlotData] = []
 
 @export_group("Legacy Weapon Configuration")
+# Deprecated: compatibility only. Do not use in new ship definitions.
 @export var turret_count := 2
+# Deprecated: compatibility only. Do not use in new ship definitions.
 @export var turret_spacing := 1.8
+# Deprecated: compatibility only. New weapon velocity lives in WeaponData.
 @export var shell_muzzle_velocity := 34.0
+# Deprecated: compatibility only. New weapon reload lives in WeaponData.
 @export var reload_seconds := 1.2
+# Deprecated: compatibility only. New defaults live on ShipWeaponSlotData.
 @export var default_weapon_id: String = "destroyer_cannon"
 @export_group("")
 @export var defense_stats: ShipDefenseStats

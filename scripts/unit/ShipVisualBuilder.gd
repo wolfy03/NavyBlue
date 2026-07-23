@@ -33,6 +33,12 @@ func build(
 		owner_ship: ShipUnit,
 		legacy_turret_scene: PackedScene = null
 ) -> Array[WeaponMount]:
+	if ship_data == null:
+		push_warning("ShipVisualBuilder cannot build a ship without ShipData.")
+		return []
+	if weapon_mount_root == null:
+		push_warning("ShipVisualBuilder cannot build ship '%s': WeaponMountRoot is missing." % ship_data.id)
+		return []
 	_apply_hull_shape(ship_data)
 	_apply_materials(team_color)
 	if ship_data.weapon_slots.is_empty():
@@ -70,7 +76,6 @@ func _rebuild_weapon_mounts(
 				% [weapon_id, String(slot.slot_id), validation.reason]
 			)
 			continue
-		weapon_data = weapon_data.duplicate(true) as WeaponData
 		var mount := _create_mount(slot, weapon_data, owner_ship, team)
 		if mount != null:
 			mounts.append(mount)
@@ -81,12 +86,15 @@ func _create_mount(
 		slot: ShipWeaponSlotData,
 		weapon_data: WeaponData,
 		owner_ship: ShipUnit,
-		team: StringName
+		team: StringName,
+		mount_scene_override: PackedScene = null
 ) -> WeaponMount:
-	if weapon_data.mount_scene == null:
+	var mount_scene := mount_scene_override \
+		if mount_scene_override != null else weapon_data.mount_scene
+	if mount_scene == null:
 		push_warning("Weapon has no mount scene: %s" % weapon_data.id)
 		return null
-	var mount := weapon_data.mount_scene.instantiate() as WeaponMount
+	var mount := mount_scene.instantiate() as WeaponMount
 	if mount == null:
 		push_warning("Mount scene must inherit WeaponMount: %s" % weapon_data.id)
 		return null
@@ -105,13 +113,38 @@ func _build_legacy_turrets(
 		owner_ship: ShipUnit,
 		legacy_turret_scene: PackedScene
 ) -> Array[WeaponMount]:
-	_clear_mounts()
+	# Deprecated: compatibility only. Do not use in new ship definitions.
 	var mounts: Array[WeaponMount] = []
+	if ship_data == null:
+		return mounts
+	if weapon_mount_root == null:
+		push_warning(
+			"Cannot build legacy weapons for ship '%s': WeaponMountRoot is missing."
+			% ship_data.id
+		)
+		return mounts
+	_clear_mounts()
 	var weapon_data := weapon_database.get_weapon(ship_data.default_weapon_id)
-	var scene := weapon_data.mount_scene if weapon_data != null else null
+	if weapon_data == null:
+		push_warning(
+			"Legacy weapon data could not be loaded for ship '%s': %s"
+			% [ship_data.id, ship_data.default_weapon_id]
+		)
+		return mounts
+	if weapon_data.id.is_empty():
+		push_warning(
+			"Legacy weapon fallback is invalid for ship '%s': %s"
+			% [ship_data.id, ship_data.default_weapon_id]
+		)
+		return mounts
+	var scene := weapon_data.mount_scene
 	if scene == null:
 		scene = legacy_turret_scene
 	if scene == null:
+		push_warning(
+			"Legacy ship '%s' has no mount scene for weapon '%s' and no legacy turret fallback."
+			% [ship_data.id, weapon_data.id]
+		)
 		return mounts
 	var start_z := -ship_data.turret_spacing * float(ship_data.turret_count - 1) * 0.5
 	for index in range(ship_data.turret_count):
@@ -119,7 +152,7 @@ func _build_legacy_turrets(
 		slot.slot_id = StringName("legacy_cannon_%02d" % index)
 		slot.display_name = "Legacy Cannon %d" % (index + 1)
 		slot.slot_size = weapon_data.required_slot_size
-		slot.allowed_weapon_types = [WeaponData.WeaponType.CANNON]
+		slot.allowed_weapon_types = [WeaponTypes.Type.CANNON]
 		slot.default_weapon_id = weapon_data.id
 		slot.local_position = Vector3(
 			0.0,
@@ -128,7 +161,13 @@ func _build_legacy_turrets(
 		)
 		var turret_scale := clampf(ship_data.hull_size.x / 3.0, 5.0, 13.0)
 		slot.local_scale = Vector3.ONE * turret_scale
-		var mount := _create_mount(slot, weapon_data, owner_ship, team)
+		var mount := _create_mount(
+			slot,
+			weapon_data,
+			owner_ship,
+			team,
+			scene
+		)
 		if mount != null:
 			mounts.append(mount)
 	return mounts

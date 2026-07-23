@@ -103,6 +103,8 @@ func capture_player_ship(ship) -> void:
 			"rotation": _vector3_to_dictionary(ship.global_rotation if ship is Node3D else Vector3.ZERO),
 			"weapon_loadout": ship.get_weapon_loadout_save_data() \
 				if ship.has_method("get_weapon_loadout_save_data") else {},
+			"weapon_runtime_stats": ship.get_weapon_runtime_stats_save_data() \
+				if ship.has_method("get_weapon_runtime_stats_save_data") else {},
 		}
 	_emit_updated()
 

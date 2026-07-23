@@ -1,7 +1,13 @@
 extends RigidBody3D
 class_name WeaponProjectileBase
 
+# Shared source attribution and pool lifecycle only. Concrete projectiles own
+# gravity, depth, guidance, collision interpretation, and damage behavior.
+# TODO: extract this lifecycle contract before adding CharacterBody3D missiles
+# or Area3D mines; those types must not be forced to inherit RigidBody3D.
+
 var projectile_data: ProjectileData
+var projectile_runtime_stats := WeaponRuntimeStats.new()
 var source_team: StringName = &"neutral"
 var source_ship_instance_id := 0
 var source_weapon_id: StringName
@@ -24,6 +30,8 @@ func launch_with_context(context: ProjectileLaunchContext) -> void:
 	if context == null:
 		return
 	global_transform = context.initial_transform
+	projectile_runtime_stats = context.runtime_stats.duplicate_stats() \
+		if context.runtime_stats != null else WeaponRuntimeStats.new()
 	_apply_launch_source(
 		context.source_ship,
 		context.source_team,
@@ -63,6 +71,7 @@ func despawn() -> void:
 func on_spawned_from_pool() -> void:
 	_despawn_requested = false
 	projectile_data = null
+	projectile_runtime_stats = WeaponRuntimeStats.new()
 	source_team = &"neutral"
 	source_ship_instance_id = 0
 	source_weapon_id = StringName()
@@ -87,6 +96,7 @@ func on_recycled_to_pool() -> void:
 	source_weapon_id = StringName()
 	_source_ship_ref = null
 	projectile_data = null
+	projectile_runtime_stats = WeaponRuntimeStats.new()
 	hide()
 	set_process(false)
 	set_physics_process(false)

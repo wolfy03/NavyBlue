@@ -1,19 +1,6 @@
 extends Resource
 class_name ShipWeaponSlotData
 
-enum SlotSize {
-	SMALL,
-	MEDIUM,
-	LARGE,
-	EXTRA_LARGE,
-}
-
-enum MountSide {
-	CENTERLINE,
-	PORT,
-	STARBOARD,
-}
-
 @export_category("Identity")
 @export var slot_id: StringName
 @export var display_name := ""
@@ -24,9 +11,9 @@ enum MountSide {
 @export var local_scale := Vector3.ONE
 
 @export_category("Compatibility")
-@export var slot_size: SlotSize = SlotSize.MEDIUM
-@export var allowed_weapon_types: Array[WeaponData.WeaponType] = []
-@export var mount_side: MountSide = MountSide.CENTERLINE
+@export var slot_size: WeaponTypes.SlotSize = WeaponTypes.SlotSize.MEDIUM
+@export var allowed_weapon_types: Array[WeaponTypes.Type] = []
+@export var mount_side: WeaponTypes.MountSide = WeaponTypes.MountSide.CENTERLINE
 
 @export_category("Default Loadout")
 @export var default_weapon_id := ""

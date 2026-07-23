@@ -29,3 +29,9 @@ shape = SubResource("SphereShape3D_projectile")
 [node name="ProjectileMesh" type="MeshInstance3D" parent="." unique_id=1197608774]
 mesh = SubResource("SphereMesh_projectile")
 surface_material_override/0 = SubResource("StandardMaterial3D_projectile")
+
+[node name="TrailParticles" type="GPUParticles3D" parent="."]
+emitting = false
+amount = 160
+lifetime = 1.15
+local_coords = false

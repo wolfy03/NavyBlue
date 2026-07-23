@@ -5,6 +5,7 @@ class_name ShellProjectileData
 @export var penetration := 50.0
 @export var muzzle_velocity := 120.0
 @export var gravity_scale := 1.0
+@export_range(0.01, 1000.0, 0.01, "or_greater") var mass_kg := 25.0
 @export var penetration_damage_multiplier := 1.0
 @export var non_penetration_damage_multiplier := 0.1
 @export var ricochet_damage_multiplier := 0.0

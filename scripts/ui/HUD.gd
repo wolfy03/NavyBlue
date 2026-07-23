@@ -32,9 +32,11 @@ func _process(_delta: float) -> void:
 		return
 	var data = target_ship.ship_data
 	var turret_pitch := 0.0
-	var turrets: Array = target_ship.get_turrets()
-	if not turrets.is_empty():
-		turret_pitch = turrets[0].pitch_degrees
+	var cannons: Array[WeaponMount] = target_ship.combat.get_weapons_by_type(
+		WeaponTypes.Type.CANNON
+	)
+	if not cannons.is_empty() and cannons[0] is CannonMount:
+		turret_pitch = (cannons[0] as CannonMount).pitch_degrees
 	var damage_status := target_ship.get_node_or_null("ShipDamageStatus") \
 		as ShipDamageStatus
 	var status_suffix := " | FLOODING %.1fs" % damage_status.flooding_time_left \

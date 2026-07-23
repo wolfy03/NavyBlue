@@ -215,6 +215,7 @@ func get_effective_engagement_range_m(combat, ship_data: ShipData) -> float:
 	var weapon_range_m := 0.0
 	if combat != null and combat.has_method(&"get_primary_weapon_range_m"):
 		weapon_range_m = float(combat.call(&"get_primary_weapon_range_m"))
+	# Deprecated fallback for pre-slot ShipData. New AI reads ShipCombat mounts.
 	if weapon_range_m <= 0.0 and ship_data != null and not ship_data.default_weapon_id.is_empty():
 		var default_weapon := _weapon_database.get_weapon(ship_data.default_weapon_id)
 		if default_weapon != null:

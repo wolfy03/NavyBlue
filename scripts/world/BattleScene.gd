@@ -302,7 +302,11 @@ func _update_impact_marker() -> void:
 		impact_marker.visible = false
 		return
 	impact_marker.visible = true
-	impact_marker.global_position = impact
+	var marker_position: Vector3 = impact
+	marker_position.y = battlefield_settings.sea_level_m + 0.45
+	impact_marker.global_position = marker_position
+	var pulse := 1.0 + sin(Time.get_ticks_msec() * 0.006) * 0.08
+	impact_marker.scale = Vector3(pulse, 1.0, pulse)
 
 func _setup_camera_and_ui() -> void:
 	if camera != null and camera.has_method("setup"):

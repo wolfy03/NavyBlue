@@ -1,22 +1,16 @@
 extends Resource
 class_name WeaponData
 
-enum WeaponType {
-	CANNON,
-	TORPEDO,
-	MISSILE,
-	ANTI_AIR,
-	MINE,
-	UTILITY,
-}
+# Treat this Resource as immutable runtime configuration. Per-ship changes belong
+# in WeaponRuntimeStats or a WeaponMount instance.
 
 @export_category("Identity")
 @export var id: String = ""
 @export var display_name: String = ""
-@export var weapon_type: WeaponType = WeaponType.CANNON
+@export var weapon_type: WeaponTypes.Type = WeaponTypes.Type.CANNON
 
 @export_category("Mount")
-@export var required_slot_size: ShipWeaponSlotData.SlotSize = ShipWeaponSlotData.SlotSize.MEDIUM
+@export var required_slot_size: WeaponTypes.SlotSize = WeaponTypes.SlotSize.MEDIUM
 @export var mount_scene: PackedScene
 
 @export_category("Combat")

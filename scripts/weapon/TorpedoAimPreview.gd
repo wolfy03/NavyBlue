@@ -39,7 +39,7 @@ func _process(delta: float) -> void:
 func _refresh_preview() -> void:
 	_preview_mesh.clear_surfaces()
 	var mounts := owner_ship.combat.get_weapons_by_type(
-		WeaponData.WeaponType.TORPEDO
+		WeaponTypes.Type.TORPEDO
 	)
 	if mounts.is_empty():
 		visible = false
@@ -58,6 +58,7 @@ func _draw_mount_arc(mount: WeaponMount) -> void:
 		return
 	var start_angle := mount.slot_data.traverse_min_degrees
 	var end_angle := mount.slot_data.traverse_max_degrees
+	var base_angle := mount.slot_data.local_rotation_degrees.y
 	var radius := minf(mount.get_range_m(), maximum_preview_radius_m)
 	if radius <= 0.0:
 		return
@@ -69,11 +70,21 @@ func _draw_mount_arc(mount: WeaponMount) -> void:
 	for index in arc_segment_count:
 		var first_ratio := float(index) / float(arc_segment_count)
 		var second_ratio := float(index + 1) / float(arc_segment_count)
+		var first_angle := base_angle + _interpolate_traverse_angle(
+			start_angle,
+			end_angle,
+			first_ratio
+		)
+		var second_angle := base_angle + _interpolate_traverse_angle(
+			start_angle,
+			end_angle,
+			second_ratio
+		)
 		var first := origin + _direction_for_yaw(
-			lerpf(start_angle, end_angle, first_ratio)
+			first_angle
 		) * radius
 		var second := origin + _direction_for_yaw(
-			lerpf(start_angle, end_angle, second_ratio)
+			second_angle
 		) * radius
 		_preview_mesh.surface_add_vertex(first)
 		_preview_mesh.surface_add_vertex(second)
@@ -101,6 +112,18 @@ func _draw_aim_path(mount: WeaponMount, world_point: Vector3) -> void:
 func _direction_for_yaw(yaw_degrees: float) -> Vector3:
 	var yaw := deg_to_rad(yaw_degrees)
 	return Vector3(-sin(yaw), 0.0, -cos(yaw))
+
+
+func _interpolate_traverse_angle(
+		minimum_degrees: float,
+		maximum_degrees: float,
+		ratio: float
+) -> float:
+	var raw_span := maximum_degrees - minimum_degrees
+	if absf(raw_span) >= 359.9:
+		return minimum_degrees + 360.0 * ratio
+	var wrapped_span := fposmod(raw_span, 360.0)
+	return minimum_degrees + wrapped_span * ratio
 
 
 func _hide_preview() -> void:

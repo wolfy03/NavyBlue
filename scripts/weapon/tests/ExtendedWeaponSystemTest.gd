@@ -3,12 +3,20 @@ extends SceneTree
 var _failures: Array[String] = []
 
 
+class MissingWeaponDatabase:
+	extends WeaponDatabase
+
+	func get_weapon(_id: String) -> WeaponData:
+		return null
+
+
 func _initialize() -> void:
 	call_deferred(&"_run")
 
 
 func _run() -> void:
 	_test_resource_model()
+	await _test_torpedo_physics_stability()
 	await _test_battle_weapon_flow()
 	for failure in _failures:
 		push_error("EXTENDED WEAPON TEST: %s" % failure)
@@ -18,6 +26,10 @@ func _run() -> void:
 
 
 func _test_resource_model() -> void:
+	_check(WeaponTypes.Type.CANNON == 0, "cannon enum value remains stable")
+	_check(WeaponTypes.Type.TORPEDO == 1, "torpedo enum value remains stable")
+	_check(WeaponTypes.SlotSize.MEDIUM == 1, "slot size enum value remains stable")
+	_test_legacy_mount_null_safety()
 	var ship_data := ShipDatabase.new().get_ship("dd_bluewind")
 	_check(ship_data != null, "destroyer ShipData loads")
 	if ship_data == null:
@@ -54,6 +66,113 @@ func _test_resource_model() -> void:
 	)
 
 
+func _test_legacy_mount_null_safety() -> void:
+	var builder := ShipVisualBuilder.new()
+	var ship_data := ShipData.new()
+	ship_data.id = "legacy_test_ship"
+	ship_data.default_weapon_id = "missing_legacy_weapon"
+	var no_ship: Array = builder.call(
+		&"_build_legacy_turrets",
+		null,
+		&"test",
+		null,
+		null
+	)
+	_check(no_ship.is_empty(), "legacy builder rejects missing ShipData")
+	var no_root: Array = builder.call(
+		&"_build_legacy_turrets",
+		ship_data,
+		&"test",
+		null,
+		null
+	)
+	_check(no_root.is_empty(), "legacy builder rejects missing mount root")
+	var mount_root := Node3D.new()
+	builder.weapon_mount_root = mount_root
+	builder.weapon_database = MissingWeaponDatabase.new()
+	var no_weapon: Array = builder.call(
+		&"_build_legacy_turrets",
+		ship_data,
+		&"test",
+		null,
+		null
+	)
+	_check(no_weapon.is_empty(), "legacy builder rejects missing WeaponData")
+	mount_root.free()
+	builder.free()
+
+
+func _test_torpedo_physics_stability() -> void:
+	var torpedo_scene := load(
+		"res://scenes/weapon/projectiles/torpedo_projectile.tscn"
+	) as PackedScene
+	var data := load(
+		"res://resources/projectiles/destroyer_torpedo.tres"
+	).duplicate(true) as TorpedoProjectileData
+	_check(torpedo_scene != null and data != null, "torpedo physics resources load")
+	if torpedo_scene == null or data == null:
+		return
+	data.arming_distance_m = 1.0
+	var torpedo := torpedo_scene.instantiate() as TorpedoProjectile
+	root.add_child(torpedo)
+	torpedo.setup_projectile_data(data)
+	var context := ProjectileLaunchContext.new()
+	context.source_team = &"test"
+	context.source_weapon_id = &"physics_test_torpedo"
+	context.initial_transform = Transform3D(Basis.IDENTITY, Vector3.ZERO)
+	torpedo.launch_with_context(context)
+	var expected_depth := -data.running_depth_m
+	var initial_position := torpedo.global_position
+	var maximum_depth_error := 0.0
+	for _frame in 20:
+		await physics_frame
+		maximum_depth_error = maxf(
+			maximum_depth_error,
+			absf(torpedo.global_position.y - expected_depth)
+		)
+	var movement_distance := initial_position.distance_to(torpedo.global_position)
+	_check(movement_distance > 1.0, "torpedo advances through RigidBody integration")
+	_check(maximum_depth_error < 0.05, "torpedo maintains a stable running depth")
+	_check(torpedo.travelled_distance_m > 0.0, "torpedo records actual movement")
+	_check(torpedo.armed, "torpedo arms from actual travelled distance")
+	_check(
+		torpedo.previous_position.distance_to(torpedo.global_position) < 1.0,
+		"torpedo previous position tracks the last physical segment"
+	)
+
+	torpedo.target_ref = weakref(torpedo)
+	torpedo.desired_yaw_radians = 1.0
+	torpedo.linear_velocity = Vector3.ONE
+	torpedo.angular_velocity = Vector3.ONE
+	torpedo.despawn()
+	_check(torpedo.get_parent() == null, "torpedo returns to ObjectPool")
+	_check(
+		torpedo.target_ref == null
+			and not torpedo.impact_processed
+			and not torpedo.armed
+			and is_zero_approx(torpedo.travelled_distance_m)
+			and is_zero_approx(torpedo.age_seconds)
+			and is_zero_approx(torpedo.speed_mps)
+			and is_zero_approx(torpedo.desired_yaw_radians)
+			and torpedo.linear_velocity.is_zero_approx()
+			and torpedo.angular_velocity.is_zero_approx(),
+		"recycled torpedo clears all transient physics state"
+	)
+
+	var object_pool := root.get_node_or_null("ObjectPool")
+	if object_pool != null:
+		var reused := object_pool.spawn(torpedo_scene, root) as TorpedoProjectile
+		_check(reused == torpedo, "ObjectPool reuses the reset torpedo")
+		if reused != null:
+			_check(
+				reused.previous_position == reused.global_position
+					and reused.target_ref == null
+					and reused.linear_velocity.is_zero_approx(),
+				"spawned torpedo starts without stale state"
+			)
+			reused.despawn()
+
+
 func _test_battle_weapon_flow() -> void:
 	var packed := load("res://scenes/world/battle_scene.tscn") as PackedScene
 	_check(packed != null, "battle scene loads")
@@ -72,8 +191,8 @@ func _test_battle_weapon_flow() -> void:
 		await process_frame
 		return
 	var mounts := player.get_weapon_mounts()
-	var cannons := player.combat.get_weapons_by_type(WeaponData.WeaponType.CANNON)
-	var torpedoes := player.combat.get_weapons_by_type(WeaponData.WeaponType.TORPEDO)
+	var cannons := player.combat.get_weapons_by_type(WeaponTypes.Type.CANNON)
+	var torpedoes := player.combat.get_weapons_by_type(WeaponTypes.Type.TORPEDO)
 	_check(mounts.size() == 4, "ShipVisualBuilder creates every destroyer mount")
 	_check(cannons.size() == 2, "ShipCombat exposes two cannon mounts")
 	_check(torpedoes.size() == 2, "ShipCombat exposes two torpedo mounts")
@@ -97,7 +216,11 @@ func _test_battle_weapon_flow() -> void:
 	if port_mount != null:
 		var aim_point := player.global_position + Vector3(-1200.0, 0.0, 0.0)
 		port_mount.aim_at(aim_point)
-		port_mount.call(&"_turn_toward", aim_point, 1.0)
+		port_mount.update_traverse_toward(
+			aim_point,
+			port_mount.yaw_speed_degrees,
+			1.0
+		)
 		var projectiles := scene.get_node_or_null("Projectiles")
 		var before_count := _count_torpedoes(projectiles)
 		var fired := port_mount.fire()
@@ -111,7 +234,13 @@ func _test_battle_weapon_flow() -> void:
 				not str(spawned.get_meta("pool_key", "")).is_empty(),
 				"torpedo is created through ObjectPool"
 			)
-			spawned.call(&"_physics_process", 5.0)
+			var segment_start := spawned.global_position
+			var segment_direction := -spawned.global_transform.basis.z.normalized()
+			spawned.global_position += segment_direction * (
+				spawned.torpedo_data.arming_distance_m + 1.0
+			)
+			spawned.previous_position = segment_start
+			spawned.call(&"_physics_process", 0.1)
 			_check(spawned.armed, "torpedo arms after travelling its safety distance")
 			spawned.despawn()
 			_check(spawned.get_parent() == null, "torpedo returns to ObjectPool")

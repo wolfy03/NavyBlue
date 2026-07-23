@@ -20,14 +20,19 @@ ambient_light_color = Color(0.7, 0.78, 0.86, 1)
 ambient_light_energy = 0.8
 
 [sub_resource type="TorusMesh" id="TorusMesh_impact"]
-inner_radius = 1.15
-outer_radius = 1.35
+inner_radius = 46.0
+outer_radius = 56.0
+rings = 24
+ring_segments = 48
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_impact"]
 albedo_color = Color(1, 0.05, 0.03, 0.88)
 emission_enabled = true
 emission = Color(1, 0, 0, 1)
-emission_energy_multiplier = 0.7
+emission_energy_multiplier = 2.2
+transparency = 1
+shading_mode = 0
+no_depth_test = true
 
 [sub_resource type="TorusMesh" id="TorusMesh_movement"]
 inner_radius = 58.0

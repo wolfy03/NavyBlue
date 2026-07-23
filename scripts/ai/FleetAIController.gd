@@ -410,10 +410,20 @@ func _evaluate_fleet_targets() -> void:
 		var distance_m := fleet_center.distance_to(candidate.global_position)
 		var strategic_value := candidate.ship_data.strategic_value \
 			if candidate.ship_data != null else 1.0
-		var combat_power := candidate.combat.get_estimated_damage_per_second()
+		var sustained_dps := candidate.combat.get_total_sustained_dps()
+		var ready_salvo_damage := \
+			candidate.combat.get_total_ready_salvo_damage()
+		var torpedo_salvo_damage := candidate.combat.get_total_salvo_damage(
+			WeaponTypes.Type.TORPEDO
+		)
+		var cannon_sustained_dps := candidate.combat.get_total_sustained_dps(
+			WeaponTypes.Type.CANNON
+		)
 		var distance_score := 24.0 * maxf(1.0 - distance_m / 24000.0, 0.0)
 		var raw_score := strategic_value * 28.0 \
-			+ minf(combat_power / 8.0, 20.0) \
+			+ minf(sustained_dps / 8.0, 20.0) \
+			+ minf(ready_salvo_damage / 800.0, 4.0) \
+			+ minf(torpedo_salvo_damage / 1200.0, 4.0) \
 			+ distance_score
 		if _is_emergency_target(candidate):
 			raw_score += 35.0
@@ -425,6 +435,10 @@ func _evaluate_fleet_targets() -> void:
 			"target": candidate,
 			"raw_score": raw_score,
 			"selection_score": selection_score,
+			"sustained_dps": sustained_dps,
+			"ready_salvo_damage": ready_salvo_damage,
+			"torpedo_salvo_damage": torpedo_salvo_damage,
+			"cannon_sustained_dps": cannon_sustained_dps,
 		})
 	scored.sort_custom(
 		func(first: Dictionary, second: Dictionary) -> bool:

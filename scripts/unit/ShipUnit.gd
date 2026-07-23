@@ -11,6 +11,7 @@ const WEAPON_DATABASE_SCRIPT := preload("res://scripts/data/WeaponDatabase.gd")
 @export var player_controlled := false
 @export var team_color := Color(0.2, 0.55, 1.0)
 @export var engine_output_change_rate := 0.55
+# Deprecated: compatibility only. New weapons use WeaponData.mount_scene.
 @export var turret_scene: PackedScene = preload("res://scenes/weapon/turret.tscn")
 @export var weapon_loadout: ShipWeaponLoadout
 
@@ -39,13 +40,15 @@ var _ai_candidate_provider := Callable()
 var _fleet_controller_ref: WeakRef
 var _fleet_tactical_context: FleetMemberContext
 var _weapon_database := WEAPON_DATABASE_SCRIPT.new()
+var weapon_runtime_stats_by_slot: Dictionary = {}
 
 func setup(
 		data: ShipData,
 		team_name: StringName,
 		is_player: bool,
 		color: Color,
-		loadout: ShipWeaponLoadout = null
+		loadout: ShipWeaponLoadout = null,
+		runtime_stats_data: Dictionary = {}
 ) -> void:
 	ship_data = data
 	ship_id = ship_data.id
@@ -53,6 +56,7 @@ func setup(
 	player_controlled = is_player
 	team_color = color
 	weapon_loadout = loadout.duplicate_loadout() if loadout != null else null
+	set_weapon_runtime_stats_save_data(runtime_stats_data)
 	name = "%s_%s" % [ship_data.id, String(team)]
 	_register_groups()
 
@@ -123,6 +127,7 @@ func adjust_turret_pitch(delta_degrees: float) -> void:
 	combat.adjust_turret_pitch(delta_degrees)
 
 func fire_turrets() -> void:
+	# Deprecated: compatibility only. Use fire_cannons().
 	fire_cannons()
 
 
@@ -153,6 +158,57 @@ func equip_weapon(
 
 func get_weapon_loadout_save_data() -> Dictionary:
 	return weapon_loadout.to_dictionary() if weapon_loadout != null else {}
+
+
+func get_weapon_runtime_stats(slot_id: StringName) -> WeaponRuntimeStats:
+	var key := String(slot_id)
+	var existing: Variant = weapon_runtime_stats_by_slot.get(key)
+	if existing is WeaponRuntimeStats:
+		return existing as WeaponRuntimeStats
+	var stats := WeaponRuntimeStats.new()
+	weapon_runtime_stats_by_slot[key] = stats
+	return stats
+
+
+func set_weapon_runtime_stats(
+		slot_id: StringName,
+		stats: WeaponRuntimeStats
+) -> void:
+	if slot_id.is_empty():
+		return
+	weapon_runtime_stats_by_slot[String(slot_id)] = stats.duplicate_stats() \
+		if stats != null else WeaponRuntimeStats.new()
+	if is_node_ready():
+		for mount in combat.weapon_mounts:
+			if is_instance_valid(mount) and mount.slot_data != null \
+					and mount.slot_data.slot_id == slot_id:
+				mount.set_runtime_stats(
+					weapon_runtime_stats_by_slot[String(slot_id)]
+				)
+
+
+func get_weapon_runtime_stats_save_data() -> Dictionary:
+	_capture_runtime_stats_from_mounts()
+	var serialized: Dictionary = {}
+	var slot_ids: Array = weapon_runtime_stats_by_slot.keys()
+	slot_ids.sort()
+	for slot_id_value in slot_ids:
+		var stats := weapon_runtime_stats_by_slot[slot_id_value] \
+			as WeaponRuntimeStats
+		if stats != null:
+			serialized[str(slot_id_value)] = stats.to_dictionary()
+	return serialized
+
+
+func set_weapon_runtime_stats_save_data(data: Dictionary) -> void:
+	weapon_runtime_stats_by_slot.clear()
+	for slot_id_value in data:
+		var stats_value: Variant = data[slot_id_value]
+		if stats_value is Dictionary:
+			weapon_runtime_stats_by_slot[str(slot_id_value)] = \
+				WeaponRuntimeStats.from_dictionary(stats_value)
+	if is_node_ready():
+		_apply_runtime_stats_to_mounts(combat.weapon_mounts)
 
 func set_ai_target(target) -> void:
 	targeting.force_target(target)
@@ -214,6 +270,7 @@ func get_fleet_tactical_context() -> FleetMemberContext:
 	return _fleet_tactical_context
 
 func get_turrets() -> Array:
+	# Deprecated: compatibility only. Use get_weapon_mounts().
 	return combat.turrets
 
 
@@ -236,6 +293,10 @@ func get_defense_stats() -> ShipDefenseStats:
 
 func apply_damage(damage: float, penetration_result: int, hit_info: HitInfo) -> float:
 	return health.apply_damage(damage, penetration_result, hit_info)
+
+
+func apply_damage_result(result: DamageResult) -> float:
+	return health.apply_damage_result(result)
 
 
 func apply_flooding(
@@ -284,6 +345,7 @@ func _register_groups() -> void:
 func _setup_components() -> void:
 	if weapon_loadout == null:
 		weapon_loadout = ShipWeaponLoadout.from_ship_data(ship_data)
+	_repair_weapon_loadout()
 	visual_builder.setup(
 		hull_collision,
 		hull_mesh,
@@ -299,6 +361,7 @@ func _setup_components() -> void:
 		self,
 		turret_scene
 	)
+	_apply_runtime_stats_to_mounts(built_mounts)
 	var bounds := get_tree().get_first_node_in_group(&"battlefield_bounds") as BattlefieldBounds
 	var settings := bounds.settings if bounds != null else preload("res://resources/settings/default_battlefield_settings.tres")
 	movement.setup(self, ship_data, engine_output_change_rate, settings.sea_level_m)
@@ -319,6 +382,10 @@ func _setup_components() -> void:
 
 func _rebuild_weapon_mounts() -> void:
 	var previous_target = combat.target
+	var previous_aim_point := combat.aim_point
+	var previous_has_aim_point := combat.has_aim_point
+	_capture_runtime_stats_from_mounts()
+	_repair_weapon_loadout()
 	var built_mounts: Array[WeaponMount] = visual_builder.build(
 		ship_data,
 		weapon_loadout,
@@ -327,9 +394,43 @@ func _rebuild_weapon_mounts() -> void:
 		self,
 		turret_scene
 	)
+	_apply_runtime_stats_to_mounts(built_mounts)
 	combat.setup(self, built_mounts)
 	if is_instance_valid(previous_target):
 		combat.set_target(previous_target)
+	if previous_has_aim_point:
+		combat.set_aim_point(previous_aim_point)
+
+
+func _repair_weapon_loadout() -> void:
+	if weapon_loadout == null:
+		weapon_loadout = ShipWeaponLoadout.from_ship_data(ship_data)
+	var repair_warnings := weapon_loadout.repair_against_ship(
+		ship_data,
+		_weapon_database
+	)
+	for warning in repair_warnings:
+		push_warning("Ship '%s': %s" % [ship_id, warning])
+
+
+func _capture_runtime_stats_from_mounts() -> void:
+	if combat == null:
+		return
+	for mount in combat.weapon_mounts:
+		if not is_instance_valid(mount) or mount.slot_data == null:
+			continue
+		weapon_runtime_stats_by_slot[String(mount.slot_data.slot_id)] = \
+			mount.runtime_stats.duplicate_stats()
+
+
+func _apply_runtime_stats_to_mounts(
+		mounts: Array[WeaponMount]
+) -> void:
+	for mount in mounts:
+		if not is_instance_valid(mount) or mount.slot_data == null:
+			continue
+		var stats := get_weapon_runtime_stats(mount.slot_data.slot_id)
+		mount.set_runtime_stats(stats)
 
 
 func _find_weapon_slot(slot_id: StringName) -> ShipWeaponSlotData:

@@ -61,8 +61,8 @@ slot_size = 1
 allowed_weapon_types = Array[int]([1, 2])
 mount_side = 1
 default_weapon_id = "cruiser_torpedo_launcher"
-traverse_min_degrees = 35.0
-traverse_max_degrees = 145.0
+traverse_min_degrees = -55.0
+traverse_max_degrees = 55.0
 elevation_max_degrees = 0.0
 
 [sub_resource type="Resource" id="Resource_slot_torpedo_starboard"]
@@ -75,8 +75,8 @@ slot_size = 1
 allowed_weapon_types = Array[int]([1, 2])
 mount_side = 2
 default_weapon_id = "cruiser_torpedo_launcher"
-traverse_min_degrees = -145.0
-traverse_max_degrees = -35.0
+traverse_min_degrees = -55.0
+traverse_max_degrees = 55.0
 elevation_max_degrees = 0.0
 
 [resource]
@@ -98,7 +98,7 @@ hull_size = Vector3(23, 9, 190)
 weapon_slots = Array[ExtResource("4_slot")]([SubResource("Resource_slot_front"), SubResource("Resource_slot_center"), SubResource("Resource_slot_rear"), SubResource("Resource_slot_torpedo_port"), SubResource("Resource_slot_torpedo_starboard")])
 turret_count = 3
 turret_spacing = 52.0
-shell_muzzle_velocity = 820.0
+shell_muzzle_velocity = 370.4
 reload_seconds = 8.0
 default_weapon_id = "cruiser_cannon"
 defense_stats = SubResource("Resource_defense")

@@ -3,6 +3,14 @@ class_name TorpedoProjectile
 
 signal hit_resolved(result: DamageResult)
 
+@export_category("Visual Wake")
+@export var wake_enabled := true
+@export_range(1.0, 12.0, 0.1, "or_greater") var wake_lifetime_sec := 5.5
+@export_range(32, 512, 1, "or_greater") var wake_particle_count := 240
+@export var wake_width_m := 5.5
+@export var wake_patch_length_m := 11.0
+@export var wake_color := Color(0.74, 0.95, 1.0, 0.72)
+
 var torpedo_data: TorpedoProjectileData
 var speed_mps := 0.0
 var travelled_distance_m := 0.0
@@ -13,6 +21,9 @@ var water_height_m := 0.0
 var impact_processed := false
 var target_ref: WeakRef
 var previous_position := Vector3.ZERO
+var desired_yaw_radians := 0.0
+@onready var wake_particles: GPUParticles3D = get_node_or_null("WakeParticles") \
+	as GPUParticles3D
 
 
 func _ready() -> void:
@@ -25,6 +36,8 @@ func _ready() -> void:
 	axis_lock_angular_z = true
 	if not body_entered.is_connected(_on_body_entered):
 		body_entered.connect(_on_body_entered)
+	_configure_wake()
+	_stop_wake()
 
 
 func setup_projectile_data(data: ProjectileData) -> void:
@@ -38,49 +51,92 @@ func launch_with_context(context: ProjectileLaunchContext) -> void:
 		push_warning("Torpedo launch requires TorpedoProjectileData and context.")
 		despawn()
 		return
-	target_ref = weakref(context.target) \
-		if context.target != null and is_instance_valid(context.target) else null
-	launch_position = global_position
+	target_ref = null
+	if torpedo_data.guidance_type \
+			== TorpedoProjectileData.GuidanceType.PASSIVE_HOMING \
+			and context.target != null \
+			and is_instance_valid(context.target):
+		target_ref = weakref(context.target)
 	water_height_m = _resolve_water_height()
-	global_position.y = water_height_m - torpedo_data.running_depth_m
-	speed_mps = torpedo_data.launch_speed_mps
+	var launch_transform := global_transform
+	launch_transform.origin.y = water_height_m - torpedo_data.running_depth_m
+	global_transform = launch_transform
+	launch_position = launch_transform.origin
+	speed_mps = torpedo_data.launch_speed_mps * maxf(
+		projectile_runtime_stats.projectile_speed_multiplier,
+		0.0
+	)
 	travelled_distance_m = 0.0
 	age_seconds = 0.0
 	armed = false
 	impact_processed = false
-	previous_position = global_position
-	linear_velocity = -global_transform.basis.z.normalized() * speed_mps
+	previous_position = launch_transform.origin
+	var launch_direction := -launch_transform.basis.z
+	launch_direction.y = 0.0
+	if launch_direction.length_squared() < 0.0001:
+		launch_direction = Vector3.FORWARD
+	launch_direction = launch_direction.normalized()
+	desired_yaw_radians = atan2(-launch_direction.x, -launch_direction.z)
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	_start_wake()
 
 
 func _physics_process(delta: float) -> void:
 	if impact_processed or torpedo_data == null:
 		return
-	if armed and _try_process_ship_proximity(previous_position, global_position):
-		return
+	var segment_start := previous_position
+	var segment_end := global_position
+	var travelled_this_frame := segment_start.distance_to(segment_end)
+	travelled_distance_m += travelled_this_frame
 	age_seconds += delta
 	speed_mps = move_toward(
 		speed_mps,
-		torpedo_data.max_speed_mps,
+		torpedo_data.max_speed_mps * maxf(
+			projectile_runtime_stats.projectile_speed_multiplier,
+			0.0
+		),
 		torpedo_data.acceleration_mps2 * delta
 	)
 	_update_guidance(delta)
-	var direction := -global_transform.basis.z.normalized()
-	linear_velocity = direction * speed_mps
-	var next_position := global_position
-	next_position.y = water_height_m - torpedo_data.running_depth_m
-	global_position = next_position
-	previous_position = global_position
-	travelled_distance_m += speed_mps * delta
 	if not armed and travelled_distance_m >= torpedo_data.arming_distance_m:
 		armed = true
-	var maximum_range := torpedo_data.maximum_range_m
+	if armed and travelled_this_frame > 0.0001 \
+			and _try_process_ship_proximity(segment_start, segment_end):
+		return
+	previous_position = segment_end
+	var maximum_range := torpedo_data.maximum_range_m * maxf(
+		projectile_runtime_stats.range_multiplier,
+		0.0
+	)
 	if age_seconds >= torpedo_data.lifetime_seconds \
 			or (maximum_range > 0.0 and travelled_distance_m >= maximum_range):
 		despawn()
 
 
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if impact_processed or torpedo_data == null:
+		return
+	var next_transform := state.transform
+	next_transform.origin.y = water_height_m - torpedo_data.running_depth_m
+	next_transform.basis = Basis.from_euler(
+		Vector3(0.0, desired_yaw_radians, 0.0)
+	)
+	state.transform = next_transform
+	var direction := -next_transform.basis.z.normalized()
+	state.linear_velocity = direction * speed_mps
+	state.angular_velocity = Vector3.ZERO
+
+
 func _update_guidance(delta: float) -> void:
-	if torpedo_data.max_turn_rate_deg_sec <= 0.0 or target_ref == null:
+	if torpedo_data.guidance_type \
+			!= TorpedoProjectileData.GuidanceType.PASSIVE_HOMING \
+			or torpedo_data.max_turn_rate_deg_sec <= 0.0 \
+			or target_ref == null:
+		return
+	if torpedo_data.seeker_activation_distance_m > 0.0 \
+			and travelled_distance_m \
+				< torpedo_data.seeker_activation_distance_m:
 		return
 	var target := target_ref.get_ref() as Node3D
 	if target == null or not is_instance_valid(target):
@@ -90,10 +146,29 @@ func _update_guidance(delta: float) -> void:
 	direction.y = 0.0
 	if direction.length_squared() < 0.01:
 		return
-	var desired_yaw := atan2(-direction.x, -direction.z)
-	rotation.y = rotate_toward(
-		rotation.y,
-		desired_yaw,
+	var target_distance := direction.length()
+	if torpedo_data.seeker_range_m > 0.0 \
+			and target_distance > torpedo_data.seeker_range_m:
+		return
+	var current_forward := -global_transform.basis.z
+	current_forward.y = 0.0
+	if current_forward.length_squared() < 0.01:
+		return
+	var field_of_view := clampf(
+		torpedo_data.seeker_field_of_view_degrees,
+		0.0,
+		360.0
+	)
+	if field_of_view < 359.9:
+		var target_angle := rad_to_deg(
+			current_forward.normalized().angle_to(direction / target_distance)
+		)
+		if target_angle > field_of_view * 0.5:
+			return
+	var target_yaw := atan2(-direction.x, -direction.z)
+	desired_yaw_radians = rotate_toward(
+		desired_yaw_radians,
+		target_yaw,
 		deg_to_rad(torpedo_data.max_turn_rate_deg_sec) * delta
 	)
 
@@ -153,6 +228,8 @@ func _resolve_ship_hit(target_ship: ShipUnit) -> void:
 		"projectile_id": torpedo_data.id,
 		"projectile_type": "torpedo",
 		"damage": torpedo_data.direct_damage + torpedo_data.explosion_damage,
+		"damage_multiplier": projectile_runtime_stats.damage_multiplier,
+		"flooding_chance_bonus": projectile_runtime_stats.flooding_chance_bonus,
 		"source_ship_instance_id": source_ship_instance_id,
 		"weapon_id": source_weapon_id,
 	}
@@ -241,12 +318,97 @@ func on_spawned_from_pool() -> void:
 	impact_processed = false
 	target_ref = null
 	previous_position = global_position
+	desired_yaw_radians = 0.0
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
 	gravity_scale = 0.0
 	contact_monitor = true
 	max_contacts_reported = 8
+	_stop_wake()
 
 
 func on_recycled_to_pool() -> void:
-	super.on_recycled_to_pool()
+	_stop_wake()
 	torpedo_data = null
+	speed_mps = 0.0
+	travelled_distance_m = 0.0
+	age_seconds = 0.0
+	armed = false
+	launch_position = Vector3.ZERO
+	water_height_m = 0.0
+	impact_processed = false
 	target_ref = null
+	previous_position = Vector3.ZERO
+	desired_yaw_radians = 0.0
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	super.on_recycled_to_pool()
+
+
+func _configure_wake() -> void:
+	if wake_particles == null:
+		return
+	wake_particles.amount = wake_particle_count
+	wake_particles.lifetime = wake_lifetime_sec
+	wake_particles.local_coords = false
+	wake_particles.one_shot = false
+	wake_particles.fixed_fps = 30
+	wake_particles.fract_delta = true
+	var wake_extent := maxf(500.0, 45.0 * wake_lifetime_sec * 1.5)
+	wake_particles.visibility_aabb = AABB(
+		Vector3.ONE * -wake_extent,
+		Vector3.ONE * wake_extent * 2.0
+	)
+
+	var process_material := ParticleProcessMaterial.new()
+	process_material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	process_material.emission_box_extents = Vector3(
+		wake_width_m * 0.28,
+		0.05,
+		wake_patch_length_m * 0.18
+	)
+	process_material.direction = Vector3.ZERO
+	process_material.spread = 0.0
+	process_material.initial_velocity_min = 0.0
+	process_material.initial_velocity_max = 0.0
+	process_material.gravity = Vector3.ZERO
+	process_material.scale_min = 0.55
+	process_material.scale_max = 1.35
+	var fade_gradient := Gradient.new()
+	fade_gradient.set_color(
+		0,
+		Color(wake_color.r, wake_color.g, wake_color.b, wake_color.a)
+	)
+	fade_gradient.set_color(
+		1,
+		Color(wake_color.r, wake_color.g, wake_color.b, 0.0)
+	)
+	var fade_texture := GradientTexture1D.new()
+	fade_texture.gradient = fade_gradient
+	process_material.color_ramp = fade_texture
+	wake_particles.process_material = process_material
+
+	var wake_mesh := PlaneMesh.new()
+	wake_mesh.size = Vector2(wake_width_m, wake_patch_length_m)
+	var wake_material := StandardMaterial3D.new()
+	wake_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	wake_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	wake_material.vertex_color_use_as_albedo = true
+	wake_material.albedo_color = Color.WHITE
+	wake_material.no_depth_test = true
+	wake_mesh.material = wake_material
+	wake_particles.draw_pass_1 = wake_mesh
+
+
+func _start_wake() -> void:
+	if wake_particles == null or not wake_enabled:
+		return
+	wake_particles.restart()
+	wake_particles.emitting = true
+
+
+func _stop_wake() -> void:
+	if wake_particles == null:
+		return
+	wake_particles.emitting = false
+	wake_particles.restart()

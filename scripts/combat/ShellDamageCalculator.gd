@@ -25,7 +25,11 @@ static func resolve(hit_info: HitInfo) -> DamageResult:
 		hit_info.shell_direction,
 		hit_info.hit_normal
 	)
+	result.damage_type = hit_info.damage_type
 	result.penetration_result = penetration_check.result
+	result.hit_outcome = HitOutcome.from_penetration_result(
+		penetration_check.result
+	)
 	result.impact_angle_degrees = penetration_check.impact_angle_degrees
 	result.armor = penetration_check.armor
 	result.effective_armor = penetration_check.effective_armor
@@ -33,15 +37,20 @@ static func resolve(hit_info: HitInfo) -> DamageResult:
 		hit_info.shell_stats,
 		penetration_check.result
 	)
-	if not hit_info.target_ship.has_method(&"apply_damage"):
-		push_warning("Shell damage target does not expose apply_damage().")
+	if not hit_info.target_ship.has_method(&"apply_damage_result") \
+			and not hit_info.target_ship.has_method(&"apply_damage"):
+		push_warning("Shell damage target does not expose a damage entry point.")
 		return result
-	var applied: Variant = hit_info.target_ship.call(
-		&"apply_damage",
-		result.raw_damage,
-		penetration_check.result,
-		hit_info
-	)
+	var applied: Variant
+	if hit_info.target_ship.has_method(&"apply_damage_result"):
+		applied = hit_info.target_ship.call(&"apply_damage_result", result)
+	else:
+		applied = hit_info.target_ship.call(
+			&"apply_damage",
+			result.raw_damage,
+			penetration_check.result,
+			hit_info
+		)
 	result.applied_damage = float(applied) if applied != null else result.raw_damage
 	result.final_damage = result.applied_damage
 	result.resolved = true

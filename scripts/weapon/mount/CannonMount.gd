@@ -51,8 +51,15 @@ func _physics_process(delta: float) -> void:
 	barrel_pivot.rotation.x = deg_to_rad(pitch_degrees)
 
 
-func can_fire_at(world_point: Vector3) -> bool:
-	return super.can_fire_at(world_point) and _is_inside_traverse_arc(world_point)
+func get_fire_readiness_at(
+		world_point: Vector3
+) -> WeaponFireReadiness.State:
+	var readiness := super.get_fire_readiness_at(world_point)
+	if readiness != WeaponFireReadiness.State.READY:
+		return readiness
+	if not _is_aim_aligned(world_point, 3.0):
+		return WeaponFireReadiness.State.NOT_ALIGNED
+	return WeaponFireReadiness.State.READY
 
 
 func adjust_pitch(delta_degrees: float) -> void:
@@ -66,6 +73,17 @@ func adjust_pitch(delta_degrees: float) -> void:
 func fire() -> bool:
 	if muzzle == null or not can_fire_at(aim_point):
 		return false
+	var launched := 0
+	for _index in range(get_salvo_projectile_count()):
+		if _launch_shell():
+			launched += 1
+	if launched <= 0:
+		return false
+	reload_left = get_reload_seconds()
+	return true
+
+
+func _launch_shell() -> bool:
 	var projectile := _spawn_projectile(_get_projectile_scene())
 	if projectile == null:
 		push_warning("Cannon mount could not create its shell projectile.")
@@ -81,6 +99,7 @@ func fire() -> bool:
 	context.initial_transform = muzzle.global_transform
 	context.initial_velocity = get_muzzle_velocity_vector()
 	context.aim_point = aim_point
+	context.runtime_stats = runtime_stats.duplicate_stats()
 	if projectile.has_method(&"launch_with_context"):
 		projectile.call(&"launch_with_context", context)
 	elif projectile.has_method(&"launch"):
@@ -99,7 +118,6 @@ func fire() -> bool:
 		else:
 			projectile.queue_free()
 		return false
-	reload_left = get_reload_seconds()
 	fired.emit(projectile)
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").projectile_fired.emit(projectile)
@@ -109,7 +127,8 @@ func fire() -> bool:
 func get_muzzle_velocity_vector() -> Vector3:
 	if muzzle == null:
 		return Vector3.ZERO
-	return -muzzle.global_transform.basis.z.normalized() * muzzle_velocity
+	return -muzzle.global_transform.basis.z.normalized() \
+		* get_modified_projectile_speed(muzzle_velocity)
 
 
 func get_muzzle_position() -> Vector3:
@@ -123,15 +142,10 @@ func _get_projectile_scene() -> PackedScene:
 
 
 func _turn_toward(world_point: Vector3, delta: float) -> void:
-	var flat_direction := world_point - global_position
-	flat_direction.y = 0.0
-	if flat_direction.length_squared() < 0.01:
-		return
-	var desired_yaw := atan2(-flat_direction.x, -flat_direction.z)
-	global_rotation.y = rotate_toward(
-		global_rotation.y,
-		desired_yaw,
-		deg_to_rad(yaw_speed) * delta
+	update_traverse_toward(
+		world_point,
+		get_modified_traverse_speed(yaw_speed),
+		delta
 	)
 	if automatic_ballistic_pitch:
 		var ballistic_pitch: Variant = _calculate_ballistic_pitch_deg(world_point)
@@ -148,6 +162,10 @@ func _turn_toward(world_point: Vector3, delta: float) -> void:
 			)
 
 
+func _has_projectile_available() -> bool:
+	return _get_projectile_scene() != null
+
+
 func _calculate_ballistic_pitch_deg(world_point: Vector3) -> Variant:
 	if muzzle == null:
 		return null
@@ -160,7 +178,10 @@ func _calculate_ballistic_pitch_deg(world_point: Vector3) -> Variant:
 	if horizontal_distance < 0.01:
 		return null
 	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
-	var speed_squared := muzzle_velocity * muzzle_velocity
+	var effective_muzzle_velocity := get_modified_projectile_speed(
+		muzzle_velocity
+	)
+	var speed_squared := effective_muzzle_velocity * effective_muzzle_velocity
 	var vertical_offset := world_point.y - muzzle_position.y
 	var discriminant := speed_squared * speed_squared - gravity * (
 		gravity * horizontal_distance * horizontal_distance

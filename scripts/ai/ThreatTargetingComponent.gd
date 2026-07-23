@@ -332,6 +332,13 @@ func _calculate_score_breakdown(candidate: ShipUnit) -> Dictionary:
 		"distance_m": context.distance_m,
 		"attackers_on_candidate": context.attackers_on_candidate,
 		"is_emergency_threat": context.is_emergency_threat,
+		"candidate_sustained_dps": context.candidate_sustained_dps,
+		"candidate_ready_salvo_damage": context.candidate_ready_salvo_damage,
+		"candidate_torpedo_salvo_damage": context.candidate_torpedo_salvo_damage,
+		"candidate_cannon_sustained_dps": context.candidate_cannon_sustained_dps,
+		"owner_target_within_weapon_range":
+			context.owner_target_within_weapon_range,
+		"owner_can_attack_now": context.owner_can_attack_now,
 	}
 
 
@@ -356,7 +363,25 @@ func _build_context(candidate: ShipUnit) -> TargetEvaluationContext:
 	context.recent_damage_to_allies_ratio = float(
 		memory_snapshot["damage_to_allies_ratio"]
 	)
-	context.candidate_combat_power = _get_combat_power(candidate)
+	if candidate.combat != null:
+		context.candidate_sustained_dps = \
+			candidate.combat.get_total_sustained_dps()
+		context.candidate_ready_salvo_damage = \
+			candidate.combat.get_total_ready_salvo_damage()
+		context.candidate_torpedo_salvo_damage = \
+			candidate.combat.get_total_salvo_damage(
+				WeaponTypes.Type.TORPEDO
+			)
+		context.candidate_cannon_sustained_dps = \
+			candidate.combat.get_total_sustained_dps(
+				WeaponTypes.Type.CANNON
+			)
+	context.candidate_combat_power = context.candidate_sustained_dps
+	if _owner_ship.combat != null:
+		context.owner_target_within_weapon_range = \
+			_owner_ship.combat.is_target_within_any_weapon_range(candidate)
+		context.owner_can_attack_now = \
+			_owner_ship.combat.can_attack_target_now(candidate)
 	context.candidate_strategic_value = _get_strategic_value(candidate)
 	context.is_current_target = candidate == _current_target
 	context.candidate_is_aiming_at_owner = candidate.get_ai_target() == _owner_ship
@@ -403,8 +428,11 @@ func _score_recent_damage(context: TargetEvaluationContext) -> float:
 
 
 func _score_combat_power(context: TargetEvaluationContext) -> float:
+	var normalized_power := context.candidate_sustained_dps / 100.0 \
+		+ context.candidate_ready_salvo_damage / 2000.0 \
+		+ context.candidate_torpedo_salvo_damage / 4000.0
 	return _role_profile.combat_power_weight \
-		* clampf(context.candidate_combat_power / 100.0, 0.0, 2.0)
+		* clampf(normalized_power, 0.0, 2.0)
 
 
 func _score_strategic_value(context: TargetEvaluationContext) -> float:
@@ -419,8 +447,10 @@ func _score_target_class(context: TargetEvaluationContext) -> float:
 
 func _score_attack_opportunity(context: TargetEvaluationContext) -> float:
 	var score := 0.0
-	if context.distance_m <= context.weapon_range_m:
+	if context.owner_target_within_weapon_range:
 		score += 6.0
+	if context.owner_can_attack_now:
+		score += 3.0
 	if context.candidate_is_aiming_at_owner:
 		score += _role_profile.aiming_at_self_bonus
 	return score
@@ -487,9 +517,7 @@ func _get_health_ratio(ship: ShipUnit) -> float:
 func _get_combat_power(ship: ShipUnit) -> float:
 	if ship == null or ship.combat == null:
 		return 0.0
-	if ship.combat.has_method(&"get_estimated_damage_per_second"):
-		return ship.combat.get_estimated_damage_per_second()
-	return 0.0
+	return ship.combat.get_total_sustained_dps()
 
 
 func _get_strategic_value(ship: ShipUnit) -> float:

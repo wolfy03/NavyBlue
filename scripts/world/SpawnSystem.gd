@@ -45,6 +45,10 @@ func spawn_player_ship(ship_id: String, spawn_info: Dictionary, parent: Node) ->
 		var saved_ship_id := str(player_state.get("ship_id", ""))
 		if saved_ship_id.is_empty() or saved_ship_id == str(info["ship_id"]):
 			info["weapon_loadout"] = player_state.get("weapon_loadout", {})
+			info["weapon_runtime_stats"] = player_state.get(
+				"weapon_runtime_stats",
+				{}
+			)
 	return _spawn_ship_from_info(info, parent)
 
 func spawn_ally_fleet(ally_spawns: Array, parent: Node) -> Array:
@@ -128,7 +132,20 @@ func _spawn_ship_from_info(spawn_info: Dictionary, parent: Node) -> Node:
 		loadout = (loadout_value as ShipWeaponLoadout).duplicate_loadout()
 	elif loadout_value is Dictionary and not loadout_value.is_empty():
 		loadout = ShipWeaponLoadout.from_dictionary(loadout_value)
-	ship.setup(ship_data, team, is_player, color, loadout)
+	var runtime_stats_value: Variant = spawn_info.get(
+		"weapon_runtime_stats",
+		{}
+	)
+	var runtime_stats_data := runtime_stats_value as Dictionary \
+		if runtime_stats_value is Dictionary else {}
+	ship.setup(
+		ship_data,
+		team,
+		is_player,
+		color,
+		loadout,
+		runtime_stats_data
+	)
 	ship.fleet_id = StringName(str(spawn_info.get("fleet_id", "")))
 	spawn_parent.add_child(ship)
 	ship.global_transform = _get_spawn_transform(spawn_info)

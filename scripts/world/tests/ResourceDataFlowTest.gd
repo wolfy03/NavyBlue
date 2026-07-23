@@ -53,10 +53,12 @@ func _test_runtime_flow() -> void:
 	var controller := scene.get_node_or_null("BattleStateController")
 	_check(controller != null and controller.battle_active, "BattleStateController starts with the battle")
 	if player != null:
-		var turrets: Array = player.get_turrets()
-		_check(not turrets.is_empty(), "ShipVisualBuilder creates turrets")
-		if not turrets.is_empty():
-			var turret: Turret = turrets[0]
+		var cannons: Array[WeaponMount] = player.combat.get_weapons_by_type(
+			WeaponTypes.Type.CANNON
+		)
+		_check(not cannons.is_empty(), "ShipVisualBuilder creates cannon mounts")
+		if not cannons.is_empty():
+			var turret := cannons[0] as CannonMount
 			_check(turret.weapon_data is WeaponData, "Turret receives WeaponData")
 			var fired := turret.fire()
 			_check(fired, "Turret fires")

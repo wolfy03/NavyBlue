@@ -60,7 +60,11 @@ func apply_upgrades_to_ship(ship, upgrades: Array) -> void:
 	if ship is Node and ship.has_node("ShipMovement"):
 		ship.get_node("ShipMovement").set(&"ship_data", modified_data)
 	if ship is Node and ship.has_node("ShipCombat"):
-		_apply_weapon_stats_to_turrets(ship.get_node("ShipCombat"), modified_data)
+		_apply_weapon_runtime_stats(
+			ship,
+			ship.get_node("ShipCombat"),
+			modified_data
+		)
 	if ship is Node and ship.has_node("ThreatTargetingComponent"):
 		var targeting: Node = ship.get_node("ThreatTargetingComponent")
 		if targeting.has_method(&"set_role_profile"):
@@ -133,7 +137,11 @@ func _resource_has_property(data: Resource, property_name: StringName) -> bool:
 	return false
 
 
-func _apply_weapon_stats_to_turrets(combat: Node, ship_data: ShipData) -> void:
+func _apply_weapon_runtime_stats(
+		ship,
+		combat: Node,
+		ship_data: ShipData
+) -> void:
 	if combat == null or ship_data == null:
 		return
 	var mounts: Array = combat.get(&"weapon_mounts") \
@@ -141,16 +149,21 @@ func _apply_weapon_stats_to_turrets(combat: Node, ship_data: ShipData) -> void:
 	for mount in mounts:
 		if not is_instance_valid(mount):
 			continue
-		var weapon_data := mount.get(&"weapon_data") as WeaponData
+		var weapon_mount := mount as WeaponMount
+		var weapon_data := weapon_mount.weapon_data
 		if weapon_data == null:
 			continue
-		weapon_data = weapon_data.duplicate(true) as WeaponData
-		weapon_data.reload_seconds = ship_data.reload_seconds
-		if weapon_data.weapon_type == WeaponData.WeaponType.CANNON:
-			weapon_data.muzzle_velocity = ship_data.shell_muzzle_velocity
-			if weapon_data.projectile_data != null:
-				weapon_data.projectile_data = weapon_data.projectile_data.duplicate(true)
-				var shell_data := weapon_data.projectile_data as ShellProjectileData
-				if shell_data != null:
-					shell_data.muzzle_velocity = ship_data.shell_muzzle_velocity
-		mount.set(&"weapon_data", weapon_data)
+		var stats := weapon_mount.runtime_stats.duplicate_stats()
+		stats.reload_multiplier = ship_data.reload_seconds \
+			/ maxf(weapon_data.reload_seconds, 0.01)
+		if weapon_data.weapon_type == WeaponTypes.Type.CANNON:
+			stats.projectile_speed_multiplier = ship_data.shell_muzzle_velocity \
+				/ maxf(weapon_data.muzzle_velocity, 0.01)
+		weapon_mount.set_runtime_stats(stats)
+		if ship != null and ship.has_method(&"set_weapon_runtime_stats") \
+				and weapon_mount.slot_data != null:
+			ship.call(
+				&"set_weapon_runtime_stats",
+				weapon_mount.slot_data.slot_id,
+				stats
+			)

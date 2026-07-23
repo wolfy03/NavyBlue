@@ -29,10 +29,6 @@ ObjectPool="*res://scripts/core/ObjectPool.gd"
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
-[physics]
-
-3d/physics_engine="Jolt Physics"
-
 [input]
 
 camera_move_forward={
@@ -131,6 +127,11 @@ debug_toggle={
 "deadzone": 0.2,
 "events": []
 }
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+jolt_physics_3d/limits/max_linear_velocity=2500.0
 
 [rendering]
 

@@ -5,6 +5,7 @@ var target
 var aim_point := Vector3.ZERO
 var has_aim_point := false
 var weapon_mounts: Array[WeaponMount] = []
+# Deprecated: compatibility only. Do not use in new code.
 var turrets: Array = []
 var owner_ship: ShipUnit
 
@@ -16,7 +17,7 @@ func setup(next_owner_ship: ShipUnit, next_weapon_mounts: Array) -> void:
 		var mount := mount_value as WeaponMount
 		if mount != null:
 			weapon_mounts.append(mount)
-	turrets.assign(get_weapons_by_type(WeaponData.WeaponType.CANNON))
+	turrets.assign(get_weapons_by_type(WeaponTypes.Type.CANNON))
 
 
 func set_target(next_target) -> void:
@@ -40,11 +41,11 @@ func set_aim_point(world_point: Vector3) -> void:
 
 
 func adjust_turret_pitch(delta_degrees: float) -> void:
-	for mount in get_weapons_by_type(WeaponData.WeaponType.CANNON):
+	for mount in get_weapons_by_type(WeaponTypes.Type.CANNON):
 		mount.adjust_pitch(delta_degrees)
 
 
-func fire_weapon_type(weapon_type: WeaponData.WeaponType) -> int:
+func fire_weapon_type(weapon_type: WeaponTypes.Type) -> int:
 	var fired_count := 0
 	for mount in weapon_mounts:
 		if not is_instance_valid(mount) or mount.get_weapon_type() != weapon_type:
@@ -55,11 +56,11 @@ func fire_weapon_type(weapon_type: WeaponData.WeaponType) -> int:
 
 
 func fire_cannons() -> int:
-	return fire_weapon_type(WeaponData.WeaponType.CANNON)
+	return fire_weapon_type(WeaponTypes.Type.CANNON)
 
 
 func fire_torpedoes() -> int:
-	return fire_weapon_type(WeaponData.WeaponType.TORPEDO)
+	return fire_weapon_type(WeaponTypes.Type.TORPEDO)
 
 
 func fire_torpedoes_at(
@@ -70,22 +71,41 @@ func fire_torpedoes_at(
 	if owner_ship == null or target_ship == null or not target_ship.is_alive():
 		return 0
 	var fired_count := 0
-	for mount in get_weapons_by_type(WeaponData.WeaponType.TORPEDO):
+	for mount in get_weapons_by_type(WeaponTypes.Type.TORPEDO):
 		var data := mount.weapon_data.projectile_data as TorpedoProjectileData
 		if data == null:
 			continue
-		var lead_point := calculate_torpedo_lead_point(
-			mount.global_position,
-			target_ship,
+		var torpedo_speed := mount.get_modified_projectile_speed(
 			data.max_speed_mps
 		)
+		var lead_point_value: Variant = calculate_intercept_point(
+			mount.global_position,
+			target_ship.global_position,
+			target_ship.velocity,
+			torpedo_speed
+		)
+		if lead_point_value == null:
+			continue
+		var lead_point := lead_point_value as Vector3
 		lead_point.y = owner_ship.global_position.y
+		var effective_range := mount.get_range_m()
+		if data.maximum_range_m > 0.0:
+			effective_range = minf(
+				effective_range,
+				data.maximum_range_m * maxf(
+					mount.runtime_stats.range_multiplier,
+					0.0
+				)
+			)
+		if effective_range <= 0.0 \
+				or mount.global_position.distance_to(lead_point) > effective_range:
+			continue
 		if bounds != null and not bounds.is_inside_bounds(lead_point):
 			continue
 		if _estimate_torpedo_hit_probability(
 			mount.global_position,
 			target_ship,
-			data.max_speed_mps
+			torpedo_speed
 		) < minimum_hit_probability:
 			continue
 		mount.aim_at(lead_point)
@@ -112,11 +132,12 @@ func update_weapon_mounts(next_owner_ship: Node3D, use_default_aim: bool) -> voi
 
 
 func update_turrets(next_owner_ship: Node3D, use_default_aim: bool) -> void:
+	# Deprecated: compatibility only. Use update_weapon_mounts().
 	update_weapon_mounts(next_owner_ship, use_default_aim)
 
 
 func get_weapons_by_type(
-		weapon_type: WeaponData.WeaponType
+		weapon_type: WeaponTypes.Type
 ) -> Array[WeaponMount]:
 	var result: Array[WeaponMount] = []
 	for mount in weapon_mounts:
@@ -126,7 +147,7 @@ func get_weapons_by_type(
 
 
 func can_fire_weapon_type_at(
-		weapon_type: WeaponData.WeaponType,
+		weapon_type: WeaponTypes.Type,
 		world_point: Vector3
 ) -> bool:
 	for mount in weapon_mounts:
@@ -137,8 +158,67 @@ func can_fire_weapon_type_at(
 	return false
 
 
+func is_target_within_any_weapon_range(target_ship: ShipUnit) -> bool:
+	if not _is_valid_target(target_ship):
+		return false
+	for mount in weapon_mounts:
+		if not is_instance_valid(mount):
+			continue
+		var distance := mount.global_position.distance_to(
+			target_ship.global_position
+		)
+		if distance >= mount.get_minimum_range_m() \
+				and distance <= mount.get_range_m():
+			return true
+	return false
+
+
+func can_attack_target_now(target_ship: ShipUnit) -> bool:
+	if not _is_valid_target(target_ship):
+		return false
+	for mount in weapon_mounts:
+		if is_instance_valid(mount) \
+				and mount.get_fire_readiness_at(target_ship.global_position) \
+					== WeaponFireReadiness.State.READY:
+			return true
+	return false
+
+
+func can_attack_target_with_type(
+		target_ship: ShipUnit,
+		weapon_type: WeaponTypes.Type
+) -> bool:
+	return get_best_fire_readiness_for_type(target_ship, weapon_type) \
+		== WeaponFireReadiness.State.READY
+
+
+func get_best_fire_readiness_for_type(
+		target_ship: ShipUnit,
+		weapon_type: WeaponTypes.Type
+) -> WeaponFireReadiness.State:
+	if not _is_valid_target(target_ship):
+		return WeaponFireReadiness.State.INVALID_TARGET
+	var best_state := WeaponFireReadiness.State.NO_WEAPON_DATA
+	var best_priority := -1
+	var found_mount := false
+	for mount in weapon_mounts:
+		if not is_instance_valid(mount) \
+				or mount.get_weapon_type() != weapon_type:
+			continue
+		found_mount = true
+		var state := mount.get_fire_readiness_at(target_ship.global_position)
+		if state == WeaponFireReadiness.State.READY:
+			return state
+		var priority := _get_readiness_priority(state)
+		if priority > best_priority:
+			best_state = state
+			best_priority = priority
+	return best_state if found_mount \
+		else WeaponFireReadiness.State.NO_WEAPON_DATA
+
+
 func get_primary_weapon_range_m() -> float:
-	var cannons := get_weapons_by_type(WeaponData.WeaponType.CANNON)
+	var cannons := get_weapons_by_type(WeaponTypes.Type.CANNON)
 	if not cannons.is_empty():
 		return cannons[0].get_range_m()
 	return weapon_mounts[0].get_range_m() if not weapon_mounts.is_empty() else 0.0
@@ -163,25 +243,45 @@ func has_usable_weapon() -> bool:
 
 
 func is_target_in_range(target_ship: ShipUnit) -> bool:
-	if owner_ship == null or target_ship == null \
-			or not is_instance_valid(target_ship) or not target_ship.is_alive():
-		return false
-	var range_m := get_max_weapon_range_m()
-	return range_m > 0.0 \
-		and owner_ship.global_position.distance_squared_to(target_ship.global_position) \
-			<= range_m * range_m
+	return is_target_within_any_weapon_range(target_ship)
 
 
 func get_estimated_damage_per_second() -> float:
+	return get_total_sustained_dps()
+
+
+func get_total_salvo_damage(type_filter: Variant = null) -> float:
+	var total_damage := 0.0
+	for mount in weapon_mounts:
+		if not is_instance_valid(mount) \
+				or not _matches_weapon_type(mount, type_filter):
+			continue
+		total_damage += mount.get_salvo_damage()
+	return total_damage
+
+
+func get_total_sustained_dps(type_filter: Variant = null) -> float:
 	var total_damage_per_second := 0.0
 	for mount in weapon_mounts:
-		if is_instance_valid(mount):
-			total_damage_per_second += mount.get_estimated_dps()
+		if not is_instance_valid(mount) \
+				or not _matches_weapon_type(mount, type_filter):
+			continue
+		total_damage_per_second += mount.get_sustained_dps()
 	return total_damage_per_second
 
 
+func get_total_ready_salvo_damage(type_filter: Variant = null) -> float:
+	var total_damage := 0.0
+	for mount in weapon_mounts:
+		if not is_instance_valid(mount) \
+				or not _matches_weapon_type(mount, type_filter):
+			continue
+		total_damage += mount.get_ready_salvo_damage()
+	return total_damage
+
+
 func estimate_available_turret_ratio(target_direction: Vector3) -> float:
-	var cannons := get_weapons_by_type(WeaponData.WeaponType.CANNON)
+	var cannons := get_weapons_by_type(WeaponTypes.Type.CANNON)
 	if cannons.is_empty() or target_direction.length_squared() < 0.01:
 		return 0.0
 	if owner_ship == null:
@@ -202,7 +302,7 @@ func estimate_available_turret_ratio(target_direction: Vector3) -> float:
 
 
 func get_primary_impact_point(gravity: float) -> Variant:
-	var cannons := get_weapons_by_type(WeaponData.WeaponType.CANNON)
+	var cannons := get_weapons_by_type(WeaponTypes.Type.CANNON)
 	if cannons.is_empty():
 		return null
 	var cannon := cannons[0]
@@ -233,9 +333,31 @@ func calculate_torpedo_lead_point(
 ) -> Vector3:
 	if target_ship == null:
 		return launcher_position
-	var distance := launcher_position.distance_to(target_ship.global_position)
-	var travel_time := distance / maxf(torpedo_speed_mps, 0.01)
-	return target_ship.global_position + target_ship.velocity * travel_time
+	var result: Variant = calculate_intercept_point(
+		launcher_position,
+		target_ship.global_position,
+		target_ship.velocity,
+		torpedo_speed_mps
+	)
+	return result as Vector3 if result != null else launcher_position
+
+
+func calculate_intercept_point(
+		origin: Vector3,
+		target_position: Vector3,
+		target_velocity: Vector3,
+		projectile_speed: float
+) -> Variant:
+	if not origin.is_finite() or not target_position.is_finite() \
+			or not target_velocity.is_finite() \
+			or projectile_speed <= 0.01:
+		return null
+	var distance := origin.distance_to(target_position)
+	var travel_time := distance / projectile_speed
+	var intercept_point := target_position + target_velocity * travel_time
+	if not intercept_point.is_finite():
+		return null
+	return intercept_point
 
 
 func _estimate_torpedo_hit_probability(
@@ -253,3 +375,47 @@ func _estimate_torpedo_hit_probability(
 	) * 0.3
 	var time_penalty := clampf(travel_time / 120.0, 0.0, 0.45)
 	return clampf(0.92 - maneuver_penalty - time_penalty, 0.05, 0.95)
+
+
+func _matches_weapon_type(
+		mount: WeaponMount,
+		type_filter: Variant
+) -> bool:
+	return type_filter == null or mount.get_weapon_type() == int(type_filter)
+
+
+func _is_valid_target(target_ship: ShipUnit) -> bool:
+	return owner_ship != null \
+		and target_ship != null \
+		and is_instance_valid(target_ship) \
+		and not target_ship.is_queued_for_deletion() \
+		and target_ship.is_alive()
+
+
+func _get_readiness_priority(
+		state: WeaponFireReadiness.State
+) -> int:
+	match state:
+		WeaponFireReadiness.State.READY:
+			return 100
+		WeaponFireReadiness.State.RELOADING:
+			return 90
+		WeaponFireReadiness.State.NOT_ALIGNED:
+			return 80
+		WeaponFireReadiness.State.FRIENDLY_BLOCKED:
+			return 70
+		WeaponFireReadiness.State.OUTSIDE_TRAVERSE:
+			return 60
+		WeaponFireReadiness.State.INSIDE_MINIMUM_RANGE:
+			return 55
+		WeaponFireReadiness.State.OUT_OF_RANGE:
+			return 50
+		WeaponFireReadiness.State.NO_AIM_POINT:
+			return 40
+		WeaponFireReadiness.State.NO_PROJECTILE:
+			return 30
+		WeaponFireReadiness.State.INVALID_TARGET:
+			return 20
+		WeaponFireReadiness.State.NO_WEAPON_DATA:
+			return 10
+	return 0

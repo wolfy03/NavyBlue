@@ -16,6 +16,7 @@ acceleration_mps2 = 4.0
 running_depth_m = 2.0
 max_turn_rate_deg_sec = 0.0
 maximum_range_m = 6500.0
+guidance_type = 0
 direct_damage = 180.0
 explosion_damage = 80.0
 flooding_chance = 0.4
