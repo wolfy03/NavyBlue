@@ -32,16 +32,37 @@ func _process(_delta: float) -> void:
 		return
 	var data = target_ship.ship_data
 	var turret_pitch := 0.0
+	var target_turret_pitch := 0.0
 	var turrets: Array = target_ship.get_turrets()
 	if not turrets.is_empty():
 		turret_pitch = turrets[0].pitch_degrees
-	status_label.text = "%s | %s\nEngine %d%% | Speed %.1f | Gun %.1f deg" % [
+		target_turret_pitch = turrets[0].get_target_pitch_degrees()
+	var aim_point: Variant = target_ship.get_current_aim_point() if target_ship.has_method(&"get_current_aim_point") else null
+	var impact_point: Variant = target_ship.get_primary_impact_point(_get_gravity())
+	var aim_range_m := _get_horizontal_range_m(target_ship.global_position, aim_point)
+	var impact_range_m := _get_horizontal_range_m(target_ship.global_position, impact_point)
+	var impact_x := float(impact_point.x) if impact_point is Vector3 else 0.0
+	var impact_z := float(impact_point.z) if impact_point is Vector3 else 0.0
+	status_label.text = "%s | %s\nEngine %d%% | Speed %.1f m/s | Gun %.2f -> %.2f deg\nAim range %.2f km | Expected range %.2f km\nExpected impact X %.0f m | Z %.0f m" % [
 		data.display_name,
 		ship_database.class_label(data.ship_class),
 		roundi(target_ship.get_engine_output() * 100.0),
 		target_ship.get_speed_knots_style(),
 		turret_pitch,
+		target_turret_pitch,
+		aim_range_m / 1000.0,
+		impact_range_m / 1000.0,
+		impact_x,
+		impact_z,
 	]
+
+func _get_horizontal_range_m(origin: Vector3, target: Variant) -> float:
+	if not target is Vector3:
+		return 0.0
+	return Vector2(target.x - origin.x, target.z - origin.z).length()
+
+func _get_gravity() -> float:
+	return float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 
 
 func _sync_ship_indicators() -> void:

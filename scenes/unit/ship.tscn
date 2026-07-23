@@ -1,4 +1,4 @@
-[gd_scene load_steps=14 format=3 uid="uid://dtiv3xr6a37g4"]
+[gd_scene load_steps=16 format=3 uid="uid://dtiv3xr6a37g4"]
 
 [ext_resource type="Script" path="res://scripts/unit/ShipUnit.gd" id="1_ship"]
 [ext_resource type="Script" path="res://scripts/unit/ShipMovement.gd" id="2_movement"]
@@ -8,6 +8,8 @@
 [ext_resource type="Script" path="res://scripts/unit/ShipVisualBuilder.gd" id="6_visual_builder"]
 [ext_resource type="Resource" path="res://scripts/combat/default_ship_defense.tres" id="7_defense"]
 [ext_resource type="Script" path="res://scripts/unit/ShipBuoyancy.gd" id="8_buoyancy"]
+[ext_resource type="Script" path="res://scripts/unit/ShipNavigationController.gd" id="9_navigation"]
+[ext_resource type="Script" path="res://scripts/unit/ShipAvoidanceController.gd" id="10_avoidance"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
 size = Vector3(2.2, 0.8, 7)
@@ -57,6 +59,12 @@ surface_material_override/0 = SubResource("StandardMaterial3D_deck")
 
 [node name="ShipMovement" type="Node" parent="."]
 script = ExtResource("2_movement")
+
+[node name="ShipNavigationController" type="Node" parent="."]
+script = ExtResource("9_navigation")
+
+[node name="ShipAvoidanceController" type="Node" parent="."]
+script = ExtResource("10_avoidance")
 
 [node name="ShipCombat" type="Node" parent="."]
 script = ExtResource("3_combat")

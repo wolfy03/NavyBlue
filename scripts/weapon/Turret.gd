@@ -4,10 +4,15 @@ class_name Turret
 @export var projectile_scene: PackedScene = preload("res://scenes/weapon/projectile.tscn")
 @export var shell_stats: ShellStats = preload("res://scripts/combat/default_ap_shell.tres")
 @export var yaw_speed := 7.5
-@export var min_pitch_degrees := 4.0
+@export var min_pitch_degrees := 1.0
 @export var max_pitch_degrees := 55.0
 @export var pitch_degrees := 18.0
+@export var automatic_ballistic_pitch := true
+@export var pitch_speed_deg_sec := 30.0
+@export_range(-10.0, 10.0, 0.5) var manual_pitch_offset_deg := 0.0
 @export var muzzle_velocity := 36.0
+@export var maximum_firing_range_m := 12000.0
+@export_range(1.0, 8.0, 0.05, "or_greater") var ballistic_gravity_multiplier: float = 4.25
 @export var reload_seconds := 1.2
 
 @onready var base_mesh: MeshInstance3D = $Base
@@ -19,28 +24,48 @@ var owner_team: StringName = &"neutral"
 var aim_point := Vector3.ZERO
 var has_aim_point := false
 var reload_left := 0.0
+var target_pitch_degrees := 18.0
 
-func setup(team: StringName, team_color: Color, velocity: float, reload_time: float) -> void:
+func setup(
+		team: StringName,
+		team_color: Color,
+		velocity: float,
+		reload_time: float,
+		maximum_range_m: float = 12000.0
+) -> void:
 	owner_team = team
 	muzzle_velocity = velocity
+	maximum_firing_range_m = maxf(maximum_range_m, 1.0)
 	reload_seconds = reload_time
 	_apply_team_materials(team_color)
 
 func _ready() -> void:
+	target_pitch_degrees = clampf(pitch_degrees, min_pitch_degrees, max_pitch_degrees)
 	barrel_pivot.rotation.x = deg_to_rad(pitch_degrees)
 
 func _physics_process(delta: float) -> void:
 	reload_left = maxf(0.0, reload_left - delta)
 	if has_aim_point:
 		_turn_toward(aim_point, delta)
+	pitch_degrees = move_toward(pitch_degrees, target_pitch_degrees, pitch_speed_deg_sec * delta)
 	barrel_pivot.rotation.x = deg_to_rad(pitch_degrees)
 
 func aim_at(world_point: Vector3) -> void:
 	aim_point = world_point
 	has_aim_point = true
+	_update_target_pitch(world_point)
 
 func adjust_pitch(delta_degrees: float) -> void:
-	pitch_degrees = clampf(pitch_degrees + delta_degrees, min_pitch_degrees, max_pitch_degrees)
+	if automatic_ballistic_pitch:
+		manual_pitch_offset_deg = clampf(manual_pitch_offset_deg + delta_degrees, -10.0, 10.0)
+		if has_aim_point:
+			_update_target_pitch(aim_point)
+	else:
+		target_pitch_degrees = clampf(target_pitch_degrees + delta_degrees, min_pitch_degrees, max_pitch_degrees)
+
+
+func get_target_pitch_degrees() -> float:
+	return target_pitch_degrees
 
 func fire() -> bool:
 	if reload_left > 0.0 or muzzle == null:
@@ -57,6 +82,8 @@ func fire() -> bool:
 		push_warning("Turret projectile scene must instantiate Projectile.")
 		return false
 	projectile.global_transform = muzzle.global_transform
+	projectile.set_firing_body(_get_firing_body())
+	projectile.gravity_scale = ballistic_gravity_multiplier
 	projectile.launch(get_muzzle_velocity_vector(), owner_team, shell_stats)
 	reload_left = reload_seconds
 	if has_node("/root/EventBus"):
@@ -72,11 +99,25 @@ func _get_projectile_parent() -> Node:
 		return current_scene
 	return get_tree().root
 
+
+func _get_firing_body() -> PhysicsBody3D:
+	var candidate: Node = self
+	while candidate != null:
+		if candidate is PhysicsBody3D:
+			return candidate as PhysicsBody3D
+		candidate = candidate.get_parent()
+	return null
+
 func get_muzzle_velocity_vector() -> Vector3:
 	return -muzzle.global_transform.basis.z.normalized() * muzzle_velocity
 
 func get_muzzle_position() -> Vector3:
 	return muzzle.global_position
+
+
+func get_effective_ballistic_gravity_mps2() -> float:
+	var world_gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+	return world_gravity * ballistic_gravity_multiplier
 
 func _turn_toward(world_point: Vector3, delta: float) -> void:
 	var flat_direction := world_point - global_position
@@ -85,6 +126,40 @@ func _turn_toward(world_point: Vector3, delta: float) -> void:
 		return
 	var desired_yaw := atan2(-flat_direction.x, -flat_direction.z)
 	global_rotation.y = lerp_angle(global_rotation.y, desired_yaw, clampf(yaw_speed * delta, 0.0, 1.0))
+	_update_target_pitch(world_point)
+
+
+func _update_target_pitch(world_point: Vector3) -> void:
+	if not automatic_ballistic_pitch:
+		return
+	var ballistic_pitch: Variant = calculate_ballistic_pitch_deg(world_point)
+	if ballistic_pitch == null:
+		return
+	target_pitch_degrees = clampf(
+		float(ballistic_pitch) + manual_pitch_offset_deg,
+		min_pitch_degrees,
+		max_pitch_degrees
+	)
+
+
+func calculate_ballistic_pitch_deg(world_point: Vector3) -> Variant:
+	if muzzle == null:
+		return null
+	var muzzle_position := muzzle.global_position
+	var horizontal_offset := Vector2(world_point.x - muzzle_position.x, world_point.z - muzzle_position.z)
+	var horizontal_distance := horizontal_offset.length()
+	if horizontal_distance < 0.01:
+		return null
+	var gravity := get_effective_ballistic_gravity_mps2()
+	var speed_squared := muzzle_velocity * muzzle_velocity
+	var vertical_offset := world_point.y - muzzle_position.y
+	var discriminant := speed_squared * speed_squared - gravity * (
+		gravity * horizontal_distance * horizontal_distance + 2.0 * vertical_offset * speed_squared
+	)
+	if discriminant < 0.0:
+		return null
+	var tangent := (speed_squared - sqrt(discriminant)) / (gravity * horizontal_distance)
+	return rad_to_deg(atan(tangent))
 
 func _apply_team_materials(team_color: Color) -> void:
 	var base_material := StandardMaterial3D.new()

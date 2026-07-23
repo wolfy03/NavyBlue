@@ -17,6 +17,8 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 @onready var deck_mesh: MeshInstance3D = $DeckMesh
 @onready var turret_mounts: Node3D = $TurretMounts
 @onready var movement: ShipMovement = $ShipMovement
+@onready var navigation: ShipNavigationController = $ShipNavigationController
+@onready var avoidance: ShipAvoidanceController = $ShipAvoidanceController
 @onready var combat: ShipCombat = $ShipCombat
 @onready var health: ShipHealth = $ShipHealth
 @onready var ai: ShipAI = $ShipAI
@@ -44,12 +46,28 @@ func _ready() -> void:
 	_setup_components()
 
 func _physics_process(delta: float) -> void:
+	navigation.update_navigation(delta)
+	avoidance.update_avoidance(delta)
 	if player_controlled:
-		movement.set_input(_player_throttle_axis, _player_rudder_axis)
+		var has_manual_input := absf(_player_throttle_axis) > 0.01 or absf(_player_rudder_axis) > 0.01
+		var requires_boundary_recovery := navigation.battlefield_bounds != null \
+			and not navigation.battlefield_bounds.is_inside_bounds(global_position)
+		if has_manual_input and not requires_boundary_recovery:
+			navigation.clear_navigation_target()
+			movement.set_input(_player_throttle_axis, _player_rudder_axis)
+		elif navigation.has_navigation_target:
+			_apply_navigation_movement()
+		else:
+			movement.set_input(0.0, 0.0)
+			movement.apply_avoidance(avoidance.steering_offset, avoidance.speed_scale)
 		if _player_fire_pressed:
 			combat.fire_all()
 	else:
-		ai.update_ai(self, movement, combat, ship_data, delta)
+		ai.update_ai(self, movement, navigation, combat, ship_data, delta)
+		if navigation.has_navigation_target:
+			_apply_navigation_movement()
+		else:
+			movement.apply_avoidance(avoidance.steering_offset, avoidance.speed_scale)
 
 	movement.apply_movement(delta)
 	buoyancy.apply_buoyancy(self)
@@ -62,6 +80,19 @@ func set_player_commands(throttle_axis: float, rudder_axis: float, fire_pressed:
 
 func set_aim_point(world_point: Vector3) -> void:
 	combat.set_aim_point(world_point)
+
+func get_current_aim_point() -> Variant:
+	return combat.get_aim_point()
+
+func set_navigation_target(world_position: Vector3) -> void:
+	navigation.set_navigation_target(world_position)
+
+func clear_navigation_target() -> void:
+	navigation.clear_navigation_target()
+	movement.stop()
+
+func get_navigation_path() -> PackedVector3Array:
+	return navigation.current_path
 
 func adjust_turret_pitch(delta_degrees: float) -> void:
 	combat.adjust_turret_pitch(delta_degrees)
@@ -120,15 +151,31 @@ func _register_groups() -> void:
 func _setup_components() -> void:
 	visual_builder.setup(hull_collision, hull_mesh, bow_mesh, deck_mesh, turret_mounts)
 	var built_turrets: Array = visual_builder.build(ship_data, team, team_color, turret_scene)
-	movement.setup(self, ship_data, engine_output_change_rate)
+	var bounds := get_tree().get_first_node_in_group(&"battlefield_bounds") as BattlefieldBounds
+	var settings := bounds.settings if bounds != null else preload("res://resources/settings/default_battlefield_settings.tres")
+	movement.setup(self, ship_data, engine_output_change_rate, settings.sea_level_m)
+	navigation.setup(self, settings, bounds)
+	avoidance.setup(self, settings)
+	buoyancy.water_height = settings.sea_level_m
 	combat.setup(built_turrets)
 	health.setup(ship_data.defense_stats if ship_data != null else null)
 	if not health.died.is_connected(_on_health_died):
 		health.died.connect(_on_health_died)
 
 	if not player_controlled:
-		ai.engagement_range = 85.0
+		ai.engagement_range_m = 8000.0
 
 
 func _on_health_died() -> void:
 	sink()
+
+func _apply_navigation_movement() -> void:
+	var waypoint := navigation.get_current_waypoint()
+	var desired_direction := waypoint - global_position
+	desired_direction.y = 0.0
+	movement.set_navigation_command(
+		desired_direction,
+		navigation.get_remaining_distance_m(),
+		avoidance.steering_offset,
+		avoidance.speed_scale
+	)

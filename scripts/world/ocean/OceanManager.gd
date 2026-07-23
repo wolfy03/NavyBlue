@@ -2,7 +2,7 @@
 extends Node3D
 class_name OceanManager
 
-const MAX_WAVE_COUNT := 4
+const MAX_WAVE_COUNT := 0
 const MIN_SAMPLE_DISTANCE := 0.001
 const MIN_INTERSECTION_DENOMINATOR := 0.00001
 const WATER_SURFACE_HIT := preload("res://scripts/world/ocean/WaterSurfaceHit.gd")

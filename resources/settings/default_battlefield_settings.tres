@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="BattlefieldSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/BattlefieldSettings.gd" id="1_settings"]
+
+[resource]
+script = ExtResource("1_settings")
+map_size_m = Vector2(20000, 20000)
+sea_level_m = 0.0
+boundary_margin_m = 250.0
+waypoint_reach_radius_m = 100.0
+destination_reach_radius_m = 140.0
+path_deviation_threshold_m = 320.0
+path_recalculation_interval_sec = 1.0
+distant_path_recalculation_interval_sec = 2.5
+minimum_path_segment_m = 35.0
+path_collinear_tolerance_deg = 4.0
+local_avoidance_radius_m = 500.0
+local_avoidance_prediction_sec = 15.0
+local_avoidance_update_interval_sec = 0.35
+local_avoidance_hold_sec = 2.0
+camera_min_height_m = 80.0
+camera_max_height_m = 7000.0
+camera_default_height_m = 1200.0
+camera_boundary_padding_m = 300.0
+camera_min_move_speed_mps = 450.0
+camera_max_move_speed_mps = 1200.0
+debug_draw_enabled = false
+debug_grid_spacing_m = 1000.0

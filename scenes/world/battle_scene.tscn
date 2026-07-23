@@ -1,14 +1,18 @@
-[gd_scene load_steps=13 format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene load_steps=21 format=3 uid="uid://c346y3o6qqqhd"]
 
 [ext_resource type="Script" uid="uid://cj802p5ep0lqm" path="res://scripts/world/BattleScene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bqtoaaf4qto5a" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
 [ext_resource type="Script" uid="uid://bh2c7cuoxcuhe" path="res://scripts/input/PlayerInputManager.gd" id="3_input"]
 [ext_resource type="Script" uid="uid://c2e85pvejnl3s" path="res://scripts/ui/HUD.gd" id="4_hud"]
-[ext_resource type="Script" uid="uid://bi17kah3p71d7" path="res://scripts/world/ocean/OceanGrid.gd" id="5_grid"]
+[ext_resource type="Script" path="res://scripts/world/NavigationDebugRenderer.gd" id="5_debug"]
 [ext_resource type="Script" uid="uid://cs18h8pjmqmho" path="res://scripts/world/SpawnSystem.gd" id="6_spawn"]
 [ext_resource type="Script" uid="uid://ca3rv7l0a8lcs" path="res://scripts/world/WaveSystem.gd" id="7_wave"]
 [ext_resource type="PackedScene" uid="uid://bnt51f2yrt2sn" path="res://scenes/world/ocean.tscn" id="8_ocean"]
 [ext_resource type="Script" path="res://scripts/world/BattleStateController.gd" id="9_battle_state"]
+[ext_resource type="Resource" path="res://resources/settings/default_battlefield_settings.tres" id="10_settings"]
+[ext_resource type="Script" path="res://scripts/world/BattlefieldBounds.gd" id="11_bounds"]
+[ext_resource type="Script" path="res://scripts/world/effects/CombatEffectPool.gd" id="12_combat_effects"]
+[ext_resource type="Script" path="res://scripts/world/BallisticTrajectoryRenderer.gd" id="13_trajectory"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -18,8 +22,8 @@ ambient_light_color = Color(0.7, 0.78, 0.86, 1)
 ambient_light_energy = 0.8
 
 [sub_resource type="TorusMesh" id="TorusMesh_impact"]
-inner_radius = 1.15
-outer_radius = 1.35
+inner_radius = 28.0
+outer_radius = 36.0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_impact"]
 albedo_color = Color(1, 0.05, 0.03, 0.88)
@@ -27,8 +31,35 @@ emission_enabled = true
 emission = Color(1, 0, 0, 1)
 emission_energy_multiplier = 0.7
 
+[sub_resource type="TorusMesh" id="TorusMesh_aim_target"]
+inner_radius = 46.0
+outer_radius = 52.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_aim_target"]
+albedo_color = Color(1, 0.82, 0.08, 0.85)
+emission_enabled = true
+emission = Color(1, 0.62, 0.02, 1)
+emission_energy_multiplier = 0.75
+transparency = 1
+
+[sub_resource type="TorusMesh" id="TorusMesh_movement"]
+inner_radius = 58.0
+outer_radius = 66.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_movement"]
+albedo_color = Color(0.1, 0.95, 0.45, 0.82)
+emission_enabled = true
+emission = Color(0.05, 0.8, 0.3, 1)
+emission_energy_multiplier = 0.8
+transparency = 1
+
 [node name="BattleScene" type="Node3D" unique_id=2029115520]
 script = ExtResource("1_battle")
+battlefield_settings = ExtResource("10_settings")
+
+[node name="BattlefieldBounds" type="Node3D" parent="."]
+script = ExtResource("11_bounds")
+settings = ExtResource("10_settings")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1393857481]
 environment = SubResource("Environment_battle")
@@ -39,14 +70,16 @@ light_energy = 2.1
 
 [node name="Ocean" parent="." unique_id=1702889926 instance=ExtResource("8_ocean")]
 
-[node name="OceanGrid" type="Node3D" parent="." unique_id=1723233970]
-script = ExtResource("5_grid")
-half_extent = 500.0
-spacing = 10.0
+[node name="NavigationDebugRenderer" type="Node3D" parent="." unique_id=1723233970]
+script = ExtResource("5_debug")
+settings = ExtResource("10_settings")
 
 [node name="Ships" type="Node3D" parent="." unique_id=963148669]
 
 [node name="Projectiles" type="Node3D" parent="."]
+
+[node name="CombatEffectPool" type="Node3D" parent="."]
+script = ExtResource("12_combat_effects")
 
 [node name="SpawnSystem" type="Node" parent="." unique_id=127868479]
 script = ExtResource("6_spawn")
@@ -60,33 +93,50 @@ script = ExtResource("7_wave")
 [node name="SpawnPoints" type="Node3D" parent="." unique_id=127682599]
 
 [node name="Player" type="Marker3D" parent="SpawnPoints" unique_id=297398798]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 10)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1800)
 
 [node name="AllyCruiser" type="Marker3D" parent="SpawnPoints" unique_id=20881575]
-transform = Transform3D(0.965926, 0, -0.258819, 0, 1, 0, 0.258819, 0, 0.965926, -12, 0, 18)
+transform = Transform3D(0.965926, 0, -0.258819, 0, 1, 0, 0.258819, 0, 0.965926, -450, 0, 2050)
 
 [node name="AllyCarrier" type="Marker3D" parent="SpawnPoints" unique_id=2021419729]
-transform = Transform3D(0.984808, 0, 0.173648, 0, 1, 0, -0.173648, 0, 0.984808, 13, 0, 24)
+transform = Transform3D(0.984808, 0, 0.173648, 0, 1, 0, -0.173648, 0, 0.984808, 520, 0, 2250)
 
 [node name="EnemyDestroyer" type="Marker3D" parent="SpawnPoints" unique_id=1149719019]
-transform = Transform3D(-0.996195, 0, 0.0871557, 0, 1, 0, -0.0871557, 0, -0.996195, -20, 0, -42)
+transform = Transform3D(-0.996195, 0, 0.0871557, 0, 1, 0, -0.0871557, 0, -0.996195, -650, 0, -3600)
 
 [node name="EnemyCruiser" type="Marker3D" parent="SpawnPoints" unique_id=763050583]
-transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 4, 0, -55)
+transform = Transform3D(-1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0, -3900)
 
 [node name="EnemyBattleship" type="Marker3D" parent="SpawnPoints" unique_id=41382988]
-transform = Transform3D(-0.984808, 0, -0.173648, 0, 1, 0, 0.173648, 0, -0.984808, 27, 0, -62)
+transform = Transform3D(-0.984808, 0, -0.173648, 0, 1, 0, 0.173648, 0, -0.984808, 800, 0, -4200)
+
+[node name="AimTargetMarker" type="MeshInstance3D" parent="."]
+visible = false
+mesh = SubResource("TorusMesh_aim_target")
+surface_material_override/0 = SubResource("StandardMaterial3D_aim_target")
 
 [node name="ImpactMarker" type="MeshInstance3D" parent="." unique_id=1912462861]
 visible = false
 mesh = SubResource("TorusMesh_impact")
 surface_material_override/0 = SubResource("StandardMaterial3D_impact")
 
+[node name="MovementMarker" type="MeshInstance3D" parent="."]
+visible = false
+mesh = SubResource("TorusMesh_movement")
+surface_material_override/0 = SubResource("StandardMaterial3D_movement")
+
+[node name="BallisticTrajectoryRenderer" type="Node3D" parent="."]
+script = ExtResource("13_trajectory")
+
+[node name="TrajectoryMesh" type="MeshInstance3D" parent="BallisticTrajectoryRenderer"]
+visible = false
+
 [node name="RTSCamera" type="Camera3D" parent="." unique_id=387124255]
-transform = Transform3D(0.742102, -0.477993, 0.470032, 0, 0.701163, 0.713001, -0.670287, -0.529164, 0.520371, 28, 34, 41.035)
-projection = 1
-size = 42.0
-far = 850.0
+transform = Transform3D(1, 0, 0, 0, 0.819152, 0.573576, 0, -0.573576, 0.819152, 0, 1200, 839.93)
+current = true
+fov = 55.0
+near = 1.0
+far = 40000.0
 script = ExtResource("2_camera")
 
 [node name="PlayerInputManager" type="Node" parent="." unique_id=25421482]
@@ -107,8 +157,20 @@ mouse_filter = 2
 [node name="StatusLabel" type="Label" parent="HUD" unique_id=1931921531]
 offset_left = 18.0
 offset_top = 14.0
-offset_right = 420.0
-offset_bottom = 64.0
+offset_right = 620.0
+offset_bottom = 130.0
+mouse_filter = 2
 theme_override_colors/font_color = Color(0.92, 0.97, 1, 1)
 theme_override_font_sizes/font_size = 16
 text = "Initializing..."
+
+[node name="DebugLabel" type="Label" parent="HUD"]
+visible = false
+offset_left = 18.0
+offset_top = 150.0
+offset_right = 420.0
+offset_bottom = 200.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.75, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 15
+text = "Battlefield debug"

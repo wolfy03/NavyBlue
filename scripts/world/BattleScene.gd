@@ -2,6 +2,9 @@ extends Node3D
 class_name BattleScene
 
 const STAGE_DATABASE_SCRIPT := preload("res://scripts/data/StageDatabase.gd")
+const DEFAULT_BATTLEFIELD_SETTINGS := preload("res://resources/settings/default_battlefield_settings.tres")
+
+@export var battlefield_settings: BattlefieldSettings = DEFAULT_BATTLEFIELD_SETTINGS
 
 @onready var ships_root: Node3D = $Ships
 @onready var spawn_points: Node3D = $SpawnPoints
@@ -10,8 +13,11 @@ const STAGE_DATABASE_SCRIPT := preload("res://scripts/data/StageDatabase.gd")
 @onready var projectiles_root: Node3D = $Projectiles
 @onready var camera: Camera3D = $RTSCamera
 @onready var input_manager: Node = $PlayerInputManager
+@onready var aim_target_marker: MeshInstance3D = $AimTargetMarker
 @onready var impact_marker: MeshInstance3D = $ImpactMarker
 @onready var hud: HUD = $HUD
+@onready var battlefield_bounds: BattlefieldBounds = $BattlefieldBounds
+@onready var ballistic_trajectory_renderer: BallisticTrajectoryRenderer = $BallisticTrajectoryRenderer
 
 var player_ship
 var allies: Array = []
@@ -20,14 +26,17 @@ var gravity := 9.8
 var stage_database := STAGE_DATABASE_SCRIPT.new()
 
 func _ready() -> void:
+	BattleInputActions.ensure_defaults()
 	gravity = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
+	battlefield_bounds.settings = battlefield_settings
 	if has_node("/root/GameManager"):
 		get_node("/root/GameManager").enter_battle()
 	var stage_data := _resolve_stage_data()
 	_initialize_battle(stage_data)
-	camera.setup(player_ship)
-	input_manager.setup(player_ship, camera, 0.0)
+	camera.setup(player_ship, battlefield_settings, battlefield_bounds)
+	input_manager.setup(player_ship, camera, battlefield_settings.sea_level_m, battlefield_bounds)
 	hud.setup(player_ship, camera)
+	ballistic_trajectory_renderer.setup(player_ship, battlefield_settings.sea_level_m)
 	if has_node("/root/RunManager"):
 		get_node("/root/RunManager").capture_player_ship(player_ship)
 
@@ -95,8 +104,14 @@ func _nearest_enemy(source):
 	return best
 
 func _update_impact_marker() -> void:
-	if impact_marker == null or player_ship == null:
+	if impact_marker == null or aim_target_marker == null or player_ship == null:
 		return
+	var aim_target: Variant = player_ship.get_current_aim_point()
+	if aim_target is Vector3:
+		aim_target_marker.visible = true
+		aim_target_marker.global_position = aim_target + Vector3.UP * 2.0
+	else:
+		aim_target_marker.visible = false
 	var impact: Variant = player_ship.get_primary_impact_point(gravity)
 	if impact == null:
 		impact_marker.visible = false

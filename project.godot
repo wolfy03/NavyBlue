@@ -29,9 +29,101 @@ ObjectPool="*res://scripts/core/ObjectPool.gd"
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 
+[input]
+
+camera_move_forward={
+"deadzone": 0.2,
+"events": []
+}
+camera_move_backward={
+"deadzone": 0.2,
+"events": []
+}
+camera_move_left={
+"deadzone": 0.2,
+"events": []
+}
+camera_move_right={
+"deadzone": 0.2,
+"events": []
+}
+camera_rotate_left={
+"deadzone": 0.2,
+"events": []
+}
+camera_rotate_right={
+"deadzone": 0.2,
+"events": []
+}
+camera_zoom_in={
+"deadzone": 0.2,
+"events": []
+}
+camera_zoom_out={
+"deadzone": 0.2,
+"events": []
+}
+camera_fast_move={
+"deadzone": 0.2,
+"events": []
+}
+camera_focus_selection={
+"deadzone": 0.2,
+"events": []
+}
+camera_reset={
+"deadzone": 0.2,
+"events": []
+}
+camera_drag={
+"deadzone": 0.2,
+"events": []
+}
+selection_additive={
+"deadzone": 0.2,
+"events": []
+}
+command_cancel={
+"deadzone": 0.2,
+"events": []
+}
+ship_throttle_forward={
+"deadzone": 0.2,
+"events": []
+}
+ship_throttle_reverse={
+"deadzone": 0.2,
+"events": []
+}
+ship_rudder_left={
+"deadzone": 0.2,
+"events": []
+}
+ship_rudder_right={
+"deadzone": 0.2,
+"events": []
+}
+ship_fire={
+"deadzone": 0.2,
+"events": []
+}
+turret_pitch_up={
+"deadzone": 0.2,
+"events": []
+}
+turret_pitch_down={
+"deadzone": 0.2,
+"events": []
+}
+debug_toggle={
+"deadzone": 0.2,
+"events": []
+}
+
 [physics]
 
 3d/physics_engine="Jolt Physics"
+jolt_physics_3d/limits/max_linear_velocity=2000.0
 
 [rendering]
 

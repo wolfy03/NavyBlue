@@ -5,12 +5,12 @@ class_name OceanVisual
 const MAX_WAVE_COUNT := 0
 const DEFAULT_MATERIAL := preload("res://scripts/world/ocean/ocean_material.tres")
 
-@export_range(32.0, 4096.0, 1.0, "or_greater") var mesh_size: float = 420.0:
+@export_range(32.0, 65536.0, 1.0, "or_greater") var mesh_size: float = 48000.0:
 	set(value):
 		mesh_size = maxf(value, 1.0)
 		_rebuild_mesh()
 
-@export_range(1, 256, 1, "or_greater") var mesh_subdivisions: int = 96:
+@export_range(1, 256, 1, "or_greater") var mesh_subdivisions: int = 64:
 	set(value):
 		mesh_subdivisions = maxi(value, 1)
 		_rebuild_mesh()
@@ -32,7 +32,7 @@ const DEFAULT_MATERIAL := preload("res://scripts/world/ocean/ocean_material.tres
 		_resolved_follow_target = null
 		_update_process_state()
 
-@export_range(0.1, 128.0, 0.1, "or_greater") var follow_snap_size: float = 8.0
+@export_range(0.1, 512.0, 0.1, "or_greater") var follow_snap_size: float = 128.0
 @export var ocean_material: ShaderMaterial = DEFAULT_MATERIAL:
 	set(value):
 		ocean_material = value

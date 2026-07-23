@@ -1,0 +1,21 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scripts/world/effects/ShipHitExplosionEffect.gd" id="1_effect"]
+
+[node name="ShipHitExplosionEffect" type="Node3D"]
+script = ExtResource("1_effect")
+
+[node name="FlashParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="SparkParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="SmokeParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="FlashLight" type="OmniLight3D" parent="."]
+visible = false
+
+[node name="LifetimeTimer" type="Timer" parent="."]
+one_shot = true

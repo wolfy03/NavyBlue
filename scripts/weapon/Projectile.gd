@@ -1,7 +1,7 @@
 extends RigidBody3D
 class_name Projectile
 
-const LIFETIME_SECONDS := 12.0
+const LIFETIME_SECONDS := 30.0
 const DEFAULT_AP_SHELL: ShellStats = preload("res://scripts/combat/default_ap_shell.tres")
 
 signal ship_hit_resolved(result: DamageResult)
@@ -10,7 +10,13 @@ signal ship_hit_resolved(result: DamageResult)
 @export var base_water_splash_strength := 1.0
 @export var min_water_splash_strength := 0.35
 @export var max_water_splash_strength := 4.0
-@export var velocity_strength_reference := 45.0
+@export var velocity_strength_reference := 800.0
+@export_category("Visual Trail")
+@export var projectile_trail_enabled: bool = true
+@export_range(0.1, 3.0, 0.05, "or_greater") var trail_lifetime_sec: float = 0.9
+@export_range(0.5, 20.0, 0.25, "or_greater") var trail_width_m: float = 5.0
+@export_range(16, 384, 1, "or_greater") var trail_particle_count: int = 128
+@export var trail_color: Color = Color(1.0, 0.62, 0.2, 0.86)
 @export var shell_stats: ShellStats = DEFAULT_AP_SHELL
 @export_range(0.0, 1.0, 0.01) var deck_normal_threshold: float = 0.65
 @export_range(0.1, 1.0, 0.01) var end_section_ratio: float = 0.68
@@ -24,12 +30,19 @@ var water_impact_processed := false
 var ship_impact_processed: bool = false
 var last_travel_direction: Vector3 = Vector3.FORWARD
 var _despawn_requested := false
+var firing_body: PhysicsBody3D
+
+@onready var trail_particles: GPUParticles3D = $TrailParticles
 
 func _ready() -> void:
 	gravity_scale = 1.0
+	linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	linear_damp = 0.0
 	contact_monitor = true
 	max_contacts_reported = 4
 	continuous_cd = true
+	_configure_trail()
+	_stop_trail()
 	previous_position = global_position
 	previous_position_initialized = true
 
@@ -46,6 +59,14 @@ func launch(start_velocity: Vector3, owner_team: StringName, fired_shell_stats: 
 	_despawn_requested = false
 	previous_position = global_position
 	previous_position_initialized = true
+	_start_trail()
+
+
+func set_firing_body(body: PhysicsBody3D) -> void:
+	_clear_firing_body_exception()
+	firing_body = body
+	if is_instance_valid(firing_body):
+		add_collision_exception_with(firing_body)
 
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
@@ -120,6 +141,7 @@ func _process_ship_contact(
 	)
 	var damage_result: DamageResult = DamageResolver.resolve_hit(hit_info)
 	ship_hit_resolved.emit(damage_result)
+	_emit_ship_impact(hit_position, damage_result.penetration_result == PenetrationResolver.Result.PENETRATED)
 	call_deferred(&"despawn")
 
 func despawn() -> void:
@@ -141,10 +163,81 @@ func on_spawned_from_pool() -> void:
 	ship_impact_processed = false
 	previous_position = global_position
 	previous_position_initialized = true
+	_stop_trail()
 
 func on_recycled_to_pool() -> void:
+	_stop_trail()
+	_clear_firing_body_exception()
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
+
+
+func _clear_firing_body_exception() -> void:
+	if is_instance_valid(firing_body):
+		remove_collision_exception_with(firing_body)
+	firing_body = null
+
+
+func _configure_trail() -> void:
+	if trail_particles == null:
+		return
+	trail_particles.amount = trail_particle_count
+	trail_particles.lifetime = trail_lifetime_sec
+	trail_particles.local_coords = false
+	trail_particles.one_shot = false
+	trail_particles.fixed_fps = 30
+	trail_particles.fract_delta = true
+	var trail_extent := maxf(1200.0, velocity_strength_reference * trail_lifetime_sec * 1.5)
+	trail_particles.visibility_aabb = AABB(
+		Vector3.ONE * -trail_extent,
+		Vector3.ONE * trail_extent * 2.0
+	)
+
+	var particle_material := ParticleProcessMaterial.new()
+	particle_material.direction = Vector3.ZERO
+	particle_material.spread = 0.0
+	particle_material.initial_velocity_min = 0.0
+	particle_material.initial_velocity_max = 0.0
+	particle_material.gravity = Vector3.ZERO
+	particle_material.scale_min = 0.55
+	particle_material.scale_max = 1.0
+	particle_material.color = trail_color
+	var fade_gradient := Gradient.new()
+	fade_gradient.set_color(0, Color(trail_color.r, trail_color.g, trail_color.b, 0.95))
+	fade_gradient.set_color(1, Color(trail_color.r, trail_color.g, trail_color.b, 0.0))
+	var fade_texture := GradientTexture1D.new()
+	fade_texture.gradient = fade_gradient
+	particle_material.color_ramp = fade_texture
+	trail_particles.process_material = particle_material
+
+	var trail_mesh := QuadMesh.new()
+	trail_mesh.size = Vector2(trail_width_m, trail_width_m)
+	var trail_material := StandardMaterial3D.new()
+	trail_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	trail_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	trail_material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	trail_material.vertex_color_use_as_albedo = true
+	trail_material.albedo_color = Color.WHITE
+	trail_material.emission_enabled = true
+	trail_material.emission = trail_color
+	trail_material.emission_energy_multiplier = 3.0
+	trail_mesh.material = trail_material
+	trail_particles.draw_pass_1 = trail_mesh
+
+
+func _start_trail() -> void:
+	if trail_particles == null or not projectile_trail_enabled:
+		return
+	trail_particles.emitting = false
+	trail_particles.restart()
+	trail_particles.emitting = true
+
+
+func _stop_trail() -> void:
+	if trail_particles == null:
+		return
+	trail_particles.restart()
+	trail_particles.emitting = false
 
 
 func _find_ship_damage_target(collider: Object) -> Node3D:
@@ -217,6 +310,13 @@ func _try_process_water_impact(from_position: Vector3, to_position: Vector3) -> 
 func _emit_water_impact(position: Vector3, strength: float) -> void:
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").projectile_water_impact.emit(position, strength)
+
+
+func _emit_ship_impact(position: Vector3, penetrated: bool) -> void:
+	if not has_node("/root/EventBus"):
+		return
+	var visual_strength := clampf(_calculate_water_impact_strength(), 0.65, 4.0)
+	get_node("/root/EventBus").projectile_ship_impact.emit(position, visual_strength, penetrated)
 
 
 func _calculate_water_impact_strength() -> float:

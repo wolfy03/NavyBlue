@@ -21,14 +21,25 @@ func get_ship(id: String) -> Resource:
 	ship.id = id
 	ship.display_name = data["display_name"]
 	ship.ship_class = data["ship_class"]
-	ship.max_forward_speed = data["max_forward_speed"]
-	ship.max_reverse_speed = data["max_reverse_speed"]
+	ship.max_speed_mps = data["max_speed_mps"]
+	ship.cruise_speed_mps = data["cruise_speed_mps"]
+	ship.max_reverse_speed_mps = data["max_reverse_speed_mps"]
+	ship.acceleration_mps2 = data["acceleration_mps2"]
+	ship.deceleration_mps2 = data["deceleration_mps2"]
+	ship.max_turn_rate_deg_sec = data["max_turn_rate_deg_sec"]
+	ship.turn_acceleration_deg_sec2 = data["turn_acceleration_deg_sec2"]
+	ship.arrival_slowdown_distance_m = data["arrival_slowdown_distance_m"]
+	ship.minimum_turning_speed_mps = data["minimum_turning_speed_mps"]
+	ship.navigation_safety_radius_m = data["navigation_safety_radius_m"]
+	ship.max_forward_speed = ship.max_speed_mps
+	ship.max_reverse_speed = ship.max_reverse_speed_mps
 	ship.engine_response = data["engine_response"]
-	ship.turn_rate_degrees = data["turn_rate_degrees"]
+	ship.turn_rate_degrees = ship.max_turn_rate_deg_sec
 	ship.hull_size = data["hull_size"]
 	ship.turret_count = data["turret_count"]
 	ship.turret_spacing = data["turret_spacing"]
 	ship.shell_muzzle_velocity = data["shell_muzzle_velocity"]
+	ship.maximum_firing_range_m = data["maximum_firing_range_m"]
 	ship.reload_seconds = data["reload_seconds"]
 	ship.defense_stats = _create_defense_stats(data)
 	return ship
@@ -63,15 +74,23 @@ func _definitions() -> Dictionary:
 		"dd_bluewind": {
 			"display_name": "Bluewind DD",
 			"ship_class": ShipClass.DESTROYER,
-			"max_forward_speed": 24.0,
-			"max_reverse_speed": 10.0,
+			"max_speed_mps": 46.0,
+			"cruise_speed_mps": 36.0,
+			"max_reverse_speed_mps": 10.0,
+			"acceleration_mps2": 2.4,
+			"deceleration_mps2": 3.4,
+			"max_turn_rate_deg_sec": 8.0,
+			"turn_acceleration_deg_sec2": 3.2,
+			"arrival_slowdown_distance_m": 650.0,
+			"minimum_turning_speed_mps": 8.0,
+			"navigation_safety_radius_m": 90.0,
 			"engine_response": 0.8,
-			"turn_rate_degrees": 42.0,
-			"hull_size": Vector3(1.6, 0.55, 5.4),
+			"hull_size": Vector3(18.0, 7.0, 125.0),
 			"turret_count": 2,
-			"turret_spacing": 1.55,
-			"shell_muzzle_velocity": 34.0,
-			"reload_seconds": 0.85,
+			"turret_spacing": 54.0,
+			"shell_muzzle_velocity": 760.0,
+			"maximum_firing_range_m": 12000.0,
+			"reload_seconds": 4.5,
 			"max_hp": 140.0,
 			"belt_armor": 45.0,
 			"deck_armor": 24.0,
@@ -83,15 +102,23 @@ func _definitions() -> Dictionary:
 		"cl_tidebreaker": {
 			"display_name": "Tidebreaker CL",
 			"ship_class": ShipClass.CRUISER,
-			"max_forward_speed": 19.0,
-			"max_reverse_speed": 8.0,
+			"max_speed_mps": 34.0,
+			"cruise_speed_mps": 27.0,
+			"max_reverse_speed_mps": 8.0,
+			"acceleration_mps2": 1.25,
+			"deceleration_mps2": 1.8,
+			"max_turn_rate_deg_sec": 5.0,
+			"turn_acceleration_deg_sec2": 1.8,
+			"arrival_slowdown_distance_m": 900.0,
+			"minimum_turning_speed_mps": 7.0,
+			"navigation_safety_radius_m": 130.0,
 			"engine_response": 0.62,
-			"turn_rate_degrees": 30.0,
-			"hull_size": Vector3(2.3, 0.75, 7.7),
+			"hull_size": Vector3(23.0, 9.0, 190.0),
 			"turret_count": 3,
-			"turret_spacing": 1.95,
-			"shell_muzzle_velocity": 38.0,
-			"reload_seconds": 1.25,
+			"turret_spacing": 52.0,
+			"shell_muzzle_velocity": 820.0,
+			"maximum_firing_range_m": 15000.0,
+			"reload_seconds": 8.0,
 			"max_hp": 280.0,
 			"belt_armor": 85.0,
 			"deck_armor": 42.0,
@@ -103,15 +130,23 @@ func _definitions() -> Dictionary:
 		"bb_ironwake": {
 			"display_name": "Ironwake BB",
 			"ship_class": ShipClass.BATTLESHIP,
-			"max_forward_speed": 14.0,
-			"max_reverse_speed": 5.2,
+			"max_speed_mps": 27.0,
+			"cruise_speed_mps": 22.0,
+			"max_reverse_speed_mps": 6.0,
+			"acceleration_mps2": 0.7,
+			"deceleration_mps2": 1.0,
+			"max_turn_rate_deg_sec": 3.0,
+			"turn_acceleration_deg_sec2": 0.9,
+			"arrival_slowdown_distance_m": 1300.0,
+			"minimum_turning_speed_mps": 6.0,
+			"navigation_safety_radius_m": 180.0,
 			"engine_response": 0.38,
-			"turn_rate_degrees": 17.0,
-			"hull_size": Vector3(3.4, 1.0, 10.4),
+			"hull_size": Vector3(33.0, 12.0, 270.0),
 			"turret_count": 4,
-			"turret_spacing": 2.25,
-			"shell_muzzle_velocity": 45.0,
-			"reload_seconds": 2.0,
+			"turret_spacing": 62.0,
+			"shell_muzzle_velocity": 790.0,
+			"maximum_firing_range_m": 19000.0,
+			"reload_seconds": 24.0,
 			"max_hp": 650.0,
 			"belt_armor": 180.0,
 			"deck_armor": 95.0,
@@ -123,15 +158,23 @@ func _definitions() -> Dictionary:
 		"cv_seabastion": {
 			"display_name": "Seabastion CV",
 			"ship_class": ShipClass.AIRCRAFT_CARRIER,
-			"max_forward_speed": 13.0,
-			"max_reverse_speed": 4.5,
+			"max_speed_mps": 29.0,
+			"cruise_speed_mps": 23.0,
+			"max_reverse_speed_mps": 5.0,
+			"acceleration_mps2": 0.65,
+			"deceleration_mps2": 0.9,
+			"max_turn_rate_deg_sec": 2.7,
+			"turn_acceleration_deg_sec2": 0.8,
+			"arrival_slowdown_distance_m": 1400.0,
+			"minimum_turning_speed_mps": 6.0,
+			"navigation_safety_radius_m": 200.0,
 			"engine_response": 0.32,
-			"turn_rate_degrees": 14.0,
-			"hull_size": Vector3(4.4, 0.95, 12.0),
+			"hull_size": Vector3(40.0, 15.0, 300.0),
 			"turret_count": 1,
 			"turret_spacing": 1.0,
-			"shell_muzzle_velocity": 28.0,
-			"reload_seconds": 1.7,
+			"shell_muzzle_velocity": 720.0,
+			"maximum_firing_range_m": 10000.0,
+			"reload_seconds": 12.0,
 			"max_hp": 420.0,
 			"belt_armor": 70.0,
 			"deck_armor": 55.0,
