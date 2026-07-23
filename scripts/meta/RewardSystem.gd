@@ -4,6 +4,8 @@ class_name RewardSystem
 const UPGRADE_PATHS := {
 	"hull_reinforcement_1": "res://resources/upgrades/hull_reinforcement_1.tres",
 	"engine_tuning_1": "res://resources/upgrades/engine_tuning_1.tres",
+	"acceleration_tuning_1": "res://resources/upgrades/acceleration_tuning_1.tres",
+	"steering_gear_1": "res://resources/upgrades/steering_gear_1.tres",
 	"reload_drill_1": "res://resources/upgrades/reload_drill_1.tres",
 	"fire_control_1": "res://resources/upgrades/fire_control_1.tres",
 }

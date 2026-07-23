@@ -20,6 +20,8 @@ signal ship_hit_resolved(result: DamageResult)
 @export_range(0.1, 3.0, 0.05) var superstructure_height_ratio: float = 1.05
 
 var team: StringName = &"neutral"
+var source_ship_instance_id := 0
+var source_weapon_id: StringName
 var age := 0.0
 var previous_position := Vector3.ZERO
 var previous_position_initialized := false
@@ -30,6 +32,7 @@ var _despawn_requested := false
 var _default_collision_layer: int = 1
 var _default_collision_mask: int = 1
 var _default_splash_strength: float = 1.0
+var _source_ship_ref: WeakRef
 
 func _ready() -> void:
 	_default_collision_layer = collision_layer
@@ -53,8 +56,20 @@ func setup_projectile_data(data: ProjectileData) -> void:
 	explosion_radius = projectile_data.explosion_radius
 	shell_stats = _make_shell_stats(projectile_data)
 
-func launch(start_velocity: Vector3, owner_team: StringName, fired_shell_stats: ShellStats = null) -> void:
+func launch(
+		start_velocity: Vector3,
+		owner_team: StringName,
+		fired_shell_stats: ShellStats = null,
+		source_ship: Node = null,
+		weapon_id: StringName = StringName()
+) -> void:
 	team = owner_team
+	_source_ship_ref = null
+	source_ship_instance_id = 0
+	source_weapon_id = weapon_id
+	if source_ship != null and is_instance_valid(source_ship):
+		_source_ship_ref = weakref(source_ship)
+		source_ship_instance_id = source_ship.get_instance_id()
 	linear_velocity = start_velocity
 	if start_velocity.length_squared() > 0.000001:
 		last_travel_direction = start_velocity.normalized()
@@ -138,6 +153,11 @@ func _process_ship_contact(
 		direction,
 		_determine_armor_part(target_ship, hit_position, hit_normal)
 	)
+	hit_info.set_damage_source(
+		_get_source_ship(),
+		source_ship_instance_id,
+		source_weapon_id
+	)
 	hit_info.projectile_info = _get_projectile_damage_info()
 	var damage_result: DamageResult = DamageResolver.resolve_hit(hit_info)
 	ship_hit_resolved.emit(damage_result)
@@ -170,6 +190,9 @@ func on_spawned_from_pool() -> void:
 	base_water_splash_strength = _default_splash_strength
 	explosion_radius = 0.0
 	team = &"neutral"
+	_source_ship_ref = null
+	source_ship_instance_id = 0
+	source_weapon_id = StringName()
 	collision_layer = _default_collision_layer
 	collision_mask = _default_collision_mask
 	freeze = false
@@ -187,6 +210,9 @@ func on_recycled_to_pool() -> void:
 	collision_layer = 0
 	collision_mask = 0
 	team = &"neutral"
+	_source_ship_ref = null
+	source_ship_instance_id = 0
+	source_weapon_id = StringName()
 	projectile_data = null
 	hide()
 	set_process(false)
@@ -211,6 +237,8 @@ func _get_projectile_damage_info() -> Dictionary:
 			"projectile_type": String(shell_stats.get_shell_type_name()) if shell_stats != null else "unknown",
 			"damage": shell_stats.base_damage if shell_stats != null else 0.0,
 			"penetration": shell_stats.penetration if shell_stats != null else 0.0,
+			"source_ship_instance_id": source_ship_instance_id,
+			"weapon_id": source_weapon_id,
 		}
 	return {
 		"projectile_id": projectile_data.id,
@@ -218,7 +246,15 @@ func _get_projectile_damage_info() -> Dictionary:
 		"damage": projectile_data.damage,
 		"penetration": projectile_data.penetration,
 		"explosion_radius": projectile_data.explosion_radius,
+		"source_ship_instance_id": source_ship_instance_id,
+		"weapon_id": source_weapon_id,
 	}
+
+
+func _get_source_ship() -> Node:
+	if _source_ship_ref == null:
+		return null
+	return _source_ship_ref.get_ref() as Node
 
 
 func _find_ship_damage_target(collider: Object) -> Node3D:

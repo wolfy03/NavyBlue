@@ -76,6 +76,7 @@ func _initialize_battle(stage_data: StageData) -> void:
 	if player_ship == null:
 		push_warning("BattleScene spawn result did not include a player ship. Battle start aborted.")
 		return
+	_apply_active_run_upgrades()
 	_register_initial_battle_units()
 	if battle_state_controller != null and battle_state_controller.has_method("start_battle"):
 		battle_state_controller.start_battle(stage_data, player_ship, allies, enemies)
@@ -111,6 +112,17 @@ func _register_initial_battle_units() -> void:
 		_register_battle_unit(ship)
 	for ship in enemies:
 		_register_battle_unit(ship)
+
+
+func _apply_active_run_upgrades() -> void:
+	if player_ship == null or not has_node("/root/RunManager"):
+		return
+	var active_run_manager := get_node("/root/RunManager")
+	if active_run_manager.active_upgrades.is_empty():
+		return
+	var upgrade_system := UpgradeSystem.new()
+	upgrade_system.apply_upgrades_to_ship(player_ship, active_run_manager.active_upgrades)
+	upgrade_system.free()
 
 
 func _on_battle_unit_entered(node: Node) -> void:

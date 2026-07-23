@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ShipAIRoleProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ai/ShipAIRoleProfile.gd" id="1_role"]
+
+[resource]
+script = ExtResource("1_role")
+role_id = &"battleship"
+preferred_range_ratio = 0.85
+tactical_clearance_m = 475.0
+distance_weight = 28.0
+recent_damage_to_self_weight = 0.7
+recent_damage_to_allies_weight = 0.2
+combat_power_weight = 18.0
+strategic_value_weight = 12.0
+current_target_bonus = 18.0
+aiming_at_self_bonus = 10.0
+low_health_finish_bonus = 7.0
+focus_fire_penalty_weight = 9.0
+minimum_target_lock_sec = 9.0
+target_switch_ratio = 1.3
+emergency_threat_threshold = 45.0
+target_class_weights = {"aircraft_carrier": 1.4, "battleship": 1.4, "cruiser": 1.15, "destroyer": 0.55}

@@ -61,6 +61,9 @@ func apply_damage(
 		}
 		if hit_info != null:
 			damage_info.merge(hit_info.projectile_info, true)
+			damage_info["attacker_ship"] = hit_info.get_attacker_ship()
+			damage_info["source_ship_instance_id"] = hit_info.source_ship_instance_id
+			damage_info["weapon_id"] = hit_info.source_weapon_id
 		get_node("/root/EventBus").ship_damaged.emit(
 			get_parent(),
 			final_damage,

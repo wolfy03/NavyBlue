@@ -116,12 +116,12 @@ func to_save_data() -> Dictionary:
 		"current_sea_id": current_sea_id,
 		"current_stage_id": current_stage_id,
 		"current_stage_index": current_stage_index,
-		"active_upgrades": active_upgrades,
-		"pending_rewards": pending_rewards,
+		"active_upgrades": active_upgrades.duplicate(),
+		"pending_rewards": pending_rewards.duplicate(true),
 		"difficulty": difficulty,
-		"currency": currency,
-		"player_ship_state": player_ship_state,
-		"world_state": world_state,
+		"currency": currency.duplicate(true),
+		"player_ship_state": player_ship_state.duplicate(true),
+		"world_state": world_state.duplicate(true),
 		"started_at_msec": started_at_msec,
 	}
 

@@ -20,13 +20,23 @@ class_name Turret
 @onready var muzzle: Node3D = $BarrelPivot/Muzzle
 
 var owner_team: StringName = &"neutral"
+var owner_ship_instance_id := 0
 var aim_point := Vector3.ZERO
 var has_aim_point := false
 var reload_left := 0.0
+var _owner_ship_ref: WeakRef
 
-func setup(data: WeaponData, team: StringName = &"neutral", team_color: Color = Color.WHITE) -> void:
+func setup(
+		data: WeaponData,
+		team: StringName = &"neutral",
+		team_color: Color = Color.WHITE,
+		owner_ship: Node = null
+) -> void:
 	weapon_data = data
 	owner_team = team
+	_owner_ship_ref = weakref(owner_ship) if owner_ship != null and is_instance_valid(owner_ship) else null
+	owner_ship_instance_id = owner_ship.get_instance_id() \
+		if owner_ship != null and is_instance_valid(owner_ship) else 0
 	if weapon_data != null:
 		reload_seconds = weapon_data.reload_seconds
 		muzzle_velocity = weapon_data.muzzle_velocity
@@ -73,12 +83,26 @@ func fire() -> bool:
 		return false
 	projectile.global_transform = muzzle.global_transform
 	var active_projectile_data: ProjectileData = weapon_data.projectile_data if weapon_data != null else null
+	var source_ship := get_owner_ship()
+	var weapon_id := StringName(weapon_data.id) if weapon_data != null else StringName()
 	if active_projectile_data != null:
 		projectile.setup_projectile_data(active_projectile_data)
-		projectile.launch(get_muzzle_velocity_vector(), owner_team)
+		projectile.launch(
+			get_muzzle_velocity_vector(),
+			owner_team,
+			null,
+			source_ship,
+			weapon_id
+		)
 	else:
 		projectile.setup_projectile_data(null)
-		projectile.launch(get_muzzle_velocity_vector(), owner_team, shell_stats)
+		projectile.launch(
+			get_muzzle_velocity_vector(),
+			owner_team,
+			shell_stats,
+			source_ship,
+			weapon_id
+		)
 	reload_left = reload_seconds
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").projectile_fired.emit(projectile)
@@ -111,6 +135,12 @@ func get_muzzle_velocity_vector() -> Vector3:
 
 func get_muzzle_position() -> Vector3:
 	return muzzle.global_position
+
+
+func get_owner_ship() -> Node:
+	if _owner_ship_ref == null:
+		return null
+	return _owner_ship_ref.get_ref() as Node
 
 func _turn_toward(world_point: Vector3, delta: float) -> void:
 	var flat_direction := world_point - global_position

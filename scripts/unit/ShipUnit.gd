@@ -21,6 +21,7 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 @onready var avoidance: ShipAvoidanceController = $ShipAvoidanceController
 @onready var combat: ShipCombat = $ShipCombat
 @onready var health: ShipHealth = $ShipHealth
+@onready var targeting: ThreatTargetingComponent = $ThreatTargetingComponent
 @onready var ai: ShipAI = $ShipAI
 @onready var visual_builder: Node = $ShipVisualBuilder
 @onready var buoyancy: Node = $ShipBuoyancy
@@ -47,6 +48,8 @@ func _ready() -> void:
 	_setup_components()
 
 func _physics_process(delta: float) -> void:
+	if not player_controlled:
+		targeting.update_targeting(delta)
 	navigation.update_navigation(delta)
 	avoidance.update_avoidance(delta)
 	if player_controlled:
@@ -99,18 +102,28 @@ func fire_turrets() -> void:
 	combat.fire_all()
 
 func set_ai_target(target) -> void:
-	ai.set_target(target)
-	combat.set_target(target)
+	targeting.force_target(target)
 
 
 func configure_ai_target_provider(provider: Callable) -> void:
 	_ai_candidate_provider = provider
-	if ai != null:
-		ai.set_candidate_provider(provider)
+	if targeting != null:
+		targeting.set_candidate_provider(provider)
 
 
 func get_ai_target():
-	return ai.target
+	return targeting.get_current_target()
+
+
+func get_ai_debug_data() -> Dictionary:
+	var result := targeting.get_debug_snapshot()
+	result.merge(ai.get_debug_data(), true)
+	result["navigation_path_calculation_count"] = navigation.path_calculation_count
+	return result
+
+
+func set_ai_debug_enabled(enabled: bool) -> void:
+	targeting.debug_enabled = enabled
 
 func get_turrets() -> Array:
 	return combat.turrets
@@ -170,7 +183,13 @@ func _register_groups() -> void:
 
 func _setup_components() -> void:
 	visual_builder.setup(hull_collision, hull_mesh, bow_mesh, deck_mesh, turret_mounts)
-	var built_turrets: Array = visual_builder.build(ship_data, team, team_color, turret_scene)
+	var built_turrets: Array = visual_builder.build(
+		ship_data,
+		team,
+		team_color,
+		turret_scene,
+		self
+	)
 	var bounds := get_tree().get_first_node_in_group(&"battlefield_bounds") as BattlefieldBounds
 	var settings := bounds.settings if bounds != null else preload("res://resources/settings/default_battlefield_settings.tres")
 	movement.setup(self, ship_data, engine_output_change_rate, settings.sea_level_m)
@@ -179,17 +198,25 @@ func _setup_components() -> void:
 	buoyancy.water_height = settings.sea_level_m
 	combat.setup(built_turrets)
 	health.setup(ship_data.defense_stats if ship_data != null else null)
+	targeting.setup(self, ship_data.ai_role_profile if ship_data != null else null, _ai_candidate_provider)
 	ai.setup(self, ship_data)
-	ai.set_candidate_provider(_ai_candidate_provider)
+	if not targeting.target_changed.is_connected(_on_target_changed):
+		targeting.target_changed.connect(_on_target_changed)
 	if not health.died.is_connected(_on_health_died):
 		health.died.connect(_on_health_died)
-	if ship_data != null:
-		for compatibility_warning in ship_data.validate_compatibility_fields(ship_id):
-			push_warning(compatibility_warning)
 
 
 func _on_health_died() -> void:
 	sink()
+
+
+func _on_target_changed(_previous_target: Node3D, next_target: Node3D) -> void:
+	ai.set_target(next_target)
+	if next_target == null:
+		combat.clear_target()
+	else:
+		combat.set_target(next_target)
+	navigation.clear_navigation_target()
 
 func _apply_navigation_movement() -> void:
 	var waypoint := navigation.get_current_waypoint()

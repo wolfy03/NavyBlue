@@ -4,11 +4,11 @@
 
 [resource]
 script = ExtResource("1_upgrade")
-id = "engine_tuning_1"
-display_name = "Engine Tuning I"
-description = "Increase maximum speed."
+id = "acceleration_tuning_1"
+display_name = "Acceleration Tuning I"
+description = "Increase forward acceleration."
 upgrade_type = "multiply"
-target_stat = "max_speed_mps"
-value = 1.08
+target_stat = "acceleration_mps2"
+value = 1.10
 is_percent = true
-modifiers = {"max_speed_mps": 1.08}
+modifiers = {"acceleration_mps2": 1.10}

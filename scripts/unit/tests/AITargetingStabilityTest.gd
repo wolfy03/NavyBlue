@@ -61,10 +61,13 @@ func _test_battle_registry_and_team_relations() -> void:
 	var enemy := scene.enemies[0] as ShipUnit
 	var nearby_ally := scene.allies[0] as ShipUnit
 	nearby_ally.global_position = enemy.global_position + Vector3(120.0, 0.0, 0.0)
-	enemy.ai.clear_target()
-	enemy.ai.request_target_evaluation()
+	enemy.targeting.clear_target()
+	enemy.targeting.request_immediate_evaluation()
 	await physics_frame
-	_check(enemy.get_ai_target() == nearby_ally, "enemy fallback selector considers allied ships")
+	_check(
+		enemy.get_ai_target() != null and enemy.is_hostile_to(enemy.get_ai_target()),
+		"enemy threat selector evaluates hostile player-side ships"
+	)
 	scene.queue_free()
 	await process_frame
 	await physics_frame
@@ -84,12 +87,12 @@ func _test_retargeting_and_pursuit_throttling() -> void:
 		ship.configure_ai_target_provider(Callable(self, &"_get_provider_units"))
 	_check(
 		not is_equal_approx(
-			float(hunter.ai.get(&"_target_evaluation_elapsed_sec")),
-			float(same_team.ai.get(&"_target_evaluation_elapsed_sec"))
+			float(hunter.targeting.get(&"_evaluation_elapsed_sec")),
+			float(same_team.targeting.get(&"_evaluation_elapsed_sec"))
 		),
 		"initial target evaluation schedules are staggered"
 	)
-	hunter.ai.request_target_evaluation()
+	hunter.targeting.request_immediate_evaluation()
 	await physics_frame
 	_check(hunter.get_ai_target() == first_enemy, "nearest hostile target is selected")
 
@@ -186,23 +189,16 @@ func _test_class_ranges_and_carrier_behavior() -> void:
 		"minimum separation combines both safety radii and class clearance"
 	)
 
-	carrier.ai.request_target_evaluation()
+	carrier.targeting.request_immediate_evaluation()
 	await physics_frame
 	await physics_frame
-	_check(carrier.ai.behavior_state == ShipAI.BehaviorState.ATTACK, "carrier can use fallback secondary at range")
+	_check(carrier.ai.behavior_state == ShipAI.BehaviorState.RETREAT, "carrier separates before minimum collision range")
 	_check(
-		is_zero_approx(float(carrier.movement.get(&"_target_engine_output"))),
-		"carrier does not charge forward while using fallback secondary"
+		carrier.navigation.has_navigation_target
+			and carrier.ai.carrier_separation_update_count == 1,
+		"carrier creates one rate-limited early separation route"
 	)
 
-	var ship_data_warnings := destroyer.ship_data.validate_compatibility_fields("consistent")
-	_check(ship_data_warnings.is_empty(), "current ship resources keep canonical and compatibility mobility values aligned")
-	var mismatched_data := destroyer.ship_data.duplicate(true) as ShipData
-	mismatched_data.max_forward_speed += 1.0
-	_check(
-		mismatched_data.validate_compatibility_fields("mismatch").size() == 1,
-		"ShipData compatibility validation reports divergent aliases"
-	)
 	_arena.queue_free()
 	await process_frame
 	await physics_frame

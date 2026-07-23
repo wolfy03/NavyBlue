@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3 uid="uid://dtiv3xr6a37g4"]
+[gd_scene load_steps=17 format=3 uid="uid://dtiv3xr6a37g4"]
 
 [ext_resource type="Script" path="res://scripts/unit/ShipUnit.gd" id="1_ship"]
 [ext_resource type="Script" path="res://scripts/unit/ShipMovement.gd" id="2_movement"]
@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://scripts/unit/ShipBuoyancy.gd" id="8_buoyancy"]
 [ext_resource type="Script" path="res://scripts/unit/ShipNavigationController.gd" id="9_navigation"]
 [ext_resource type="Script" path="res://scripts/unit/ShipAvoidanceController.gd" id="10_avoidance"]
+[ext_resource type="Script" path="res://scripts/ai/ThreatTargetingComponent.gd" id="11_targeting"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
 size = Vector3(2.2, 0.8, 7)
@@ -72,6 +73,9 @@ script = ExtResource("3_combat")
 [node name="ShipHealth" type="Node" parent="."]
 script = ExtResource("4_health")
 defense_stats = ExtResource("7_defense")
+
+[node name="ThreatTargetingComponent" type="Node" parent="."]
+script = ExtResource("11_targeting")
 
 [node name="ShipAI" type="Node" parent="."]
 script = ExtResource("5_ai")

@@ -14,6 +14,8 @@ const DEFAULT_SETTINGS := preload("res://resources/settings/default_battlefield_
 @export var path_recalculation_interval_sec := 1.0
 @export var path_deviation_threshold_m := 320.0
 @export var target_change_threshold_m := 100.0
+@export var deviation_recalculation_cooldown_sec := 0.5
+@export var failed_path_retry_interval_sec := 1.5
 
 var target_position := Vector3.ZERO
 var current_path := PackedVector3Array()
@@ -55,8 +57,13 @@ func update_navigation(delta: float) -> void:
 		return
 
 	path_recalculation_elapsed_sec += delta
-	var interval := maxf(path_recalculation_interval_sec, 0.1)
-	if _recalculation_requested or _has_deviated_from_path() or path_recalculation_elapsed_sec >= interval:
+	if _recalculation_requested:
+		_calculate_path()
+	elif path_calculation_failed_state \
+			and path_recalculation_elapsed_sec >= failed_path_retry_interval_sec:
+		_calculate_path()
+	elif _has_deviated_from_path() \
+			and path_recalculation_elapsed_sec >= deviation_recalculation_cooldown_sec:
 		_calculate_path()
 
 func set_navigation_target(target: Vector3) -> void:

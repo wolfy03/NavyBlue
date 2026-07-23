@@ -57,6 +57,22 @@ func has_usable_weapon() -> bool:
 	return false
 
 
+func get_estimated_damage_per_second() -> float:
+	var total_damage_per_second := 0.0
+	for turret in turrets:
+		if not is_instance_valid(turret):
+			continue
+		var data := turret.get(&"weapon_data") as WeaponData
+		if data == null:
+			continue
+		var projectile_damage := data.damage
+		if data.projectile_data != null:
+			projectile_damage = data.projectile_data.damage
+		var runtime_reload_sec := maxf(float(turret.get(&"reload_seconds")), 0.01)
+		total_damage_per_second += maxf(projectile_damage, 0.0) / runtime_reload_sec
+	return total_damage_per_second
+
+
 func get_primary_impact_point(gravity: float) -> Variant:
 	if turrets.is_empty():
 		return null

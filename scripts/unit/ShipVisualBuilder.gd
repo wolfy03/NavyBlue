@@ -23,10 +23,16 @@ func setup(
 	deck_mesh = next_deck_mesh
 	turret_mounts = next_turret_mounts
 
-func build(ship_data: ShipData, team: StringName, team_color: Color, turret_scene: PackedScene) -> Array:
+func build(
+		ship_data: ShipData,
+		team: StringName,
+		team_color: Color,
+		turret_scene: PackedScene,
+		owner_ship: Node = null
+) -> Array:
 	_apply_hull_shape(ship_data)
 	_apply_materials(team_color)
-	return _rebuild_turrets(ship_data, team, team_color, turret_scene)
+	return _rebuild_turrets(ship_data, team, team_color, turret_scene, owner_ship)
 
 func _apply_hull_shape(ship_data: ShipData) -> void:
 	var hull_size: Vector3 = ship_data.hull_size
@@ -65,7 +71,13 @@ func _apply_materials(team_color: Color) -> void:
 	bow_mesh.material_override = hull_mesh.material_override
 	deck_mesh.material_override = _make_material(team_color.darkened(0.25))
 
-func _rebuild_turrets(ship_data: ShipData, team: StringName, team_color: Color, turret_scene: PackedScene) -> Array:
+func _rebuild_turrets(
+		ship_data: ShipData,
+		team: StringName,
+		team_color: Color,
+		turret_scene: PackedScene,
+		owner_ship: Node
+) -> Array:
 	for child in turret_mounts.get_children():
 		child.queue_free()
 
@@ -80,7 +92,7 @@ func _rebuild_turrets(ship_data: ShipData, team: StringName, team_color: Color, 
 		turret.scale = Vector3.ONE * turret_scale
 		turret_mounts.add_child(turret)
 		if turret.has_method("setup"):
-			turret.setup(weapon_data, team, team_color)
+			turret.setup(weapon_data, team, team_color, owner_ship)
 		turrets.append(turret)
 	return turrets
 
