@@ -21,6 +21,7 @@ var current_waypoint_index := 0
 var has_navigation_target := false
 var path_recalculation_elapsed_sec := 0.0
 var path_calculation_failed_state := false
+var path_calculation_count := 0
 
 var owner_ship: CharacterBody3D
 var battlefield_bounds: BattlefieldBounds
@@ -136,9 +137,16 @@ func get_remaining_distance_m() -> float:
 		distance += _flat_distance(current_path[index], current_path[index + 1])
 	return distance
 
+
+func is_path_deviated(threshold_m: float = -1.0) -> bool:
+	var active_threshold_m := path_deviation_threshold_m if threshold_m < 0.0 else threshold_m
+	return _has_deviated_from_path(active_threshold_m)
+
+
 func _calculate_path() -> void:
 	if owner_ship == null or not has_navigation_target:
 		return
+	path_calculation_count += 1
 	path_recalculation_elapsed_sec = -_schedule_offset_sec
 	_recalculation_requested = false
 	var origin := owner_ship.global_position
@@ -200,12 +208,13 @@ func _simplify_path(source: PackedVector3Array, origin: Vector3) -> PackedVector
 	result.append(filtered[-1])
 	return result
 
-func _has_deviated_from_path() -> bool:
+func _has_deviated_from_path(threshold_m: float = -1.0) -> bool:
 	if not has_valid_path() or owner_ship == null:
 		return false
 	var segment_start := _last_path_origin if current_waypoint_index == 0 else current_path[current_waypoint_index - 1]
 	var segment_end := current_path[current_waypoint_index]
-	return _distance_to_segment_xz(owner_ship.global_position, segment_start, segment_end) > path_deviation_threshold_m
+	var active_threshold_m := path_deviation_threshold_m if threshold_m < 0.0 else threshold_m
+	return _distance_to_segment_xz(owner_ship.global_position, segment_start, segment_end) > active_threshold_m
 
 func _request_return_when_outside() -> void:
 	if battlefield_bounds == null or battlefield_bounds.is_inside_bounds(owner_ship.global_position):

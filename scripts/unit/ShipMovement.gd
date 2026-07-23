@@ -47,7 +47,8 @@ func apply_movement(delta: float) -> void:
 		return
 
 	if _uses_direct_engine_command:
-		engine_output = move_toward(engine_output, _target_engine_output, ship_data.engine_response * delta)
+		# Engine output response is presentation/control state. Physical acceleration uses SI fields below.
+		engine_output = move_toward(engine_output, _target_engine_output, engine_output_change_rate * delta)
 	else:
 		engine_output = clampf(engine_output + _throttle_axis * engine_output_change_rate * delta, -1.0, 1.0)
 

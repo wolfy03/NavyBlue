@@ -22,6 +22,7 @@ var allies: Array = []
 var enemies: Array = []
 var gravity := 9.8
 var stage_database := STAGE_DATABASE_SCRIPT.new()
+var _battle_units: Array[Node3D] = []
 
 func _ready() -> void:
 	BattleInputActions.ensure_defaults()
@@ -30,6 +31,7 @@ func _ready() -> void:
 		battlefield_bounds.settings = battlefield_settings
 	if has_node("/root/GameManager"):
 		get_node("/root/GameManager").enter_battle()
+	_connect_unit_registry()
 	var stage_data := _resolve_stage_data()
 	_initialize_battle(stage_data)
 	_setup_camera_and_ui()
@@ -74,7 +76,7 @@ func _initialize_battle(stage_data: StageData) -> void:
 	if player_ship == null:
 		push_warning("BattleScene spawn result did not include a player ship. Battle start aborted.")
 		return
-	_assign_ai_targets()
+	_register_initial_battle_units()
 	if battle_state_controller != null and battle_state_controller.has_method("start_battle"):
 		battle_state_controller.start_battle(stage_data, player_ship, allies, enemies)
 	else:
@@ -87,37 +89,67 @@ func _spawn_test_fleets_legacy() -> Dictionary:
 		ships_root = _get_or_create_node3d("Ships")
 	return spawn_system.spawn_stage(stage_database.get_stage("test_level"), ships_root)
 
-func _assign_ai_targets() -> void:
+func get_battle_units() -> Array:
+	_prune_battle_units()
+	return _battle_units.duplicate()
+
+
+func _connect_unit_registry() -> void:
+	if ships_root == null:
+		ships_root = _get_or_create_node3d("Ships")
+	if not ships_root.child_entered_tree.is_connected(_on_battle_unit_entered):
+		ships_root.child_entered_tree.connect(_on_battle_unit_entered)
+	if not ships_root.child_exiting_tree.is_connected(_on_battle_unit_exiting):
+		ships_root.child_exiting_tree.connect(_on_battle_unit_exiting)
+	for child in ships_root.get_children():
+		_register_battle_unit(child)
+
+
+func _register_initial_battle_units() -> void:
+	_register_battle_unit(player_ship)
 	for ship in allies:
-		if is_instance_valid(ship) and ship.has_method("set_ai_target"):
-			ship.set_ai_target(_nearest_enemy(ship))
+		_register_battle_unit(ship)
 	for ship in enemies:
-		if is_instance_valid(ship) and ship.has_method("set_ai_target"):
-			ship.set_ai_target(player_ship)
+		_register_battle_unit(ship)
 
-func _assign_ai_targets_from_groups() -> void:
-	for ship in get_tree().get_nodes_in_group("ships"):
-		if ship == player_ship:
-			continue
-		if ship.team == &"enemy":
-			ship.set_ai_target(player_ship)
-		else:
-			ship.set_ai_target(_nearest_enemy(ship))
 
-func _nearest_enemy(source):
-	if source == null:
-		return null
-	var best
-	var best_distance := INF
-	for node in get_tree().get_nodes_in_group("ships"):
-		var ship = node
-		if ship == null or ship.team == source.team or ship.team == &"player":
-			continue
-		var distance: float = source.global_position.distance_squared_to(ship.global_position)
-		if distance < best_distance:
-			best_distance = distance
-			best = ship
-	return best
+func _on_battle_unit_entered(node: Node) -> void:
+	_register_battle_unit(node)
+
+
+func _on_battle_unit_exiting(node: Node) -> void:
+	_battle_units.erase(node)
+	allies.erase(node)
+	enemies.erase(node)
+	if player_ship == node:
+		player_ship = null
+
+
+func _register_battle_unit(node) -> void:
+	var ship := node as Node3D
+	if ship == null or not ship is ShipUnit:
+		return
+	if not _battle_units.has(ship):
+		_battle_units.append(ship)
+	match StringName(str(ship.get(&"team"))):
+		FactionRelations.PLAYER:
+			if bool(ship.get(&"player_controlled")):
+				player_ship = ship
+		FactionRelations.ALLY:
+			if not allies.has(ship):
+				allies.append(ship)
+		FactionRelations.ENEMY:
+			if not enemies.has(ship):
+				enemies.append(ship)
+	if ship.has_method(&"configure_ai_target_provider"):
+		ship.call(&"configure_ai_target_provider", Callable(self, &"get_battle_units"))
+
+
+func _prune_battle_units() -> void:
+	for index in range(_battle_units.size() - 1, -1, -1):
+		var ship := _battle_units[index]
+		if not is_instance_valid(ship) or ship.is_queued_for_deletion() or not ship.is_inside_tree():
+			_battle_units.remove_at(index)
 
 func _update_impact_marker() -> void:
 	if impact_marker == null or player_ship == null:

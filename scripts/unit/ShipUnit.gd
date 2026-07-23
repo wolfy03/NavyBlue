@@ -29,6 +29,7 @@ var _player_throttle_axis := 0.0
 var _player_rudder_axis := 0.0
 var _player_fire_pressed := false
 var _is_sinking: bool = false
+var _ai_candidate_provider := Callable()
 
 func setup(data: ShipData, team_name: StringName, is_player: bool, color: Color) -> void:
 	ship_data = data
@@ -101,6 +102,13 @@ func set_ai_target(target) -> void:
 	ai.set_target(target)
 	combat.set_target(target)
 
+
+func configure_ai_target_provider(provider: Callable) -> void:
+	_ai_candidate_provider = provider
+	if ai != null:
+		ai.set_candidate_provider(provider)
+
+
 func get_ai_target():
 	return ai.target
 
@@ -127,6 +135,21 @@ func apply_damage(damage: float, penetration_result: int, hit_info: HitInfo) -> 
 
 func get_current_hp() -> float:
 	return health.current_health
+
+
+func is_alive() -> bool:
+	return not _is_sinking and health != null and health.current_health > 0.0 \
+		and not is_queued_for_deletion()
+
+
+func is_hostile_to(other_ship: Node) -> bool:
+	if other_ship == null:
+		return false
+	return FactionRelations.are_hostile(team, StringName(str(other_ship.get(&"team"))))
+
+
+func get_navigation_safety_radius_m() -> float:
+	return ship_data.navigation_safety_radius_m if ship_data != null else 0.0
 
 
 func sink() -> void:
@@ -156,11 +179,13 @@ func _setup_components() -> void:
 	buoyancy.water_height = settings.sea_level_m
 	combat.setup(built_turrets)
 	health.setup(ship_data.defense_stats if ship_data != null else null)
+	ai.setup(self, ship_data)
+	ai.set_candidate_provider(_ai_candidate_provider)
 	if not health.died.is_connected(_on_health_died):
 		health.died.connect(_on_health_died)
-
-	if not player_controlled:
-		ai.engagement_range_m = 8000.0
+	if ship_data != null:
+		for compatibility_warning in ship_data.validate_compatibility_fields(ship_id):
+			push_warning(compatibility_warning)
 
 
 func _on_health_died() -> void:

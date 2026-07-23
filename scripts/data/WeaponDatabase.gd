@@ -6,6 +6,7 @@ const WEAPON_PATHS := {
 	"destroyer_cannon": "res://resources/weapons/destroyer_cannon.tres",
 	"cruiser_cannon": "res://resources/weapons/cruiser_cannon.tres",
 	"battleship_cannon": "res://resources/weapons/battleship_cannon.tres",
+	"carrier_secondary": "res://resources/weapons/carrier_secondary.tres",
 }
 
 func get_weapon(id: String) -> WeaponData:

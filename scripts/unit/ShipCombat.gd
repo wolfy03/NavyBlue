@@ -12,6 +12,11 @@ func setup(next_turrets: Array) -> void:
 func set_target(next_target) -> void:
 	target = next_target
 
+
+func clear_target() -> void:
+	target = null
+	has_aim_point = false
+
 func set_aim_point(world_point: Vector3) -> void:
 	aim_point = world_point
 	has_aim_point = true
@@ -30,6 +35,27 @@ func update_turrets(owner_ship: Node3D, use_default_aim: bool) -> void:
 	for turret in turrets:
 		if has_aim_point:
 			turret.aim_at(aim_point)
+
+
+func get_primary_weapon_range_m() -> float:
+	if turrets.is_empty():
+		return 0.0
+	return _get_turret_range_m(turrets[0])
+
+
+func get_max_weapon_range_m() -> float:
+	var maximum_range_m := 0.0
+	for turret in turrets:
+		maximum_range_m = maxf(maximum_range_m, _get_turret_range_m(turret))
+	return maximum_range_m
+
+
+func has_usable_weapon() -> bool:
+	for turret in turrets:
+		if _get_turret_range_m(turret) > 0.0:
+			return true
+	return false
+
 
 func get_primary_impact_point(gravity: float) -> Variant:
 	if turrets.is_empty():
@@ -52,3 +78,12 @@ func get_primary_impact_point(gravity: float) -> Variant:
 	var point := origin + velocity_vector * t + Vector3(0.0, -0.5 * gravity * t * t, 0.0)
 	point.y = 0.035
 	return point
+
+
+func _get_turret_range_m(turret) -> float:
+	if not is_instance_valid(turret):
+		return 0.0
+	var data := turret.get(&"weapon_data") as WeaponData
+	if data == null or data.range_meters <= 0.0:
+		return 0.0
+	return data.range_meters

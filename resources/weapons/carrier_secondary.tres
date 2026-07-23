@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="WeaponData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1_weapon"]
+[ext_resource type="Resource" path="res://resources/projectiles/carrier_secondary_shell.tres" id="2_projectile"]
+[ext_resource type="PackedScene" path="res://scenes/weapon/projectile.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = "carrier_secondary"
+display_name = "100 mm Carrier Secondary"
+weapon_type = "secondary_cannon"
+reload_seconds = 8.0
+muzzle_velocity = 720.0
+turret_turn_speed_degrees = 18.0
+max_pitch_degrees = 50.0
+range_meters = 8000.0
+projectile_data = ExtResource("2_projectile")
+projectile_scene = ExtResource("3_scene")
+damage = 22.0

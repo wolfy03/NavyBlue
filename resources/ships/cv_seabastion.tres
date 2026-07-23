@@ -39,5 +39,5 @@ turret_count = 1
 turret_spacing = 1.0
 shell_muzzle_velocity = 760.0
 reload_seconds = 4.5
-default_weapon_id = "destroyer_cannon"
+default_weapon_id = "carrier_secondary"
 defense_stats = SubResource("Resource_defense")
