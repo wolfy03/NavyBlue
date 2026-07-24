@@ -2,6 +2,8 @@ extends Node
 class_name ShipHealth
 
 signal died
+# Deprecated: compatibility only.
+# New systems must use damage_result_applied.
 signal damage_applied(amount: float, penetration_result: int, hit_info: HitInfo)
 signal damage_result_applied(result: DamageResult)
 

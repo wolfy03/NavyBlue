@@ -19,6 +19,8 @@ class_name WeaponData
 @export var minimum_range_meters: float = 0.0
 
 @export_category("Cannon Compatibility")
+# TODO: Before MissileMount, move behavior-specific fields into dedicated
+# CannonMountData, TorpedoMountData, and MissileMountData resources.
 @export var muzzle_velocity: float = 30.0
 @export var turret_turn_speed_degrees: float = 7.5
 @export var max_pitch_degrees: float = 55.0

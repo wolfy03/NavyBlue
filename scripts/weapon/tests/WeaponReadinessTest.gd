@@ -172,8 +172,8 @@ func _test_fire_readiness(player: ShipUnit, allies: Array) -> void:
 	weapon.projectile_scene = null
 	_check(
 		test_mount.get_fire_readiness_at(in_range)
-			== WeaponFireReadiness.State.NO_PROJECTILE,
-		"missing projectile reports NO_PROJECTILE"
+			== WeaponFireReadiness.State.NO_PROJECTILE_SCENE,
+		"missing projectile reports NO_PROJECTILE_SCENE"
 	)
 	test_mount.queue_free()
 
@@ -196,6 +196,22 @@ func _test_fire_readiness(player: ShipUnit, allies: Array) -> void:
 		"misaligned torpedo mount reports NOT_ALIGNED"
 	)
 	port.rotation.y = port.base_local_yaw_radians
+	var saved_muzzles := port.muzzles.duplicate()
+	port.muzzles.clear()
+	_check(
+		port.get_fire_readiness_at(port_target)
+			== WeaponFireReadiness.State.NO_MUZZLE,
+		"empty torpedo muzzle list reports NO_MUZZLE"
+	)
+	port.muzzles.assign(saved_muzzles)
+	var saved_projectile_bonus := port.runtime_stats.projectile_count_bonus
+	port.runtime_stats.projectile_count_bonus = -port.tube_count
+	_check(
+		port.get_fire_readiness_at(port_target)
+			== WeaponFireReadiness.State.NO_AMMUNITION,
+		"zero effective salvo reports NO_AMMUNITION"
+	)
+	port.runtime_stats.projectile_count_bonus = saved_projectile_bonus
 	_check(
 		port.get_fire_readiness_at(port_target)
 			== WeaponFireReadiness.State.READY,
@@ -266,11 +282,51 @@ func _test_damage_evaluation(player: ShipUnit) -> void:
 		cannon.get_projectile_damage() / cannon.get_reload_seconds(),
 		"single-shot cannon sustained DPS remains unchanged"
 	)
+	_test_cannon_bonus_spread(cannon, player)
 	_check_approx(
 		player.combat.get_total_salvo_damage(WeaponTypes.Type.TORPEDO),
 		expected_salvo * float(torpedoes.size()),
 		"ShipCombat totals torpedo salvo damage"
 	)
+
+
+func _test_cannon_bonus_spread(
+		cannon: CannonMount,
+		player: ShipUnit
+) -> void:
+	var original_bonus := cannon.runtime_stats.projectile_count_bonus
+	var original_reload := cannon.reload_left
+	var captured_projectiles: Array[Node] = []
+	var capture := func(projectile: Node) -> void:
+		captured_projectiles.append(projectile)
+	cannon.fired.connect(capture)
+	cannon.runtime_stats.projectile_count_bonus = 1
+	cannon.reload_left = 0.0
+	var forward_target := player.to_global(Vector3(0.0, 0.0, -1000.0))
+	cannon.aim_at(forward_target)
+	cannon.rotation.y = cannon.base_local_yaw_radians
+	var fired := cannon.fire()
+	_check(fired, "bonus projectile cannon salvo fires")
+	_check(
+		captured_projectiles.size() == 2,
+		"projectile count bonus launches a two-shell salvo"
+	)
+	if captured_projectiles.size() == 2:
+		var first := captured_projectiles[0] as RigidBody3D
+		var second := captured_projectiles[1] as RigidBody3D
+		_check(
+			not first.linear_velocity.normalized().is_equal_approx(
+				second.linear_velocity.normalized()
+			),
+			"bonus cannon shells use distinct horizontal spread directions"
+		)
+	for projectile in captured_projectiles:
+		if projectile != null and projectile.has_method(&"despawn"):
+			projectile.call(&"despawn")
+	if cannon.fired.is_connected(capture):
+		cannon.fired.disconnect(capture)
+	cannon.runtime_stats.projectile_count_bonus = original_bonus
+	cannon.reload_left = original_reload
 
 
 func _test_combat_range_and_readiness(

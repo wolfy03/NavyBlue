@@ -39,7 +39,9 @@ func get_fire_readiness_at(
 	if readiness != WeaponFireReadiness.State.READY:
 		return readiness
 	if muzzles.is_empty():
-		return WeaponFireReadiness.State.NO_PROJECTILE
+		return WeaponFireReadiness.State.NO_MUZZLE
+	if get_salvo_projectile_count() <= 0:
+		return WeaponFireReadiness.State.NO_AMMUNITION
 	if not _is_aim_aligned(
 		world_point,
 		maxf(spread_angle_degrees, 4.0)
@@ -109,6 +111,10 @@ func get_projectile_damage() -> float:
 		maxf(data.direct_damage, 0.0)
 		+ maxf(data.explosion_damage, 0.0)
 	) * maxf(runtime_stats.damage_multiplier, 0.0)
+
+
+func get_distance_to_world_point(world_point: Vector3) -> float:
+	return CombatGeometryXZ.distance_xz(global_position, world_point)
 
 
 func get_salvo_projectile_count() -> int:

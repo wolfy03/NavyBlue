@@ -7,6 +7,7 @@ $tests = @(
 	"res://scripts/weapon/tests/CombatVisibilityTest.gd",
 	"res://scripts/weapon/tests/ExtendedWeaponSystemTest.gd",
 	"res://scripts/weapon/tests/WeaponReadinessTest.gd",
+	"res://scripts/weapon/tests/TorpedoXZCollisionTest.gd",
 	"res://scripts/weapon/tests/WeaponRuntimeLoadoutTest.gd",
 	"res://scripts/world/tests/ResourceDataFlowTest.gd",
 	"res://scripts/combat/tests/CombatDamageTest.gd",

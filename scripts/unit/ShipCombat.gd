@@ -98,7 +98,10 @@ func fire_torpedoes_at(
 				)
 			)
 		if effective_range <= 0.0 \
-				or mount.global_position.distance_to(lead_point) > effective_range:
+				or CombatGeometryXZ.distance_xz(
+					mount.global_position,
+					lead_point
+				) > effective_range:
 			continue
 		if bounds != null and not bounds.is_inside_bounds(lead_point):
 			continue
@@ -164,7 +167,7 @@ func is_target_within_any_weapon_range(target_ship: ShipUnit) -> bool:
 	for mount in weapon_mounts:
 		if not is_instance_valid(mount):
 			continue
-		var distance := mount.global_position.distance_to(
+		var distance := mount.get_distance_to_world_point(
 			target_ship.global_position
 		)
 		if distance >= mount.get_minimum_range_m() \
@@ -352,9 +355,11 @@ func calculate_intercept_point(
 			or not target_velocity.is_finite() \
 			or projectile_speed <= 0.01:
 		return null
-	var distance := origin.distance_to(target_position)
+	var distance := CombatGeometryXZ.distance_xz(origin, target_position)
 	var travel_time := distance / projectile_speed
-	var intercept_point := target_position + target_velocity * travel_time
+	var horizontal_velocity := target_velocity
+	horizontal_velocity.y = 0.0
+	var intercept_point := target_position + horizontal_velocity * travel_time
 	if not intercept_point.is_finite():
 		return null
 	return intercept_point
@@ -365,9 +370,14 @@ func _estimate_torpedo_hit_probability(
 		target_ship: ShipUnit,
 		torpedo_speed_mps: float
 ) -> float:
-	var distance := launcher_position.distance_to(target_ship.global_position)
+	var distance := CombatGeometryXZ.distance_xz(
+		launcher_position,
+		target_ship.global_position
+	)
 	var travel_time := distance / maxf(torpedo_speed_mps, 0.01)
-	var target_speed := target_ship.velocity.length()
+	var target_velocity := target_ship.velocity
+	target_velocity.y = 0.0
+	var target_speed := target_velocity.length()
 	var maneuver_penalty := clampf(
 		target_speed / maxf(torpedo_speed_mps, 0.01),
 		0.0,
@@ -412,6 +422,12 @@ func _get_readiness_priority(
 			return 50
 		WeaponFireReadiness.State.NO_AIM_POINT:
 			return 40
+		WeaponFireReadiness.State.NO_AMMUNITION:
+			return 35
+		WeaponFireReadiness.State.NO_MUZZLE:
+			return 32
+		WeaponFireReadiness.State.NO_PROJECTILE_SCENE:
+			return 30
 		WeaponFireReadiness.State.NO_PROJECTILE:
 			return 30
 		WeaponFireReadiness.State.INVALID_TARGET:

@@ -87,7 +87,10 @@ func _physics_process(delta: float) -> void:
 		return
 	var segment_start := previous_position
 	var segment_end := global_position
-	var travelled_this_frame := segment_start.distance_to(segment_end)
+	var travelled_this_frame := CombatGeometryXZ.distance_xz(
+		segment_start,
+		segment_end
+	)
 	travelled_distance_m += travelled_this_frame
 	age_seconds += delta
 	speed_mps = move_toward(
@@ -101,7 +104,7 @@ func _physics_process(delta: float) -> void:
 	_update_guidance(delta)
 	if not armed and travelled_distance_m >= torpedo_data.arming_distance_m:
 		armed = true
-	if armed and travelled_this_frame > 0.0001 \
+	if travelled_this_frame > 0.0001 \
 			and _try_process_ship_proximity(segment_start, segment_end):
 		return
 	previous_position = segment_end
@@ -174,13 +177,22 @@ func _update_guidance(delta: float) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
-	if impact_processed or not armed:
+	if impact_processed or torpedo_data == null:
 		return
 	var target_ship := _find_ship_target(body)
-	if target_ship == null or target_ship == get_source_ship() \
-			or not FactionRelations.are_hostile(source_team, target_ship.team):
+	if not _is_valid_torpedo_target(target_ship):
 		return
-	_resolve_ship_hit(target_ship)
+	var intersection := _get_segment_hull_intersection_xz(
+		target_ship,
+		previous_position,
+		global_position
+	)
+	var hit_position := intersection.position \
+		if intersection.hit else global_position
+	if CombatGeometryXZ.distance_xz(launch_position, hit_position) \
+			< torpedo_data.arming_distance_m:
+		return
+	_resolve_ship_hit(target_ship, hit_position)
 
 
 func _try_process_ship_proximity(
@@ -189,38 +201,55 @@ func _try_process_ship_proximity(
 ) -> bool:
 	if get_tree() == null:
 		return false
+	var nearest_target: ShipUnit
+	var nearest_result: SegmentIntersectionResult
 	for value in get_tree().get_nodes_in_group(&"ships"):
 		var target_ship := value as ShipUnit
-		if target_ship == null or target_ship == get_source_ship() \
-				or not target_ship.is_alive() \
-				or not FactionRelations.are_hostile(source_team, target_ship.team):
+		if not _is_valid_torpedo_target(target_ship):
 			continue
-		var start_local := target_ship.to_local(segment_start)
-		var end_local := target_ship.to_local(segment_end)
-		var half_extents := target_ship.ship_data.hull_size * 0.5
-		if _segment_intersects_hull_xz(
-			start_local,
-			end_local,
-			Vector2(half_extents.x + 0.75, half_extents.z + 0.75)
-		):
-			_resolve_ship_hit(target_ship)
-			return true
-	return false
+		var intersection := _get_segment_hull_intersection_xz(
+			target_ship,
+			segment_start,
+			segment_end
+		)
+		if not intersection.hit:
+			continue
+		var hit_distance := CombatGeometryXZ.distance_xz(
+			launch_position,
+			intersection.position
+		)
+		if hit_distance < torpedo_data.arming_distance_m:
+			continue
+		if nearest_result == null \
+				or intersection.ratio < nearest_result.ratio:
+			nearest_target = target_ship
+			nearest_result = intersection
+	if nearest_target == null or nearest_result == null:
+		return false
+	_resolve_ship_hit(nearest_target, nearest_result.position)
+	return true
 
 
-func _resolve_ship_hit(target_ship: ShipUnit) -> void:
+func _resolve_ship_hit(
+		target_ship: ShipUnit,
+		hit_position: Vector3
+) -> void:
 	if impact_processed or target_ship == null:
 		return
 	impact_processed = true
-	var direction := -global_transform.basis.z.normalized()
+	var direction := -global_transform.basis.z
+	direction.y = 0.0
+	if direction.length_squared() < 0.0001:
+		direction = Vector3.FORWARD
+	direction = direction.normalized()
 	var hit_info := HitInfo.new()
 	hit_info.target_ship = target_ship
-	hit_info.hit_position = global_position
+	hit_info.hit_position = hit_position
 	hit_info.hit_normal = -direction
 	hit_info.shell_direction = direction
 	hit_info.armor_part = _determine_underwater_section(
 		target_ship,
-		global_position
+		hit_position
 	)
 	hit_info.damage_type = DamageType.Type.TORPEDO
 	hit_info.torpedo_data = torpedo_data
@@ -245,36 +274,31 @@ func _resolve_ship_hit(target_ship: ShipUnit) -> void:
 	call_deferred(&"despawn")
 
 
-func _segment_intersects_hull_xz(
-		start_local: Vector3,
-		end_local: Vector3,
-		half_extents: Vector2
-) -> bool:
-	var start := Vector2(start_local.x, start_local.z)
-	var end := Vector2(end_local.x, end_local.z)
-	var direction := end - start
-	var minimum_time := 0.0
-	var maximum_time := 1.0
-	for axis in 2:
-		var start_axis := start[axis]
-		var direction_axis := direction[axis]
-		var extent := half_extents[axis]
-		if absf(direction_axis) <= 0.00001:
-			if start_axis < -extent or start_axis > extent:
-				return false
-			continue
-		var inverse_direction := 1.0 / direction_axis
-		var first_time := (-extent - start_axis) * inverse_direction
-		var second_time := (extent - start_axis) * inverse_direction
-		if first_time > second_time:
-			var swap := first_time
-			first_time = second_time
-			second_time = swap
-		minimum_time = maxf(minimum_time, first_time)
-		maximum_time = minf(maximum_time, second_time)
-		if minimum_time > maximum_time:
-			return false
-	return true
+func _get_segment_hull_intersection_xz(
+		target_ship: ShipUnit,
+		segment_start: Vector3,
+		segment_end: Vector3
+) -> SegmentIntersectionResult:
+	if target_ship == null or target_ship.ship_data == null:
+		return SegmentIntersectionResult.new()
+	var half_extents := target_ship.ship_data.hull_size * 0.5
+	return CombatGeometryXZ.segment_rectangle_intersection_xz(
+		segment_start,
+		segment_end,
+		target_ship.global_transform,
+		Vector2(half_extents.x + 0.75, half_extents.z + 0.75)
+	)
+
+
+func _is_valid_torpedo_target(target_ship: ShipUnit) -> bool:
+	return target_ship != null \
+		and is_instance_valid(target_ship) \
+		and target_ship != get_source_ship() \
+		and not target_ship.is_queued_for_deletion() \
+		and target_ship.is_inside_tree() \
+		and target_ship.is_alive() \
+		and target_ship.ship_data != null \
+		and FactionRelations.are_hostile(source_team, target_ship.team)
 
 
 func _find_ship_target(body: Node) -> ShipUnit:

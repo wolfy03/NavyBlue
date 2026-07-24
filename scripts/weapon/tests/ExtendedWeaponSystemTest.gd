@@ -254,6 +254,7 @@ func _test_battle_weapon_flow() -> void:
 		collision_data.direct_damage = 10.0
 		collision_data.explosion_damage = 0.0
 		collision_data.flooding_chance = 0.0
+		collision_data.arming_distance_m = 0.0
 		var collision_scene := load(
 			"res://scenes/weapon/projectiles/torpedo_projectile.tscn"
 		) as PackedScene

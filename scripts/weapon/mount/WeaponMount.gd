@@ -80,7 +80,7 @@ func get_fire_readiness_at(
 		return WeaponFireReadiness.State.INVALID_TARGET
 	if reload_left > 0.0:
 		return WeaponFireReadiness.State.RELOADING
-	var distance := global_position.distance_to(world_point)
+	var distance := get_distance_to_world_point(world_point)
 	if distance < get_minimum_range_m():
 		return WeaponFireReadiness.State.INSIDE_MINIMUM_RANGE
 	if distance > get_range_m():
@@ -88,7 +88,7 @@ func get_fire_readiness_at(
 	if not _is_inside_traverse_arc(world_point):
 		return WeaponFireReadiness.State.OUTSIDE_TRAVERSE
 	if not _has_projectile_available():
-		return WeaponFireReadiness.State.NO_PROJECTILE
+		return WeaponFireReadiness.State.NO_PROJECTILE_SCENE
 	return WeaponFireReadiness.State.READY
 
 
@@ -132,6 +132,10 @@ func get_range_m() -> float:
 
 func get_minimum_range_m() -> float:
 	return weapon_data.minimum_range_meters if weapon_data != null else 0.0
+
+
+func get_distance_to_world_point(world_point: Vector3) -> float:
+	return global_position.distance_to(world_point)
 
 
 func get_reload_seconds() -> float:

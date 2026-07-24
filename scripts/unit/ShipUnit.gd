@@ -376,8 +376,8 @@ func _setup_components() -> void:
 		targeting.target_changed.connect(_on_target_changed)
 	if not health.died.is_connected(_on_health_died):
 		health.died.connect(_on_health_died)
-	if not health.damage_applied.is_connected(_on_damage_applied):
-		health.damage_applied.connect(_on_damage_applied)
+	if not health.damage_result_applied.is_connected(_on_damage_result_applied):
+		health.damage_result_applied.connect(_on_damage_result_applied)
 
 
 func _rebuild_weapon_mounts() -> void:
@@ -446,20 +446,21 @@ func _on_health_died() -> void:
 	sink()
 
 
-func _on_damage_applied(
-		amount: float,
-		_penetration_result: int,
-		hit_info: HitInfo
-) -> void:
+func _on_damage_result_applied(result: DamageResult) -> void:
+	if result == null:
+		return
+	var hit_info := result.hit_info
 	if hit_info == null:
 		return
 	var attacker := hit_info.get_attacker_ship()
 	if attacker == null:
 		return
 	var damage_info := hit_info.projectile_info.duplicate(true)
+	damage_info["damage_type"] = result.damage_type
+	damage_info["hit_outcome"] = result.hit_outcome
 	damage_info["source_ship_instance_id"] = hit_info.source_ship_instance_id
 	damage_info["weapon_id"] = hit_info.source_weapon_id
-	targeting.register_damage_source(attacker, amount, damage_info)
+	targeting.register_damage_source(attacker, result.applied_damage, damage_info)
 
 
 func _on_target_changed(_previous_target: Node3D, next_target: Node3D) -> void:

@@ -12,6 +12,7 @@ class_name CannonMount
 @export_range(-10.0, 10.0, 0.5) var manual_pitch_offset_deg := 0.0
 @export var muzzle_velocity := 36.0
 @export var reload_seconds := 1.2
+@export var bonus_projectile_spread_degrees := 0.6
 
 @onready var base_mesh: MeshInstance3D = $Base
 @onready var barrel_pivot: Node3D = $BarrelPivot
@@ -57,6 +58,8 @@ func get_fire_readiness_at(
 	var readiness := super.get_fire_readiness_at(world_point)
 	if readiness != WeaponFireReadiness.State.READY:
 		return readiness
+	if muzzle == null:
+		return WeaponFireReadiness.State.NO_MUZZLE
 	if not _is_aim_aligned(world_point, 3.0):
 		return WeaponFireReadiness.State.NOT_ALIGNED
 	return WeaponFireReadiness.State.READY
@@ -74,8 +77,9 @@ func fire() -> bool:
 	if muzzle == null or not can_fire_at(aim_point):
 		return false
 	var launched := 0
-	for _index in range(get_salvo_projectile_count()):
-		if _launch_shell():
+	var launch_count := get_salvo_projectile_count()
+	for index in range(launch_count):
+		if _launch_shell(index, launch_count):
 			launched += 1
 	if launched <= 0:
 		return false
@@ -83,12 +87,21 @@ func fire() -> bool:
 	return true
 
 
-func _launch_shell() -> bool:
+func _launch_shell(index: int, total_count: int) -> bool:
 	var projectile := _spawn_projectile(_get_projectile_scene())
 	if projectile == null:
 		push_warning("Cannon mount could not create its shell projectile.")
 		return false
-	projectile.global_transform = muzzle.global_transform
+	var center_offset := float(total_count - 1) * 0.5
+	var spread_offset_degrees := (
+		float(index) - center_offset
+	) * bonus_projectile_spread_degrees
+	var launch_transform := muzzle.global_transform
+	launch_transform.basis = launch_transform.basis.rotated(
+		Vector3.UP,
+		deg_to_rad(spread_offset_degrees)
+	)
+	projectile.global_transform = launch_transform
 	var active_data := weapon_data.projectile_data if weapon_data != null else null
 	if projectile.has_method(&"setup_projectile_data"):
 		projectile.call(&"setup_projectile_data", active_data)
@@ -96,8 +109,9 @@ func _launch_shell() -> bool:
 	context.source_ship = owner_ship
 	context.source_team = owner_team
 	context.source_weapon_id = StringName(weapon_data.id) if weapon_data != null else StringName()
-	context.initial_transform = muzzle.global_transform
-	context.initial_velocity = get_muzzle_velocity_vector()
+	context.initial_transform = launch_transform
+	context.initial_velocity = -launch_transform.basis.z.normalized() \
+		* get_modified_projectile_speed(muzzle_velocity)
 	context.aim_point = aim_point
 	context.runtime_stats = runtime_stats.duplicate_stats()
 	if projectile.has_method(&"launch_with_context"):

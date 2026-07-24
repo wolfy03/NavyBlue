@@ -38,8 +38,11 @@ func setup(ship: Node3D, camera: Camera3D) -> void:
 	battle_camera = camera
 	_team_color = _resolve_team_color()
 	_health = target_ship.get_node_or_null("ShipHealth") as ShipHealth
-	if _health != null and not _health.damage_applied.is_connected(_on_damage_applied):
-		_health.damage_applied.connect(_on_damage_applied)
+	if _health != null \
+			and not _health.damage_result_applied.is_connected(
+				_on_damage_result_applied
+			):
+		_health.damage_result_applied.connect(_on_damage_result_applied)
 	_apply_status_style()
 	_refresh_health()
 	set_process(true)
@@ -176,7 +179,7 @@ func _apply_status_style() -> void:
 	status_label.text = _status_text
 
 
-func _on_damage_applied(_amount: float, _penetration_result: int, _hit_info: HitInfo) -> void:
+func _on_damage_result_applied(_result: DamageResult) -> void:
 	_refresh_health()
 
 
