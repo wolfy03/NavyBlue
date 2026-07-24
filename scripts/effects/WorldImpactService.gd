@@ -15,6 +15,7 @@ static func emit_impact(
 		parent = caller.get_tree().root
 	var particles := GPUParticles3D.new()
 	particles.name = "ShellWorldImpact"
+	particles.add_to_group(&"world_impact_effect")
 	particles.one_shot = true
 	particles.amount = 10
 	particles.lifetime = 0.35

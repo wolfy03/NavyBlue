@@ -25,7 +25,8 @@ foreach ($test in $tests) {
 }
 
 $sceneTests = @(
-	"res://scenes/debug/shell_projectile_integration_test.tscn"
+	"res://scenes/debug/shell_projectile_integration_test.tscn",
+	"res://scenes/debug/shell_projectile_physics_frame_test.tscn"
 )
 
 foreach ($scene in $sceneTests) {

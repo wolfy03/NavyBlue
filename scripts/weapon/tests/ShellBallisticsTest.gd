@@ -39,6 +39,32 @@ class DamageTarget:
 		return health.apply_damage_result(result)
 
 
+class NullOceanManager:
+	extends Node
+
+	func get_surface_intersection_hit(
+			_segment_start: Vector3,
+			_segment_end: Vector3
+	) -> Variant:
+		return null
+
+	func get_water_height(_position: Vector3) -> float:
+		return 0.0
+
+
+class InvalidOceanManager:
+	extends Node
+
+	func get_surface_intersection_hit(
+			_segment_start: Vector3,
+			_segment_end: Vector3
+	) -> Variant:
+		return "invalid"
+
+	func get_water_height(_position: Vector3) -> float:
+		return 0.0
+
+
 func _initialize() -> void:
 	call_deferred(&"_run")
 
@@ -46,6 +72,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_test_ballistic_ranges()
 	_test_time_to_height()
+	_test_ocean_manager_fallbacks()
 	await _test_direct_water_impact_and_pool()
 	await _test_first_collision_selection()
 	await _test_collision_exclusion_and_obstacle_policy()
@@ -148,6 +175,35 @@ func _test_time_to_height() -> void:
 	)
 
 
+func _test_ocean_manager_fallbacks() -> void:
+	var null_manager := NullOceanManager.new()
+	var null_hit := WaterIntersection.find_surface_intersection(
+		null,
+		Vector3(0.0, 1.0, 0.0),
+		Vector3(0.0, -1.0, 1.0),
+		0.0,
+		null_manager
+	)
+	_check(
+		null_hit != null and null_hit.hit,
+		"null OceanManager results fall back to the water plane"
+	)
+	var invalid_manager := InvalidOceanManager.new()
+	var invalid_hit := WaterIntersection.find_surface_intersection(
+		null,
+		Vector3(0.0, 1.0, 0.0),
+		Vector3(0.0, -1.0, 1.0),
+		0.0,
+		invalid_manager
+	)
+	_check(
+		invalid_hit != null and invalid_hit.hit,
+		"invalid OceanManager result types fall back safely"
+	)
+	null_manager.free()
+	invalid_manager.free()
+
+
 func _test_direct_water_impact_and_pool() -> void:
 	var projectile_scene := load(
 		"res://scenes/weapon/projectiles/shell_projectile.tscn"
@@ -214,6 +270,10 @@ func _test_direct_water_impact_and_pool() -> void:
 		"direct shell lands within one percent at 3 km"
 	)
 	_check(water_events[0] == 1, "normal shell emits exactly one water impact")
+	_check(
+		bool(shell.get(&"_despawn_requested")),
+		"pooled shell stays despawn-locked while recycled"
+	)
 	var reused := pool.spawn(projectile_scene, parent) as ShellProjectile
 	_check(reused == shell, "ObjectPool reuses the direct shell")
 	if reused != null:
@@ -274,19 +334,21 @@ func _test_first_collision_selection() -> void:
 
 
 func _test_collision_exclusion_and_obstacle_policy() -> void:
-	var source := StaticBody3D.new()
+	var source := DamageTarget.new()
 	root.add_child(source)
 	source.global_position = Vector3(0.0, 2.0, -8.0)
-	_add_box_collision(source, Vector3(2.0, 2.0, 2.0))
+	source.configure()
 	var source_sensor := Area3D.new()
 	source_sensor.position = Vector3(0.0, 0.0, 3.0)
 	source.add_child(source_sensor)
 	_add_box_collision(source_sensor, Vector3(2.0, 2.0, 2.0))
 
+	var ignored_sensor_parent := Node3D.new()
+	ignored_sensor_parent.add_to_group(&"projectile_sensor")
+	root.add_child(ignored_sensor_parent)
+	ignored_sensor_parent.global_position = Vector3(0.0, 2.0, 0.0)
 	var ignored_sensor := Area3D.new()
-	ignored_sensor.add_to_group(&"projectile_sensor")
-	root.add_child(ignored_sensor)
-	ignored_sensor.global_position = Vector3(0.0, 2.0, -2.0)
+	ignored_sensor_parent.add_child(ignored_sensor)
 	_add_box_collision(ignored_sensor, Vector3(2.0, 2.0, 1.0))
 
 	var obstacle := StaticBody3D.new()
@@ -298,6 +360,9 @@ func _test_collision_exclusion_and_obstacle_policy() -> void:
 	root.add_child(target)
 	target.global_position = Vector3(0.0, 2.0, 7.0)
 	target.configure()
+	var water_area := Area3D.new()
+	water_area.add_to_group(&"shell_ignored")
+	root.add_child(water_area)
 
 	var shell := Projectile.new()
 	root.add_child(shell)
@@ -308,6 +373,26 @@ func _test_collision_exclusion_and_obstacle_policy() -> void:
 		shell.collision_excludes.size() == 2,
 		"source ship root and child collision RIDs are cached once"
 	)
+	var dynamic_source_area := Area3D.new()
+	dynamic_source_area.position = Vector3(0.0, 0.0, 6.0)
+	source.add_child(dynamic_source_area)
+	_add_box_collision(dynamic_source_area, Vector3(2.0, 2.0, 1.0))
+	await physics_frame
+	_check(
+		not shell.collision_excludes.has(dynamic_source_area.get_rid()),
+		"dynamic source collider is absent from the launch cache"
+	)
+	var setup_issues := shell.debug_validate_collision_setup(
+		source,
+		ignored_sensor,
+		ignored_sensor,
+		obstacle,
+		water_area
+	)
+	_check(
+		setup_issues.is_empty(),
+		"collision layers and parent-group sensors validate"
+	)
 	var obstacle_hit: ShellCollisionResult = shell.call(
 		&"_query_ship_collision",
 		Vector3(0.0, 2.0, -12.0),
@@ -317,7 +402,34 @@ func _test_collision_exclusion_and_obstacle_policy() -> void:
 		obstacle_hit.hit
 			and obstacle_hit.type == ShellCollisionResult.Type.WORLD_OBSTACLE
 			and obstacle_hit.collider == obstacle,
-		"ignored sensors are skipped but world obstacles stop shells"
+		"dynamic source and parent-group sensors are skipped before obstacles"
+	)
+
+	var event_bus := root.get_node_or_null("EventBus")
+	var water_events := [0]
+	var on_water := func(_position: Vector3, _strength: float) -> void:
+		water_events[0] += 1
+	event_bus.projectile_water_impact.connect(on_water)
+	var world_effect_count_before := get_nodes_in_group(
+		&"world_impact_effect"
+	).size()
+	var obstacle_shell := Projectile.new()
+	root.add_child(obstacle_shell)
+	obstacle_shell.velocity = Vector3.FORWARD * 100.0
+	obstacle_shell.call(&"_process_collision", obstacle_hit)
+	_check(
+		obstacle_shell.last_despawn_reason \
+			== Projectile.DespawnReason.WORLD_OBSTACLE,
+		"world obstacle uses the dedicated despawn reason"
+	)
+	_check(
+		water_events[0] == 0,
+		"world obstacle does not emit a water impact"
+	)
+	_check(
+		get_nodes_in_group(&"world_impact_effect").size()
+			== world_effect_count_before + 1,
+		"WorldImpactService emits exactly one obstacle effect"
 	)
 
 	obstacle.queue_free()
@@ -331,7 +443,14 @@ func _test_collision_exclusion_and_obstacle_policy() -> void:
 		ship_hit.hit
 			and ship_hit.type == ShellCollisionResult.Type.SHIP
 			and ship_hit.target_ship == target,
-		"source collision children stay excluded until the target ship"
+		"dynamic source collider is skipped before the enemy ship"
+	)
+	_check(
+		is_equal_approx(
+			source.get_defense_stats().current_hp,
+			source.get_defense_stats().max_hp
+		),
+		"source ship receives no self-hit damage"
 	)
 	shell.shell_collision_mask = 0
 	_check(
@@ -340,8 +459,13 @@ func _test_collision_exclusion_and_obstacle_policy() -> void:
 	)
 	shell.queue_free()
 	source.queue_free()
-	ignored_sensor.queue_free()
+	ignored_sensor_parent.queue_free()
 	target.queue_free()
+	water_area.queue_free()
+	if event_bus.projectile_water_impact.is_connected(on_water):
+		event_bus.projectile_water_impact.disconnect(on_water)
+	for effect in get_nodes_in_group(&"world_impact_effect"):
+		effect.queue_free()
 	await process_frame
 
 
@@ -394,7 +518,7 @@ func _test_ricochet_visual_flow() -> void:
 		_check(
 			ricochet.active_lifetime_seconds > 0.5
 				and ricochet.active_lifetime_seconds
-					<= ricochet.maximum_lifetime_seconds,
+					<= ricochet.emergency_maximum_lifetime_seconds,
 			"ricochet lifetime is derived from its water arrival time"
 		)
 	var water_events := [0]
@@ -420,6 +544,11 @@ func _test_ricochet_visual_flow() -> void:
 	var ricochet_scene := load(
 		"res://scenes/weapon/projectiles/ricochet_projectile_visual.tscn"
 	) as PackedScene
+	if ricochet != null:
+		_check(
+			bool(ricochet.get(&"_despawn_requested")),
+			"pooled ricochet stays despawn-locked while recycled"
+		)
 	var reused_ricochet := pool.spawn(
 		ricochet_scene,
 		parent
@@ -437,7 +566,7 @@ func _test_ricochet_visual_flow() -> void:
 		reused_ricochet.direction_randomness = 0.0
 		reused_ricochet.launch(
 			high_ricochet_start,
-			Vector3(20.0, -60.0, -20.0),
+			Vector3(20.0, -200.0, -20.0),
 			Vector3.UP,
 			0.0,
 			1.0
@@ -449,16 +578,27 @@ func _test_ricochet_visual_flow() -> void:
 			"ricochet visual applies a surface and forward offset"
 		)
 		_check(
-			reused_ricochet.active_lifetime_seconds > 3.0,
-			"high ricochet receives enough lifetime to reach water"
+			reused_ricochet.active_lifetime_seconds > 12.0
+				and reused_ricochet.active_lifetime_seconds
+					<= reused_ricochet.emergency_maximum_lifetime_seconds,
+			"long ricochet is not clipped by the former 12 second limit"
 		)
-		for _step in 1000:
+		_check(
+			reused_ricochet.velocity.y \
+				<= reused_ricochet.maximum_upward_speed_mps,
+			"ricochet upward speed respects its visual safety limit"
+		)
+		for _step in 2000:
 			if not reused_ricochet.active:
 				break
 			reused_ricochet.call(&"_physics_process", 0.02)
 		_check(
 			not reused_ricochet.active and water_events[0] == 2,
 			"high ricochet reaches water before lifetime expiry"
+		)
+		_check(
+			bool(reused_ricochet.get(&"_despawn_requested")),
+			"recycled high ricochet stays despawn-locked"
 		)
 		var second_reuse := pool.spawn(
 			ricochet_scene,
@@ -472,7 +612,43 @@ func _test_ricochet_visual_flow() -> void:
 			"recycled high ricochet clears lifetime and despawn state"
 		)
 		if second_reuse != null:
-			second_reuse.despawn()
+			second_reuse.direction_randomness = 0.0
+			second_reuse.launch(
+				Vector3(0.0, 2.0, 0.0),
+				Vector3(0.0, -1000.0, 0.0),
+				Vector3.UP,
+				0.0,
+				1.0
+			)
+			_check(
+				is_equal_approx(
+					second_reuse.active_lifetime_seconds,
+					second_reuse.emergency_maximum_lifetime_seconds
+				),
+				"extreme ricochet uses the emergency lifetime cap"
+			)
+			for _step in 2000:
+				if not second_reuse.active:
+					break
+				second_reuse.call(&"_physics_process", 0.02)
+			_check(
+				not second_reuse.active and water_events[0] == 2,
+				"emergency lifetime expiry does not fake a water impact"
+			)
+			var third_reuse := pool.spawn(
+				ricochet_scene,
+				parent
+			) as RicochetProjectileVisual
+			_check(
+				third_reuse == second_reuse
+					and not bool(third_reuse.get(&"_despawn_requested"))
+					and is_zero_approx(
+						third_reuse.active_lifetime_seconds
+					),
+				"emergency-expired ricochet respawns with clean state"
+			)
+			if third_reuse != null:
+				third_reuse.despawn()
 	if event_bus.projectile_water_impact.is_connected(on_water):
 		event_bus.projectile_water_impact.disconnect(on_water)
 	parent.queue_free()

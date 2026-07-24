@@ -2,6 +2,7 @@ extends RefCounted
 class_name WaterIntersection
 
 const EPSILON := 0.00001
+static var _invalid_manager_result_warned := false
 
 
 static func find_surface_intersection(
@@ -14,25 +15,34 @@ static func find_surface_intersection(
 	var active_manager := _get_ocean_manager(caller, ocean_manager)
 	if active_manager != null \
 			and active_manager.has_method(&"get_surface_intersection_hit"):
-		var manager_hit := active_manager.call(
+		var raw_hit: Variant = active_manager.call(
 			&"get_surface_intersection_hit",
 			segment_start,
 			segment_end
-		) as WaterSurfaceHit
-		if manager_hit != null and manager_hit.hit:
+		)
+		var manager_hit: WaterSurfaceHit = null
+		if raw_hit is WaterSurfaceHit:
+			manager_hit = raw_hit as WaterSurfaceHit
+		if manager_hit != null:
+			if manager_hit.hit:
+				return manager_hit
 			return manager_hit
+		if raw_hit != null and not _invalid_manager_result_warned:
+			_invalid_manager_result_warned = true
+			push_warning(
+				"OceanManager returned an invalid water intersection result."
+			)
+		var fallback_height := fallback_water_height_m
 		if active_manager.has_method(&"get_water_height"):
-			var start_height := float(active_manager.call(
+			fallback_height = float(active_manager.call(
 				&"get_water_height",
 				segment_start
 			))
-			if segment_start.y <= start_height:
-				return WaterSurfaceHit.from_hit(
-					Vector3(segment_start.x, start_height, segment_start.z),
-					Vector3.UP,
-					0.0
-				) as WaterSurfaceHit
-		return manager_hit
+		return find_plane_intersection(
+			segment_start,
+			segment_end,
+			fallback_height
+		)
 	var water_height := fallback_water_height_m
 	if active_manager != null and active_manager.has_method(&"get_water_height"):
 		water_height = float(active_manager.call(

@@ -3,12 +3,13 @@ class_name RicochetProjectileVisual
 
 @export var fallback_lifetime_seconds := 6.0
 @export var lifetime_margin_seconds := 0.75
-@export var maximum_lifetime_seconds := 12.0
+@export var emergency_maximum_lifetime_seconds := 30.0
 @export var gravity_scale := 0.45
 @export_range(0.0, 1.0, 0.01) var retained_speed_ratio := 0.3
 @export_range(0.0, 2.0, 0.05) var upward_bias := 0.12
 @export_range(0.0, 0.5, 0.01) var direction_randomness := 0.05
 @export_range(0.0, 0.5, 0.01) var minimum_upward_component := 0.08
+@export var maximum_upward_speed_mps := 80.0
 @export var surface_offset_m := 0.2
 @export var forward_offset_m := 0.1
 @export_range(0.0, 2.0, 0.05) var splash_strength_multiplier := 0.45
@@ -73,6 +74,8 @@ func launch(
 	velocity = reflected_direction \
 		* incoming_velocity.length() \
 		* retained_speed_ratio
+	if maximum_upward_speed_mps > 0.0:
+		velocity.y = minf(velocity.y, maximum_upward_speed_mps)
 	var gravity_mps2 := _get_gravity_mps2()
 	var time_to_water: Variant = BallisticMath.calculate_time_to_height(
 		global_position.y,
@@ -80,14 +83,16 @@ func launch(
 		velocity.y,
 		gravity_mps2
 	)
-	active_lifetime_seconds = clampf(
+	active_lifetime_seconds = maxf(
 		float(time_to_water) + lifetime_margin_seconds,
-		0.5,
-		maxf(maximum_lifetime_seconds, 0.5)
-	) if time_to_water != null else clampf(
+		0.5
+	) if time_to_water != null else maxf(
 		fallback_lifetime_seconds,
-		0.5,
-		maxf(maximum_lifetime_seconds, 0.5)
+		0.5
+	)
+	active_lifetime_seconds = minf(
+		active_lifetime_seconds,
+		maxf(emergency_maximum_lifetime_seconds, 0.5)
 	)
 	age_seconds = 0.0
 	active = true
@@ -192,7 +197,7 @@ func on_recycled_to_pool() -> void:
 	water_impact_processed = false
 	base_splash_strength = 1.0
 	ocean_manager_ref = null
-	_despawn_requested = false
+	_despawn_requested = true
 	hide()
 	set_physics_process(false)
 	_stop_trail()
@@ -222,10 +227,11 @@ func _get_cached_ocean_manager() -> Node:
 func _orient_to_velocity() -> void:
 	if velocity.length_squared() <= 0.000001:
 		return
+	var direction := velocity.normalized()
 	var up := Vector3.UP
-	if absf(velocity.normalized().dot(up)) > 0.98:
+	if absf(direction.dot(up)) > 0.98:
 		up = Vector3.RIGHT
-	look_at(global_position + velocity, up)
+	look_at(global_position + direction, up)
 
 
 func _configure_trail() -> void:

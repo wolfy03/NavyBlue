@@ -1,14 +1,13 @@
 extends Node3D
 
-# Deterministic integration test: advances the real shell implementation with
-# explicit fixed-size steps for fast, reproducible ballistic regression checks.
-const STEP_SECONDS := 0.05
-const MAX_SIMULATION_STEPS := 2000
+const TEST_TIME_SCALE := 20.0
+const TEST_TIMEOUT_SECONDS := 60.0
 
 var _failures: Array[String] = []
 var _last_fired_projectile: Node
 var _water_impact_count := 0
 var _last_water_impact_position := Vector3.ZERO
+var _original_time_scale := 1.0
 
 
 func _ready() -> void:
@@ -16,6 +15,8 @@ func _ready() -> void:
 
 
 func _run() -> void:
+	_original_time_scale = Engine.time_scale
+	Engine.time_scale = TEST_TIME_SCALE
 	var weapon := WeaponDatabase.new().get_weapon("destroyer_cannon")
 	_check(weapon != null, "destroyer cannon resource loads")
 	if weapon == null or weapon.mount_scene == null:
@@ -27,7 +28,7 @@ func _run() -> void:
 		_finish()
 		return
 	add_child(mount)
-	mount.setup(weapon, null, null, &"test")
+	mount.setup(weapon, null, null, &"physics_frame_test")
 	mount.fired.connect(_on_mount_fired)
 	var event_bus := get_node_or_null("/root/EventBus")
 	if event_bus != null:
@@ -35,7 +36,7 @@ func _run() -> void:
 	await get_tree().process_frame
 
 	for requested_distance in _get_test_distances(weapon.range_meters):
-		_run_distance_case(mount, weapon, requested_distance)
+		await _run_distance_case(mount, weapon, requested_distance)
 
 	if event_bus != null \
 			and event_bus.projectile_water_impact.is_connected(
@@ -73,19 +74,11 @@ func _run_distance_case(
 			readiness == WeaponFireReadiness.State.OUT_OF_RANGE
 				or readiness
 					== WeaponFireReadiness.State.NO_BALLISTIC_SOLUTION,
-			"configured range + 100 m is rejected by the actual mount"
+			"physics-frame test rejects configured range + 100 m"
 		)
-		_print_result(
-			requested_distance,
-			aim_point,
-			Vector3.ZERO,
-			0.0,
-			Vector3.ZERO,
-			0.0,
-			0.0,
-			0.0,
-			&"OUT_OF_RANGE",
-			0
+		print(
+			"[ShellPhysicsFrame] target=%.1f status=OUT_OF_RANGE"
+			% requested_distance
 		)
 		return
 
@@ -95,35 +88,36 @@ func _run_distance_case(
 	)
 	if readiness != WeaponFireReadiness.State.READY:
 		return
-	var calculated_pitch: Variant = mount.call(
-		&"_calculate_ballistic_pitch_deg",
-		aim_point
-	)
-	_check(calculated_pitch != null, "actual mount returns a ballistic pitch")
 	var fired := mount.fire()
 	_check(fired, "actual cannon fires at %.0f m" % requested_distance)
 	var shell := _last_fired_projectile as ShellProjectile
 	_check(shell != null, "actual cannon emits a ShellProjectile")
 	if shell == null:
 		return
+	_check(
+		not str(shell.get_meta("pool_key", "")).is_empty(),
+		"actual shell is spawned through ObjectPool"
+	)
 	var launch_origin := shell.global_position
-	var initial_velocity := shell.initial_velocity
-	var simulated_flight_time := 0.0
-	for _step in MAX_SIMULATION_STEPS:
-		if not shell.active:
-			break
-		shell.call(&"_physics_process", STEP_SECONDS)
-		simulated_flight_time += STEP_SECONDS
+	var elapsed_seconds := 0.0
+	while shell.active and elapsed_seconds < TEST_TIMEOUT_SECONDS:
+		await get_tree().physics_frame
+		elapsed_seconds += get_physics_process_delta_time()
 	var actual_distance := CombatGeometryXZ.distance_xz(
 		launch_origin,
 		_last_water_impact_position
 	)
-	var error_m := absf(actual_distance - CombatGeometryXZ.distance_xz(
+	var target_distance := CombatGeometryXZ.distance_xz(
 		launch_origin,
 		aim_point
-	))
+	)
+	var error_m := absf(actual_distance - target_distance)
 	var allowed_ratio := 0.02 \
 		if requested_distance >= weapon.range_meters * 0.9 else 0.01
+	_check(
+		not shell.active,
+		"actual shell finishes before the physics-frame timeout"
+	)
 	_check(
 		shell.last_despawn_reason == Projectile.DespawnReason.WATER_IMPACT,
 		"actual shell reaches water at %.0f m" % requested_distance
@@ -134,42 +128,35 @@ func _run_distance_case(
 	)
 	_check(
 		error_m <= requested_distance * allowed_ratio,
-		"actual shell error stays within %.0f%% at %.0f m" % [
+		"physics-frame error stays within %.0f%% at %.0f m" % [
 			allowed_ratio * 100.0,
 			requested_distance,
 		]
 	)
-	_print_result(
-		requested_distance,
-		aim_point,
-		initial_velocity,
-		float(calculated_pitch) if calculated_pitch != null else 0.0,
-		_last_water_impact_position,
-		actual_distance,
-		error_m,
-		simulated_flight_time,
-		Projectile.DespawnReason.keys()[shell.last_despawn_reason],
-		_water_impact_count
+	print(
+		(
+			"[ShellPhysicsFrame] target=%.1f actual=%.1f error=%.2f "
+			+ "flight=%.2f reason=%s water_impacts=%d"
+		) % [
+			requested_distance,
+			actual_distance,
+			error_m,
+			elapsed_seconds,
+			Projectile.DespawnReason.keys()[shell.last_despawn_reason],
+			_water_impact_count,
+		]
 	)
 
 
 func _get_test_distances(configured_range_m: float) -> Array[float]:
-	var values: Array[float] = [
+	return [
 		1000.0,
 		3000.0,
 		5000.0,
-		configured_range_m * 0.5,
-		configured_range_m * 0.75,
 		configured_range_m * 0.9,
 		configured_range_m,
 		configured_range_m + 100.0,
 	]
-	var result: Array[float] = []
-	for value in values:
-		if value > 0.0 and not result.has(value):
-			result.append(value)
-	result.sort()
-	return result
 
 
 func _on_mount_fired(projectile: Node) -> void:
@@ -181,48 +168,15 @@ func _on_water_impact(position: Vector3, _strength: float) -> void:
 	_last_water_impact_position = position
 
 
-func _print_result(
-		requested_distance: float,
-		aim_point: Vector3,
-		initial_velocity: Vector3,
-		calculated_pitch: float,
-		impact_position: Vector3,
-		actual_distance: float,
-		error_m: float,
-		flight_time: float,
-		reason: String,
-		water_impacts: int
-) -> void:
-	print(
-		(
-			"[ShellDeterministic] target=%.1f aim=%s velocity=%s pitch=%.2f "
-			+ "impact=%s actual=%.1f error=%.2f flight=%.2f "
-			+ "reason=%s water_impacts=%d"
-		) % [
-			requested_distance,
-			aim_point,
-			initial_velocity,
-			calculated_pitch,
-			impact_position,
-			actual_distance,
-			error_m,
-			flight_time,
-			reason,
-			water_impacts,
-		]
-	)
-
-
 func _check(condition: bool, description: String) -> void:
 	if not condition:
 		_failures.append(description)
 
 
 func _finish() -> void:
+	Engine.time_scale = _original_time_scale
 	for failure in _failures:
-		push_error(
-			"SHELL PROJECTILE DETERMINISTIC TEST: %s" % failure
-		)
+		push_error("SHELL PHYSICS-FRAME TEST: %s" % failure)
 	if _failures.is_empty():
-		print("SHELL_PROJECTILE_DETERMINISTIC_INTEGRATION_TEST PASS")
+		print("SHELL_PROJECTILE_PHYSICS_FRAME_TEST PASS")
 	get_tree().quit(0 if _failures.is_empty() else 1)

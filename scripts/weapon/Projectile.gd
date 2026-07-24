@@ -2,6 +2,7 @@ extends Node3D
 class_name Projectile
 
 const LIFETIME_SECONDS := 30.0
+const MAX_SKIPPED_DYNAMIC_SOURCE_COLLIDERS := 16
 const DEFAULT_AP_SHELL: ShellStats = preload(
 	"res://scripts/combat/default_ap_shell.tres"
 )
@@ -233,7 +234,11 @@ func _query_ship_collision(
 		return result
 	var excludes: Array[RID] = collision_excludes.duplicate()
 	var skipped_ignored_colliders := 0
-	for _attempt in range(max_skipped_ignored_colliders + 1):
+	var skipped_source_colliders := 0
+	var maximum_attempts := max_skipped_ignored_colliders \
+		+ MAX_SKIPPED_DYNAMIC_SOURCE_COLLIDERS \
+		+ 1
+	for _attempt in range(maximum_attempts):
 		var query := PhysicsRayQueryParameters3D.create(
 			segment_start,
 			segment_end,
@@ -249,6 +254,18 @@ func _query_ship_collision(
 		var collider: Object = hit.get("collider")
 		var target_ship := _find_ship_damage_target(collider)
 		if target_ship != null:
+			if _is_source_ship(target_ship):
+				if skipped_source_colliders \
+						>= MAX_SKIPPED_DYNAMIC_SOURCE_COLLIDERS:
+					return result
+				var source_collision_object := collider as CollisionObject3D
+				if source_collision_object == null:
+					return result
+				var source_rid := source_collision_object.get_rid()
+				if source_rid.is_valid() and not excludes.has(source_rid):
+					excludes.append(source_rid)
+				skipped_source_colliders += 1
+				continue
 			result.hit = true
 			result.type = ShellCollisionResult.Type.SHIP
 			result.target_ship = target_ship
@@ -454,12 +471,28 @@ func _append_collision_rid(value: Variant) -> void:
 
 
 func _should_ignore_shell_collider(collider: Object) -> bool:
-	var node := collider as Node
-	if node == null:
+	var candidate := collider as Node
+	while candidate != null:
+		if candidate.is_in_group(&"shell_ignored") \
+				or candidate.is_in_group(&"projectile_sensor") \
+				or candidate.is_in_group(&"selection_area"):
+			return true
+		candidate = candidate.get_parent()
+	# TODO: Move ignored projectile sensors to a dedicated collision layer
+	# and exclude that layer from the shell collision mask.
+	return false
+
+
+func _is_source_ship(target_ship: Node) -> bool:
+	if target_ship == null or not is_instance_valid(target_ship):
 		return false
-	return node.is_in_group(&"shell_ignored") \
-		or node.is_in_group(&"projectile_sensor") \
-		or node.is_in_group(&"selection_area")
+	var source_ship := get_source_ship()
+	if source_ship != null \
+			and is_instance_valid(source_ship) \
+			and target_ship == source_ship:
+		return true
+	return source_ship_instance_id != 0 \
+		and target_ship.get_instance_id() == source_ship_instance_id
 
 
 func _apply_ray_hit_to_result(
@@ -498,6 +531,47 @@ func _validate_collision_mask() -> bool:
 		_collision_mask_warning_emitted = true
 		push_warning("Shell projectile collision mask is empty.")
 	return false
+
+
+func debug_validate_collision_setup(
+		ship_hull: CollisionObject3D = null,
+		selection_area: CollisionObject3D = null,
+		projectile_sensor: CollisionObject3D = null,
+		world_obstacle: CollisionObject3D = null,
+		water_area: CollisionObject3D = null
+) -> Array[String]:
+	var issues: Array[String] = []
+	if shell_collision_mask == 0:
+		issues.append("Shell collision mask is empty")
+	if ship_hull != null and not _is_layer_in_shell_mask(ship_hull):
+		issues.append("Ship hull collision layer is not included")
+	if selection_area != null \
+			and _is_layer_in_shell_mask(selection_area) \
+			and not _should_ignore_shell_collider(selection_area):
+		issues.append(
+			"Selection area is included but not marked ignored"
+		)
+	if projectile_sensor != null \
+			and _is_layer_in_shell_mask(projectile_sensor) \
+			and not _should_ignore_shell_collider(projectile_sensor):
+		issues.append(
+			"Projectile sensor is included but not marked ignored"
+		)
+	if world_obstacle != null \
+			and not _is_layer_in_shell_mask(world_obstacle):
+		issues.append("World obstacle collision layer is not included")
+	if water_area != null \
+			and _is_layer_in_shell_mask(water_area) \
+			and not _should_ignore_shell_collider(water_area):
+		issues.append(
+			"Water area is included as a duplicate shell collision target"
+		)
+	return issues
+
+
+func _is_layer_in_shell_mask(collision_object: CollisionObject3D) -> bool:
+	return collision_object != null \
+		and (shell_collision_mask & collision_object.collision_layer) != 0
 
 
 func _apply_launch_source(
@@ -574,7 +648,7 @@ func on_spawned_from_pool() -> void:
 
 
 func on_recycled_to_pool() -> void:
-	_despawn_requested = false
+	_despawn_requested = true
 	projectile_data = null
 	projectile_runtime_stats = WeaponRuntimeStats.new()
 	source_team = &"neutral"
@@ -710,10 +784,11 @@ func _calculate_water_impact_strength() -> float:
 func _orient_to_velocity() -> void:
 	if velocity.length_squared() <= 0.000001:
 		return
+	var direction := velocity.normalized()
 	var up := Vector3.UP
-	if absf(velocity.normalized().dot(up)) > 0.98:
+	if absf(direction.dot(up)) > 0.98:
 		up = Vector3.RIGHT
-	look_at(global_position + velocity, up)
+	look_at(global_position + direction, up)
 
 
 func _log_despawn(reason: DespawnReason, position: Vector3) -> void:
