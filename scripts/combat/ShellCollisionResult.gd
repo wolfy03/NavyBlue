@@ -5,6 +5,7 @@ enum Type {
 	NONE,
 	SHIP,
 	WATER,
+	WORLD_OBSTACLE,
 }
 
 var hit: bool = false

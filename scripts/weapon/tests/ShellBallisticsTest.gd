@@ -45,8 +45,10 @@ func _initialize() -> void:
 
 func _run() -> void:
 	_test_ballistic_ranges()
+	_test_time_to_height()
 	await _test_direct_water_impact_and_pool()
 	await _test_first_collision_selection()
+	await _test_collision_exclusion_and_obstacle_policy()
 	await _test_ricochet_visual_flow()
 	for failure in _failures:
 		push_error("SHELL BALLISTICS TEST: %s" % failure)
@@ -63,7 +65,7 @@ func _test_ballistic_ranges() -> void:
 	if weapon == null or shell_data == null:
 		return
 	var gravity := BallisticMath.get_effective_gravity_mps2(shell_data)
-	var results := ShellRangeTestRunner.evaluate_ranges(
+	var results := BallisticMathTestRunner.evaluate_ranges(
 		weapon.muzzle_velocity,
 		gravity,
 		weapon.range_meters
@@ -86,7 +88,7 @@ func _test_ballistic_ranges() -> void:
 		)
 		print(
 			(
-				"[ShellRangeTest] target=%.1f angle=%.2f actual=%.1f "
+				"[BallisticMathTest] target=%.1f angle=%.2f actual=%.1f "
 				+ "error=%.2f flight=%.2f status=%s"
 			) % [
 				requested,
@@ -112,6 +114,40 @@ func _test_ballistic_ranges() -> void:
 	)
 
 
+func _test_time_to_height() -> void:
+	var time_value: Variant = BallisticMath.calculate_time_to_height(
+		5.0,
+		0.0,
+		8.0,
+		9.8
+	)
+	_check(time_value != null, "time-to-height finds the descending root")
+	if time_value != null:
+		var impact_height := BallisticMath.calculate_position(
+			Vector3(0.0, 5.0, 0.0),
+			Vector3(0.0, 8.0, 0.0),
+			9.8,
+			float(time_value)
+		).y
+		_check(
+			absf(impact_height) <= EPSILON,
+			"time-to-height reaches the requested surface"
+		)
+	_check(
+		BallisticMath.calculate_time_to_height(1.0, 0.0, 2.0, 0.0) == null,
+		"time-to-height rejects non-positive gravity"
+	)
+	_check(
+		is_zero_approx(float(BallisticMath.calculate_time_to_height(
+			-0.1,
+			0.0,
+			2.0,
+			9.8
+		))),
+		"time-to-height returns zero below the target surface"
+	)
+
+
 func _test_direct_water_impact_and_pool() -> void:
 	var projectile_scene := load(
 		"res://scenes/weapon/projectiles/shell_projectile.tscn"
@@ -121,6 +157,9 @@ func _test_direct_water_impact_and_pool() -> void:
 	) as ShellProjectileData
 	var parent := Node3D.new()
 	root.add_child(parent)
+	var ocean_manager := Node.new()
+	ocean_manager.add_to_group(&"ocean_manager")
+	root.add_child(ocean_manager)
 	var pool := root.get_node_or_null("ObjectPool")
 	var shell := pool.spawn(projectile_scene, parent) as ShellProjectile
 	_check(shell != null, "ObjectPool spawns a direct-simulation shell")
@@ -153,7 +192,12 @@ func _test_direct_water_impact_and_pool() -> void:
 		water_events[0] += 1
 	var event_bus := root.get_node_or_null("EventBus")
 	event_bus.projectile_water_impact.connect(on_water)
+	var launch_origin := context.initial_transform.origin
 	shell.launch_with_context(context)
+	_check(
+		shell.call(&"_get_cached_ocean_manager") == ocean_manager,
+		"shell caches the OceanManager once at launch"
+	)
 	for _step in 10000:
 		if not shell.active:
 			break
@@ -164,7 +208,7 @@ func _test_direct_water_impact_and_pool() -> void:
 	)
 	_check(
 		absf(CombatGeometryXZ.distance_xz(
-			shell.launch_position,
+			launch_origin,
 			shell.last_despawn_position
 		) - distance) <= distance * 0.01,
 		"direct shell lands within one percent at 3 km"
@@ -176,13 +220,19 @@ func _test_direct_water_impact_and_pool() -> void:
 		_check(
 			not reused.active
 				and reused.velocity.is_zero_approx()
-				and reused.despawn_reason == Projectile.DespawnReason.NONE,
+				and reused.despawn_reason == Projectile.DespawnReason.NONE
+				and reused.projectile_data == null
+				and reused.source_team == &"neutral"
+				and reused.collision_excludes.is_empty()
+				and reused.ocean_manager_ref == null
+				and not bool(reused.get(&"_despawn_requested")),
 			"reused shell starts without stale flight state"
 		)
 		reused.despawn()
 	if event_bus.projectile_water_impact.is_connected(on_water):
 		event_bus.projectile_water_impact.disconnect(on_water)
 	parent.queue_free()
+	ocean_manager.queue_free()
 	await process_frame
 
 
@@ -219,6 +269,78 @@ func _test_first_collision_selection() -> void:
 		"ship collision wins when its ray ratio precedes the water"
 	)
 	shell.queue_free()
+	target.queue_free()
+	await process_frame
+
+
+func _test_collision_exclusion_and_obstacle_policy() -> void:
+	var source := StaticBody3D.new()
+	root.add_child(source)
+	source.global_position = Vector3(0.0, 2.0, -8.0)
+	_add_box_collision(source, Vector3(2.0, 2.0, 2.0))
+	var source_sensor := Area3D.new()
+	source_sensor.position = Vector3(0.0, 0.0, 3.0)
+	source.add_child(source_sensor)
+	_add_box_collision(source_sensor, Vector3(2.0, 2.0, 2.0))
+
+	var ignored_sensor := Area3D.new()
+	ignored_sensor.add_to_group(&"projectile_sensor")
+	root.add_child(ignored_sensor)
+	ignored_sensor.global_position = Vector3(0.0, 2.0, -2.0)
+	_add_box_collision(ignored_sensor, Vector3(2.0, 2.0, 1.0))
+
+	var obstacle := StaticBody3D.new()
+	root.add_child(obstacle)
+	obstacle.global_position = Vector3(0.0, 2.0, 2.0)
+	_add_box_collision(obstacle, Vector3(2.0, 2.0, 1.0))
+
+	var target := DamageTarget.new()
+	root.add_child(target)
+	target.global_position = Vector3(0.0, 2.0, 7.0)
+	target.configure()
+
+	var shell := Projectile.new()
+	root.add_child(shell)
+	await physics_frame
+	shell.call(&"_apply_launch_source", source, &"test", &"test_cannon")
+	shell.call(&"_cache_collision_excludes")
+	_check(
+		shell.collision_excludes.size() == 2,
+		"source ship root and child collision RIDs are cached once"
+	)
+	var obstacle_hit: ShellCollisionResult = shell.call(
+		&"_query_ship_collision",
+		Vector3(0.0, 2.0, -12.0),
+		Vector3(0.0, 2.0, 12.0)
+	)
+	_check(
+		obstacle_hit.hit
+			and obstacle_hit.type == ShellCollisionResult.Type.WORLD_OBSTACLE
+			and obstacle_hit.collider == obstacle,
+		"ignored sensors are skipped but world obstacles stop shells"
+	)
+
+	obstacle.queue_free()
+	await physics_frame
+	var ship_hit: ShellCollisionResult = shell.call(
+		&"_query_ship_collision",
+		Vector3(0.0, 2.0, -12.0),
+		Vector3(0.0, 2.0, 12.0)
+	)
+	_check(
+		ship_hit.hit
+			and ship_hit.type == ShellCollisionResult.Type.SHIP
+			and ship_hit.target_ship == target,
+		"source collision children stay excluded until the target ship"
+	)
+	shell.shell_collision_mask = 0
+	_check(
+		not bool(shell.call(&"_validate_collision_mask")),
+		"empty shell collision masks are detected"
+	)
+	shell.queue_free()
+	source.queue_free()
+	ignored_sensor.queue_free()
 	target.queue_free()
 	await process_frame
 
@@ -260,6 +382,21 @@ func _test_ricochet_visual_flow() -> void:
 	)
 	var ricochet := _find_ricochet(parent)
 	_check(ricochet != null and ricochet.active, "ricochet visual is spawned")
+	if ricochet != null:
+		_check(
+			ricochet.global_position.y > 0.0,
+			"ricochet visual starts above the water surface"
+		)
+		_check(
+			ricochet.velocity.y > 0.0,
+			"ricochet visual keeps a minimum upward component"
+		)
+		_check(
+			ricochet.active_lifetime_seconds > 0.5
+				and ricochet.active_lifetime_seconds
+					<= ricochet.maximum_lifetime_seconds,
+			"ricochet lifetime is derived from its water arrival time"
+		)
 	var water_events := [0]
 	var water_strengths: Array[float] = []
 	var on_water := func(_position: Vector3, strength: float) -> void:
@@ -290,17 +427,66 @@ func _test_ricochet_visual_flow() -> void:
 	_check(
 		reused_ricochet == ricochet
 			and not reused_ricochet.active
-			and reused_ricochet.velocity.is_zero_approx(),
+			and reused_ricochet.velocity.is_zero_approx()
+			and is_zero_approx(reused_ricochet.active_lifetime_seconds)
+			and not reused_ricochet.get(&"_despawn_requested"),
 		"ObjectPool reuses a clean ricochet visual"
 	)
 	if reused_ricochet != null:
-		reused_ricochet.despawn()
+		var high_ricochet_start := Vector3(0.0, 2.0, 0.0)
+		reused_ricochet.direction_randomness = 0.0
+		reused_ricochet.launch(
+			high_ricochet_start,
+			Vector3(20.0, -60.0, -20.0),
+			Vector3.UP,
+			0.0,
+			1.0
+		)
+		_check(
+			reused_ricochet.global_position.distance_to(
+				high_ricochet_start
+			) > 0.0,
+			"ricochet visual applies a surface and forward offset"
+		)
+		_check(
+			reused_ricochet.active_lifetime_seconds > 3.0,
+			"high ricochet receives enough lifetime to reach water"
+		)
+		for _step in 1000:
+			if not reused_ricochet.active:
+				break
+			reused_ricochet.call(&"_physics_process", 0.02)
+		_check(
+			not reused_ricochet.active and water_events[0] == 2,
+			"high ricochet reaches water before lifetime expiry"
+		)
+		var second_reuse := pool.spawn(
+			ricochet_scene,
+			parent
+		) as RicochetProjectileVisual
+		_check(
+			second_reuse == reused_ricochet
+				and is_zero_approx(second_reuse.active_lifetime_seconds)
+				and second_reuse.velocity.is_zero_approx()
+				and not bool(second_reuse.get(&"_despawn_requested")),
+			"recycled high ricochet clears lifetime and despawn state"
+		)
+		if second_reuse != null:
+			second_reuse.despawn()
 	if event_bus.projectile_water_impact.is_connected(on_water):
 		event_bus.projectile_water_impact.disconnect(on_water)
 	parent.queue_free()
 	target.queue_free()
 	await process_frame
 	pool.clear_pool()
+
+
+func _add_box_collision(parent: CollisionObject3D, size: Vector3) -> void:
+	var collision_shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	collision_shape.shape = box
+	parent.add_child(collision_shape)
 
 
 func _find_ricochet(parent: Node) -> RicochetProjectileVisual:

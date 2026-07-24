@@ -24,4 +24,16 @@ foreach ($test in $tests) {
 	}
 }
 
+$sceneTests = @(
+	"res://scenes/debug/shell_projectile_integration_test.tscn"
+)
+
+foreach ($scene in $sceneTests) {
+	Write-Host "Running $scene"
+	& $GodotBin --headless --path $projectRoot $scene
+	if ($LASTEXITCODE -ne 0) {
+		exit $LASTEXITCODE
+	}
+}
+
 Write-Host "Extended weapon validation passed."

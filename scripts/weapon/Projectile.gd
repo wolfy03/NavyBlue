@@ -13,12 +13,13 @@ enum DespawnReason {
 	SHIP_HIT,
 	INVALID_DATA,
 	POOL_RECYCLE,
+	WORLD_OBSTACLE,
 }
 
 signal ship_hit_resolved(result: DamageResult)
 
 @export_flags_3d_physics var shell_collision_mask := 1
-@export_range(1, 32, 1) var max_skipped_non_ship_colliders := 8
+@export_range(1, 16, 1) var max_skipped_ignored_colliders := 4
 @export var water_height := 0.0
 @export var base_water_splash_strength := 1.0
 @export var min_water_splash_strength := 0.35
@@ -63,12 +64,15 @@ var last_despawn_position := Vector3.ZERO
 var active := false
 var impact_processed := false
 var water_impact_processed := false
+var collision_excludes: Array[RID] = []
+var ocean_manager_ref: WeakRef
 var despawn_reason: DespawnReason = DespawnReason.NONE
 var last_despawn_reason: DespawnReason = DespawnReason.NONE
 
 var _source_ship_ref: WeakRef
 var _despawn_requested := false
 var _default_splash_strength := 1.0
+var _collision_mask_warning_emitted := false
 
 @onready var trail_particles: GPUParticles3D = get_node_or_null(
 	"TrailParticles"
@@ -77,6 +81,7 @@ var _default_splash_strength := 1.0
 
 func _ready() -> void:
 	_default_splash_strength = base_water_splash_strength
+	_validate_collision_mask()
 	_configure_trail()
 	_stop_trail()
 	set_physics_process(false)
@@ -152,6 +157,9 @@ func _begin_flight(
 	previous_position = global_position
 	launch_position = global_position
 	last_despawn_position = global_position
+	_cache_collision_excludes()
+	_cache_ocean_manager()
+	_validate_collision_mask()
 	active = true
 	show()
 	set_physics_process(true)
@@ -215,12 +223,17 @@ func _query_ship_collision(
 		segment_start: Vector3,
 		segment_end: Vector3
 ) -> ShellCollisionResult:
+	# TODO: If visual misses appear around thin hull geometry, replace this ray
+	# query with a shared SphereShape3D motion query.
 	var result := ShellCollisionResult.new()
 	var world := get_world_3d()
-	if world == null or segment_start.is_equal_approx(segment_end):
+	if world == null \
+			or shell_collision_mask == 0 \
+			or segment_start.is_equal_approx(segment_end):
 		return result
-	var excludes := _build_collision_excludes()
-	for _attempt in max_skipped_non_ship_colliders:
+	var excludes: Array[RID] = collision_excludes.duplicate()
+	var skipped_ignored_colliders := 0
+	for _attempt in range(max_skipped_ignored_colliders + 1):
 		var query := PhysicsRayQueryParameters3D.create(
 			segment_start,
 			segment_end,
@@ -235,21 +248,38 @@ func _query_ship_collision(
 			return result
 		var collider: Object = hit.get("collider")
 		var target_ship := _find_ship_damage_target(collider)
-		if target_ship != null and target_ship != get_source_ship():
+		if target_ship != null:
 			result.hit = true
 			result.type = ShellCollisionResult.Type.SHIP
-			result.position = hit.get("position", segment_end)
-			result.normal = hit.get("normal", Vector3.UP)
-			result.collider = collider
 			result.target_ship = target_ship
-			var segment_length := segment_start.distance_to(segment_end)
-			result.ratio = segment_start.distance_to(result.position) \
-				/ segment_length if segment_length > 0.00001 else 0.0
+			_apply_ray_hit_to_result(
+				result,
+				hit,
+				collider,
+				segment_start,
+				segment_end
+			)
+			return result
+		if not _should_ignore_shell_collider(collider):
+			result.hit = true
+			result.type = ShellCollisionResult.Type.WORLD_OBSTACLE
+			_apply_ray_hit_to_result(
+				result,
+				hit,
+				collider,
+				segment_start,
+				segment_end
+			)
+			return result
+		if skipped_ignored_colliders >= max_skipped_ignored_colliders:
 			return result
 		var collision_object := collider as CollisionObject3D
 		if collision_object == null:
 			return result
-		excludes.append(collision_object.get_rid())
+		var rid := collision_object.get_rid()
+		if rid.is_valid() and not excludes.has(rid):
+			excludes.append(rid)
+		skipped_ignored_colliders += 1
 	return result
 
 
@@ -262,7 +292,8 @@ func _query_water_collision(
 		self,
 		segment_start,
 		segment_end,
-		water_height
+		water_height,
+		_get_cached_ocean_manager()
 	)
 	if hit == null or not hit.hit:
 		return result
@@ -282,6 +313,8 @@ func _process_collision(collision: ShellCollisionResult) -> void:
 			_process_ship_hit(collision)
 		ShellCollisionResult.Type.WATER:
 			_process_water_hit(collision)
+		ShellCollisionResult.Type.WORLD_OBSTACLE:
+			_process_world_obstacle_hit(collision)
 
 
 func _process_ship_hit(collision: ShellCollisionResult) -> void:
@@ -342,6 +375,20 @@ func _process_water_hit(collision: ShellCollisionResult) -> void:
 	despawn_with_reason(DespawnReason.WATER_IMPACT)
 
 
+func _process_world_obstacle_hit(collision: ShellCollisionResult) -> void:
+	if impact_processed:
+		return
+	impact_processed = true
+	active = false
+	WorldImpactService.emit_impact(
+		self,
+		collision.position,
+		collision.normal,
+		velocity
+	)
+	despawn_with_reason(DespawnReason.WORLD_OBSTACLE)
+
+
 func _spawn_ricochet_visual(
 		hit_position: Vector3,
 		hit_normal: Vector3,
@@ -371,17 +418,86 @@ func _spawn_ricochet_visual(
 		hit_position,
 		incoming_velocity,
 		hit_normal,
-		WaterIntersection.get_water_height(self, hit_position, water_height),
-		base_water_splash_strength
+		WaterIntersection.get_water_height(
+			self,
+			hit_position,
+			water_height,
+			_get_cached_ocean_manager()
+		),
+		base_water_splash_strength,
+		_get_cached_ocean_manager()
 	)
 
 
-func _build_collision_excludes() -> Array[RID]:
-	var excludes: Array[RID] = []
-	var source_ship := get_source_ship() as CollisionObject3D
-	if source_ship != null:
-		excludes.append(source_ship.get_rid())
-	return excludes
+func _cache_collision_excludes() -> void:
+	collision_excludes.clear()
+	var source_ship := get_source_ship()
+	if source_ship == null:
+		return
+	_append_collision_rid(source_ship)
+	for child in source_ship.find_children(
+			"*",
+			"CollisionObject3D",
+			true,
+			false
+	):
+		_append_collision_rid(child)
+
+
+func _append_collision_rid(value: Variant) -> void:
+	var collision_object := value as CollisionObject3D
+	if collision_object == null:
+		return
+	var rid := collision_object.get_rid()
+	if rid.is_valid() and not collision_excludes.has(rid):
+		collision_excludes.append(rid)
+
+
+func _should_ignore_shell_collider(collider: Object) -> bool:
+	var node := collider as Node
+	if node == null:
+		return false
+	return node.is_in_group(&"shell_ignored") \
+		or node.is_in_group(&"projectile_sensor") \
+		or node.is_in_group(&"selection_area")
+
+
+func _apply_ray_hit_to_result(
+		result: ShellCollisionResult,
+		hit: Dictionary,
+		collider: Object,
+		segment_start: Vector3,
+		segment_end: Vector3
+) -> void:
+	result.position = hit.get("position", segment_end)
+	result.normal = hit.get("normal", Vector3.UP)
+	result.collider = collider
+	var segment_length := segment_start.distance_to(segment_end)
+	result.ratio = segment_start.distance_to(result.position) \
+		/ segment_length if segment_length > 0.00001 else 0.0
+
+
+func _cache_ocean_manager() -> void:
+	ocean_manager_ref = null
+	if get_tree() == null:
+		return
+	var manager := get_tree().get_first_node_in_group(&"ocean_manager")
+	if manager != null:
+		ocean_manager_ref = weakref(manager)
+
+
+func _get_cached_ocean_manager() -> Node:
+	return ocean_manager_ref.get_ref() as Node \
+		if ocean_manager_ref != null else null
+
+
+func _validate_collision_mask() -> bool:
+	if shell_collision_mask != 0:
+		return true
+	if not _collision_mask_warning_emitted:
+		_collision_mask_warning_emitted = true
+		push_warning("Shell projectile collision mask is empty.")
+	return false
 
 
 func _apply_launch_source(
@@ -442,6 +558,8 @@ func on_spawned_from_pool() -> void:
 	active = false
 	impact_processed = false
 	water_impact_processed = false
+	collision_excludes.clear()
+	ocean_manager_ref = null
 	despawn_reason = DespawnReason.NONE
 	last_despawn_reason = DespawnReason.NONE
 	shell_stats = DEFAULT_AP_SHELL
@@ -456,19 +574,31 @@ func on_spawned_from_pool() -> void:
 
 
 func on_recycled_to_pool() -> void:
-	active = false
-	velocity = Vector3.ZERO
-	initial_velocity = Vector3.ZERO
-	age_seconds = 0.0
-	impact_processed = false
-	water_impact_processed = false
+	_despawn_requested = false
+	projectile_data = null
+	projectile_runtime_stats = WeaponRuntimeStats.new()
 	source_team = &"neutral"
 	source_ship_instance_id = 0
 	source_weapon_id = StringName()
 	_source_ship_ref = null
-	projectile_data = null
-	projectile_runtime_stats = WeaponRuntimeStats.new()
 	team = &"neutral"
+	active = false
+	velocity = Vector3.ZERO
+	initial_velocity = Vector3.ZERO
+	age_seconds = 0.0
+	previous_position = global_position
+	launch_position = global_position
+	target_aim_point = Vector3.ZERO
+	impact_processed = false
+	water_impact_processed = false
+	collision_excludes.clear()
+	ocean_manager_ref = null
+	shell_stats = DEFAULT_AP_SHELL
+	gravity_scale = 1.0
+	mass = 1.0
+	lifetime_seconds = LIFETIME_SECONDS
+	base_water_splash_strength = _default_splash_strength
+	explosion_radius = 0.0
 	hide()
 	set_physics_process(false)
 	_stop_trail()

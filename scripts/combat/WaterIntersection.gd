@@ -8,20 +8,21 @@ static func find_surface_intersection(
 		caller: Node,
 		segment_start: Vector3,
 		segment_end: Vector3,
-		fallback_water_height_m: float = 0.0
+		fallback_water_height_m: float = 0.0,
+		ocean_manager: Node = null
 ) -> WaterSurfaceHit:
-	var ocean_manager := _get_ocean_manager(caller)
-	if ocean_manager != null \
-			and ocean_manager.has_method(&"get_surface_intersection_hit"):
-		var manager_hit := ocean_manager.call(
+	var active_manager := _get_ocean_manager(caller, ocean_manager)
+	if active_manager != null \
+			and active_manager.has_method(&"get_surface_intersection_hit"):
+		var manager_hit := active_manager.call(
 			&"get_surface_intersection_hit",
 			segment_start,
 			segment_end
 		) as WaterSurfaceHit
 		if manager_hit != null and manager_hit.hit:
 			return manager_hit
-		if ocean_manager.has_method(&"get_water_height"):
-			var start_height := float(ocean_manager.call(
+		if active_manager.has_method(&"get_water_height"):
+			var start_height := float(active_manager.call(
 				&"get_water_height",
 				segment_start
 			))
@@ -33,8 +34,8 @@ static func find_surface_intersection(
 				) as WaterSurfaceHit
 		return manager_hit
 	var water_height := fallback_water_height_m
-	if ocean_manager != null and ocean_manager.has_method(&"get_water_height"):
-		water_height = float(ocean_manager.call(
+	if active_manager != null and active_manager.has_method(&"get_water_height"):
+		water_height = float(active_manager.call(
 			&"get_water_height",
 			segment_start
 		))
@@ -76,15 +77,21 @@ static func find_plane_intersection(
 static func get_water_height(
 		caller: Node,
 		world_position: Vector3,
-		fallback_water_height_m: float = 0.0
+		fallback_water_height_m: float = 0.0,
+		ocean_manager: Node = null
 ) -> float:
-	var ocean_manager := _get_ocean_manager(caller)
-	if ocean_manager != null and ocean_manager.has_method(&"get_water_height"):
-		return float(ocean_manager.call(&"get_water_height", world_position))
+	var active_manager := _get_ocean_manager(caller, ocean_manager)
+	if active_manager != null and active_manager.has_method(&"get_water_height"):
+		return float(active_manager.call(&"get_water_height", world_position))
 	return fallback_water_height_m
 
 
-static func _get_ocean_manager(caller: Node) -> Node:
+static func _get_ocean_manager(
+		caller: Node,
+		provided_manager: Node = null
+) -> Node:
+	if is_instance_valid(provided_manager):
+		return provided_manager
 	if caller == null or caller.get_tree() == null:
 		return null
 	return caller.get_tree().get_first_node_in_group(&"ocean_manager")

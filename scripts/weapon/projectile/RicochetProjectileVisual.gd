@@ -1,21 +1,28 @@
 extends Node3D
 class_name RicochetProjectileVisual
 
-@export var lifetime_seconds := 3.0
+@export var fallback_lifetime_seconds := 6.0
+@export var lifetime_margin_seconds := 0.75
+@export var maximum_lifetime_seconds := 12.0
 @export var gravity_scale := 0.45
 @export_range(0.0, 1.0, 0.01) var retained_speed_ratio := 0.3
 @export_range(0.0, 2.0, 0.05) var upward_bias := 0.12
 @export_range(0.0, 0.5, 0.01) var direction_randomness := 0.05
+@export_range(0.0, 0.5, 0.01) var minimum_upward_component := 0.08
+@export var surface_offset_m := 0.2
+@export var forward_offset_m := 0.1
 @export_range(0.0, 2.0, 0.05) var splash_strength_multiplier := 0.45
 @export var trail_lifetime_seconds := 0.65
 @export var trail_color := Color(1.0, 0.54, 0.18, 0.82)
 
+var active_lifetime_seconds := 0.0
 var velocity := Vector3.ZERO
 var age_seconds := 0.0
 var water_height_m := 0.0
 var active := false
 var water_impact_processed := false
 var base_splash_strength := 1.0
+var ocean_manager_ref: WeakRef
 var _despawn_requested := false
 
 @onready var trail_particles: GPUParticles3D = get_node_or_null(
@@ -33,11 +40,12 @@ func launch(
 		incoming_velocity: Vector3,
 		hit_normal: Vector3,
 		sea_level_m: float,
-		next_base_splash_strength: float = 1.0
+		next_base_splash_strength: float = 1.0,
+		ocean_manager: Node = null
 ) -> void:
-	global_position = hit_position
 	water_height_m = sea_level_m
 	base_splash_strength = maxf(next_base_splash_strength, 0.0)
+	_cache_ocean_manager(ocean_manager)
 	var incoming_direction := incoming_velocity.normalized()
 	if incoming_direction.length_squared() <= 0.000001:
 		incoming_direction = Vector3.FORWARD
@@ -53,10 +61,34 @@ func launch(
 			randf_range(0.0, direction_randomness),
 			randf_range(-direction_randomness, direction_randomness)
 		)
-	).normalized()
+	)
+	reflected_direction.y = maxf(
+		reflected_direction.y,
+		minimum_upward_component
+	)
+	reflected_direction = reflected_direction.normalized()
+	global_position = hit_position \
+		+ normal * maxf(surface_offset_m, 0.0) \
+		+ reflected_direction * maxf(forward_offset_m, 0.0)
 	velocity = reflected_direction \
 		* incoming_velocity.length() \
 		* retained_speed_ratio
+	var gravity_mps2 := _get_gravity_mps2()
+	var time_to_water: Variant = BallisticMath.calculate_time_to_height(
+		global_position.y,
+		water_height_m,
+		velocity.y,
+		gravity_mps2
+	)
+	active_lifetime_seconds = clampf(
+		float(time_to_water) + lifetime_margin_seconds,
+		0.5,
+		maxf(maximum_lifetime_seconds, 0.5)
+	) if time_to_water != null else clampf(
+		fallback_lifetime_seconds,
+		0.5,
+		maxf(maximum_lifetime_seconds, 0.5)
+	)
 	age_seconds = 0.0
 	active = true
 	water_impact_processed = false
@@ -71,10 +103,7 @@ func _physics_process(delta: float) -> void:
 	if not active or delta <= 0.0:
 		return
 	var segment_start := global_position
-	var gravity_mps2 := float(ProjectSettings.get_setting(
-		"physics/3d/default_gravity",
-		9.8
-	)) * maxf(gravity_scale, 0.0)
+	var gravity_mps2 := _get_gravity_mps2()
 	var segment_end := BallisticMath.calculate_position(
 		segment_start,
 		velocity,
@@ -86,7 +115,8 @@ func _physics_process(delta: float) -> void:
 		self,
 		segment_start,
 		segment_end,
-		water_height_m
+		water_height_m,
+		_get_cached_ocean_manager()
 	)
 	if water_hit != null and water_hit.hit:
 		global_position = water_hit.position
@@ -100,7 +130,7 @@ func _physics_process(delta: float) -> void:
 	velocity = next_velocity
 	age_seconds += delta
 	_orient_to_velocity()
-	if age_seconds >= lifetime_seconds:
+	if age_seconds >= active_lifetime_seconds:
 		despawn()
 
 
@@ -140,9 +170,13 @@ func despawn() -> void:
 
 func on_spawned_from_pool() -> void:
 	active = false
+	active_lifetime_seconds = 0.0
 	age_seconds = 0.0
 	velocity = Vector3.ZERO
+	water_height_m = 0.0
 	water_impact_processed = false
+	base_splash_strength = 1.0
+	ocean_manager_ref = null
 	_despawn_requested = false
 	hide()
 	set_physics_process(false)
@@ -151,14 +185,38 @@ func on_spawned_from_pool() -> void:
 
 func on_recycled_to_pool() -> void:
 	active = false
+	active_lifetime_seconds = 0.0
 	age_seconds = 0.0
 	velocity = Vector3.ZERO
 	water_height_m = 0.0
 	water_impact_processed = false
 	base_splash_strength = 1.0
+	ocean_manager_ref = null
+	_despawn_requested = false
 	hide()
 	set_physics_process(false)
 	_stop_trail()
+
+
+func _get_gravity_mps2() -> float:
+	return float(ProjectSettings.get_setting(
+		"physics/3d/default_gravity",
+		9.8
+	)) * maxf(gravity_scale, 0.0)
+
+
+func _cache_ocean_manager(provided_manager: Node = null) -> void:
+	ocean_manager_ref = null
+	var manager := provided_manager
+	if not is_instance_valid(manager) and get_tree() != null:
+		manager = get_tree().get_first_node_in_group(&"ocean_manager")
+	if is_instance_valid(manager):
+		ocean_manager_ref = weakref(manager)
+
+
+func _get_cached_ocean_manager() -> Node:
+	return ocean_manager_ref.get_ref() as Node \
+		if ocean_manager_ref != null else null
 
 
 func _orient_to_velocity() -> void:

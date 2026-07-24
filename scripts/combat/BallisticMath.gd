@@ -75,6 +75,32 @@ static func calculate_flight_time(
 	return flight_time if flight_time >= 0.0 else null
 
 
+static func calculate_time_to_height(
+		start_height: float,
+		target_height: float,
+		initial_vertical_velocity: float,
+		gravity_mps2: float
+) -> Variant:
+	if start_height <= target_height:
+		return 0.0
+	if gravity_mps2 <= EPSILON:
+		return null
+	var height_offset := target_height - start_height
+	var discriminant := initial_vertical_velocity * initial_vertical_velocity \
+		- 2.0 * gravity_mps2 * height_offset
+	if discriminant < 0.0:
+		return null
+	var root := sqrt(maxf(discriminant, 0.0))
+	var first_time := (
+		initial_vertical_velocity - root
+	) / gravity_mps2
+	var second_time := (
+		initial_vertical_velocity + root
+	) / gravity_mps2
+	var valid_time := maxf(first_time, second_time)
+	return valid_time if valid_time >= 0.0 else null
+
+
 static func calculate_maximum_range(
 		muzzle_speed: float,
 		gravity_mps2: float,
