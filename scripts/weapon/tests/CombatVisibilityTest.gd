@@ -57,11 +57,17 @@ func _test_impact_marker(scene: BattleScene, player: ShipUnit) -> void:
 
 
 func _test_ballistic_configuration(player: ShipUnit) -> void:
-	var velocity_limit := float(ProjectSettings.get_setting(
-		"physics/jolt_physics_3d/limits/max_linear_velocity",
-		0.0
-	))
-	_check(velocity_limit >= 2000.0, "Jolt projectile velocity limit is raised")
+	var shell_scene := load(
+		"res://scenes/weapon/projectiles/shell_projectile.tscn"
+	) as PackedScene
+	var shell_node := shell_scene.instantiate() \
+		if shell_scene != null else null
+	_check(
+		shell_node is ShellProjectile and shell_node.get_class() == "Node3D",
+		"combat shell uses direct Node3D simulation instead of Jolt velocity"
+	)
+	if shell_node != null:
+		shell_node.free()
 	var gravity := float(ProjectSettings.get_setting(
 		"physics/3d/default_gravity",
 		9.8
@@ -157,7 +163,9 @@ func _test_shell_trail(scene: BattleScene, player: ShipUnit) -> void:
 	if cannons.is_empty():
 		return
 	var cannon := cannons[0]
-	cannon.aim_at(player.global_position + Vector3(0.0, 0.0, -3000.0))
+	var aim_point := player.global_position + Vector3(0.0, 0.0, -3000.0)
+	cannon.aim_at(aim_point)
+	cannon.call(&"_turn_toward", aim_point, 10.0)
 	var fired := cannon.fire()
 	_check(fired, "cannon fires for trail validation")
 	var projectile := _find_shell_from_ship(
@@ -176,7 +184,7 @@ func _test_shell_trail(scene: BattleScene, player: ShipUnit) -> void:
 		projectile != null
 			and shell_data != null
 			and is_equal_approx(projectile.mass, shell_data.mass_kg),
-		"spawned shell applies its configured physical mass"
+		"spawned shell retains configured mass as damage/visual data"
 	)
 	if projectile != null:
 		projectile.despawn()

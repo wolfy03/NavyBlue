@@ -60,6 +60,10 @@ func _test_runtime_flow() -> void:
 		if not cannons.is_empty():
 			var turret := cannons[0] as CannonMount
 			_check(turret.weapon_data is WeaponData, "Turret receives WeaponData")
+			var aim_point: Vector3 = player.global_position \
+				+ -player.global_transform.basis.z * 1000.0
+			turret.aim_at(aim_point)
+			turret.call(&"_turn_toward", aim_point, 10.0)
 			var fired := turret.fire()
 			_check(fired, "Turret fires")
 			var projectiles := scene.get_node_or_null("Projectiles")

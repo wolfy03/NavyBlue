@@ -1,6 +1,8 @@
 extends "res://scripts/weapon/mount/WeaponMount.gd"
 class_name CannonMount
 
+static var _warned_range_ids: Dictionary = {}
+
 @export var projectile_scene: PackedScene = preload("res://scenes/weapon/projectile.tscn")
 @export var shell_stats: ShellStats = preload("res://scripts/combat/default_ap_shell.tres")
 @export var yaw_speed := 7.5
@@ -9,10 +11,12 @@ class_name CannonMount
 @export var pitch_degrees := 18.0
 @export var automatic_ballistic_pitch := true
 @export var pitch_speed_deg_sec := 12.0
+@export var pitch_alignment_tolerance_degrees := 0.5
 @export_range(-10.0, 10.0, 0.5) var manual_pitch_offset_deg := 0.0
 @export var muzzle_velocity := 36.0
 @export var reload_seconds := 1.2
 @export var bonus_projectile_spread_degrees := 0.6
+@export_range(0.5, 1.0, 0.01) var physical_range_safety_ratio := 0.98
 
 @onready var base_mesh: MeshInstance3D = $Base
 @onready var barrel_pivot: Node3D = $BarrelPivot
@@ -39,6 +43,14 @@ func setup(
 		max_pitch_degrees = minf(max_pitch_degrees, slot_data.elevation_max_degrees)
 	var team_color := ship.team_color if ship != null else Color.WHITE
 	_apply_team_materials(team_color)
+	if weapon_data != null \
+			and not is_configured_range_physically_reachable() \
+			and not _warned_range_ids.has(weapon_data.id):
+		_warned_range_ids[weapon_data.id] = true
+		push_warning(
+			"Configured cannon range is too close to or exceeds "
+			+ "the physical ballistic limit: %s" % weapon_data.id
+		)
 
 
 func _ready() -> void:
@@ -62,6 +74,15 @@ func get_fire_readiness_at(
 		return WeaponFireReadiness.State.NO_MUZZLE
 	if not _is_aim_aligned(world_point, 3.0):
 		return WeaponFireReadiness.State.NOT_ALIGNED
+	var required_pitch: Variant = _calculate_ballistic_pitch_deg(world_point)
+	if required_pitch == null:
+		return WeaponFireReadiness.State.NO_BALLISTIC_SOLUTION
+	var desired_pitch := float(required_pitch) + manual_pitch_offset_deg
+	if desired_pitch < min_pitch_degrees or desired_pitch > max_pitch_degrees:
+		return WeaponFireReadiness.State.NO_BALLISTIC_SOLUTION
+	if absf(pitch_degrees - desired_pitch) \
+			> pitch_alignment_tolerance_degrees:
+		return WeaponFireReadiness.State.NOT_ELEVATION_ALIGNED
 	return WeaponFireReadiness.State.READY
 
 
@@ -164,11 +185,10 @@ func _turn_toward(world_point: Vector3, delta: float) -> void:
 	if automatic_ballistic_pitch:
 		var ballistic_pitch: Variant = _calculate_ballistic_pitch_deg(world_point)
 		if ballistic_pitch != null:
-			var desired_pitch := clampf(
-				float(ballistic_pitch) + manual_pitch_offset_deg,
-				min_pitch_degrees,
-				max_pitch_degrees
-			)
+			var desired_pitch := float(ballistic_pitch) + manual_pitch_offset_deg
+			if desired_pitch < min_pitch_degrees \
+					or desired_pitch > max_pitch_degrees:
+				return
 			pitch_degrees = move_toward(
 				pitch_degrees,
 				desired_pitch,
@@ -191,21 +211,37 @@ func _calculate_ballistic_pitch_deg(world_point: Vector3) -> Variant:
 	var horizontal_distance := horizontal_offset.length()
 	if horizontal_distance < 0.01:
 		return null
-	var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	var effective_muzzle_velocity := get_modified_projectile_speed(
 		muzzle_velocity
 	)
-	var speed_squared := effective_muzzle_velocity * effective_muzzle_velocity
 	var vertical_offset := world_point.y - muzzle_position.y
-	var discriminant := speed_squared * speed_squared - gravity * (
-		gravity * horizontal_distance * horizontal_distance
-		+ 2.0 * vertical_offset * speed_squared
+	var angle: Variant = BallisticMath.solve_low_arc_angle(
+		horizontal_distance,
+		vertical_offset,
+		effective_muzzle_velocity,
+		get_effective_gravity_mps2()
 	)
-	if discriminant < 0.0:
-		return null
-	var tangent := (speed_squared - sqrt(discriminant)) \
-		/ (gravity * horizontal_distance)
-	return rad_to_deg(atan(tangent))
+	return rad_to_deg(float(angle)) if angle != null else null
+
+
+func get_effective_gravity_mps2() -> float:
+	var shell_data := weapon_data.projectile_data as ShellProjectileData \
+		if weapon_data != null else null
+	return BallisticMath.get_effective_gravity_mps2(shell_data)
+
+
+func get_physical_maximum_range_m() -> float:
+	return BallisticMath.calculate_maximum_range(
+		get_modified_projectile_speed(muzzle_velocity),
+		get_effective_gravity_mps2(),
+		max_pitch_degrees
+	)
+
+
+func is_configured_range_physically_reachable() -> bool:
+	var physical_maximum := get_physical_maximum_range_m()
+	return physical_maximum > 0.0 \
+		and get_range_m() <= physical_maximum * physical_range_safety_ratio
 
 
 func _apply_team_materials(team_color: Color) -> void:

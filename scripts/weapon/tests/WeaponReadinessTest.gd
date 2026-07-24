@@ -25,6 +25,7 @@ func _run() -> void:
 	if player != null:
 		_test_mount_traverse(player)
 		_test_fire_readiness(player, scene.get("allies") as Array)
+		_test_cannon_elevation_readiness(player)
 		_test_damage_evaluation(player)
 		_test_combat_range_and_readiness(
 			player,
@@ -290,6 +291,43 @@ func _test_damage_evaluation(player: ShipUnit) -> void:
 	)
 
 
+func _test_cannon_elevation_readiness(player: ShipUnit) -> void:
+	var cannons := player.combat.get_weapons_by_type(
+		WeaponTypes.Type.CANNON
+	)
+	if cannons.is_empty():
+		return
+	var cannon := cannons[0] as CannonMount
+	var target := player.to_global(Vector3(0.0, 0.0, -1000.0))
+	cannon.aim_at(target)
+	cannon.rotation.y = cannon.base_local_yaw_radians
+	var original_pitch := cannon.pitch_degrees
+	var original_maximum := cannon.max_pitch_degrees
+	cannon.pitch_degrees = cannon.min_pitch_degrees
+	_check(
+		cannon.get_fire_readiness_at(target)
+			== WeaponFireReadiness.State.NOT_ELEVATION_ALIGNED,
+		"cannon waits for its ballistic elevation"
+	)
+	cannon.call(&"_turn_toward", target, 10.0)
+	_check(
+		cannon.get_fire_readiness_at(target)
+			== WeaponFireReadiness.State.READY,
+		"cannon becomes ready after elevation alignment"
+	)
+	var unreachable_target := player.to_global(Vector3(0.0, 0.0, -5000.0))
+	cannon.aim_at(unreachable_target)
+	cannon.max_pitch_degrees = 5.0
+	_check(
+		cannon.get_fire_readiness_at(unreachable_target)
+			== WeaponFireReadiness.State.NO_BALLISTIC_SOLUTION,
+		"pitch limits report NO_BALLISTIC_SOLUTION"
+	)
+	cannon.max_pitch_degrees = original_maximum
+	cannon.pitch_degrees = original_pitch
+	cannon.aim_at(target)
+
+
 func _test_cannon_bonus_spread(
 		cannon: CannonMount,
 		player: ShipUnit
@@ -305,6 +343,7 @@ func _test_cannon_bonus_spread(
 	var forward_target := player.to_global(Vector3(0.0, 0.0, -1000.0))
 	cannon.aim_at(forward_target)
 	cannon.rotation.y = cannon.base_local_yaw_radians
+	cannon.call(&"_turn_toward", forward_target, 10.0)
 	var fired := cannon.fire()
 	_check(fired, "bonus projectile cannon salvo fires")
 	_check(
@@ -312,12 +351,14 @@ func _test_cannon_bonus_spread(
 		"projectile count bonus launches a two-shell salvo"
 	)
 	if captured_projectiles.size() == 2:
-		var first := captured_projectiles[0] as RigidBody3D
-		var second := captured_projectiles[1] as RigidBody3D
+		var first := captured_projectiles[0] as Projectile
+		var second := captured_projectiles[1] as Projectile
 		_check(
-			not first.linear_velocity.normalized().is_equal_approx(
-				second.linear_velocity.normalized()
-			),
+			first != null
+				and second != null
+				and not first.velocity.normalized().is_equal_approx(
+					second.velocity.normalized()
+				),
 			"bonus cannon shells use distinct horizontal spread directions"
 		)
 	for projectile in captured_projectiles:

@@ -311,16 +311,19 @@ func get_primary_impact_point(gravity: float) -> Variant:
 	var cannon := cannons[0]
 	var origin := cannon.get_muzzle_position()
 	var velocity_vector := cannon.get_muzzle_velocity_vector()
-	var a := -0.5 * gravity
-	var b := velocity_vector.y
-	var c := origin.y
-	var discriminant := b * b - 4.0 * a * c
+	var effective_gravity: float = gravity
+	if cannon is CannonMount:
+		effective_gravity = (cannon as CannonMount).get_effective_gravity_mps2()
+	var a: float = -0.5 * effective_gravity
+	var b: float = velocity_vector.y
+	var c: float = origin.y
+	var discriminant: float = b * b - 4.0 * a * c
 	if discriminant < 0.0:
 		return null
-	var sqrt_discriminant := sqrt(discriminant)
-	var t1 := (-b + sqrt_discriminant) / (2.0 * a)
-	var t2 := (-b - sqrt_discriminant) / (2.0 * a)
-	var time := maxf(t1, t2)
+	var sqrt_discriminant: float = sqrt(discriminant)
+	var t1: float = (-b + sqrt_discriminant) / (2.0 * a)
+	var t2: float = (-b - sqrt_discriminant) / (2.0 * a)
+	var time: float = maxf(t1, t2)
 	if time <= 0.0:
 		return null
 	var point := origin + velocity_vector * time \
@@ -412,6 +415,10 @@ func _get_readiness_priority(
 			return 90
 		WeaponFireReadiness.State.NOT_ALIGNED:
 			return 80
+		WeaponFireReadiness.State.NOT_ELEVATION_ALIGNED:
+			return 78
+		WeaponFireReadiness.State.NO_BALLISTIC_SOLUTION:
+			return 58
 		WeaponFireReadiness.State.FRIENDLY_BLOCKED:
 			return 70
 		WeaponFireReadiness.State.OUTSIDE_TRAVERSE:

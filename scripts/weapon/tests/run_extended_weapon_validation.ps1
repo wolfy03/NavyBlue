@@ -5,6 +5,7 @@ param(
 $projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $tests = @(
 	"res://scripts/weapon/tests/CombatVisibilityTest.gd",
+	"res://scripts/weapon/tests/ShellBallisticsTest.gd",
 	"res://scripts/weapon/tests/ExtendedWeaponSystemTest.gd",
 	"res://scripts/weapon/tests/WeaponReadinessTest.gd",
 	"res://scripts/weapon/tests/TorpedoXZCollisionTest.gd",
