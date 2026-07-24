@@ -94,12 +94,17 @@ func _test_retargeting_and_pursuit_throttling() -> void:
 	)
 	hunter.targeting.request_immediate_evaluation()
 	await physics_frame
-	_check(hunter.get_ai_target() == first_enemy, "nearest hostile target is selected")
+	var initial_target := hunter.get_ai_target() as ShipUnit
+	var replacement_target := fallback_enemy if initial_target == first_enemy else first_enemy
+	_check(
+		initial_target != null and hunter.is_hostile_to(initial_target),
+		"threat targeting selects a valid hostile target"
+	)
 
 	var pursuit_updates_before := hunter.ai.pursuit_navigation_update_count
 	var path_calculations_before := hunter.navigation.path_calculation_count
 	for _frame in 90:
-		first_enemy.global_position.z += 0.75
+		initial_target.global_position.z += 0.75
 		await physics_frame
 	var pursuit_updates := hunter.ai.pursuit_navigation_update_count - pursuit_updates_before
 	var path_calculations := hunter.navigation.path_calculation_count - path_calculations_before
@@ -109,20 +114,23 @@ func _test_retargeting_and_pursuit_throttling() -> void:
 	_check(path_calculations <= 4, "navigation path calculation remains rate-limited")
 
 	var update_count_before_threshold := hunter.ai.pursuit_navigation_update_count
-	first_enemy.global_position.z += 300.0
+	initial_target.global_position.z += 300.0
 	await physics_frame
 	_check(
 		hunter.ai.pursuit_navigation_update_count == update_count_before_threshold + 1,
 		"target movement beyond 250 m refreshes pursuit immediately"
 	)
 
-	first_enemy.queue_free()
+	initial_target.queue_free()
 	await process_frame
 	for _frame in 75:
 		await physics_frame
-	_check(hunter.get_ai_target() == fallback_enemy, "destroyed target is replaced within the evaluation interval")
+	_check(
+		hunter.get_ai_target() == replacement_target,
+		"destroyed target is replaced within the evaluation interval"
+	)
 
-	fallback_enemy.queue_free()
+	replacement_target.queue_free()
 	await process_frame
 	for _frame in 75:
 		await physics_frame

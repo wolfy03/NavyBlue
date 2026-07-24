@@ -38,6 +38,7 @@ func _run() -> void:
 	await _test_si_upgrades_and_run_serialization()
 	await _test_focus_fire_distribution_and_role_scores()
 	await _test_target_lock_and_emergency_switch()
+	await _test_freed_target_candidate_filtering()
 	await _test_damage_source_and_threat_decay()
 	await _test_projectile_source_reset()
 	await _test_debug_and_long_duration_simulation()
@@ -272,6 +273,50 @@ func _test_target_lock_and_emergency_switch() -> void:
 	_check(
 		owner.ai.target == owner.combat.target and owner.ai.target == owner.get_ai_target(),
 		"ShipAI and ShipCombat receive the component-owned target atomically"
+	)
+	_end_arena()
+
+
+func _test_freed_target_candidate_filtering() -> void:
+	_begin_arena()
+	var owner := _spawn_ship("dd_bluewind", &"ally", Vector3.ZERO)
+	owner.set_physics_process(false)
+	var fleet := FleetAIController.new()
+	_arena.add_child(fleet)
+	fleet.setup(
+		&"freed_target_test",
+		&"ally",
+		Callable(self, &"_get_provider_units"),
+		null
+	)
+	fleet.set_process(false)
+	fleet.register_member(owner)
+	var doomed_target := _spawn_ship(
+		"dd_bluewind",
+		&"enemy",
+		Vector3(2000.0, 0.0, 0.0)
+	)
+	doomed_target.set_physics_process(false)
+	_provider_units = [owner, doomed_target]
+	for index in 9:
+		var fallback := _spawn_ship(
+			"dd_bluewind",
+			&"enemy",
+			Vector3(3000.0 + float(index) * 100.0, 0.0, float(index) * 50.0)
+		)
+		fallback.set_physics_process(false)
+		_provider_units.append(fallback)
+	owner.configure_ai_target_provider(Callable(self, &"_get_provider_units"))
+	owner.set_ai_target(doomed_target)
+	doomed_target.free()
+	owner.targeting.update_targeting(0.0)
+	var replacement := owner.targeting.get_current_target()
+	_check(
+		replacement != null
+			and is_instance_valid(replacement)
+			and replacement.is_alive()
+			and owner.is_hostile_to(replacement),
+		"fleet candidate filtering clears a freed target and acquires a live replacement"
 	)
 	_end_arena()
 

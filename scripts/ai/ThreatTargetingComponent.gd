@@ -89,8 +89,11 @@ func update_targeting(delta: float) -> void:
 	_debug_elapsed_sec += delta
 
 	if not _is_valid_candidate(_current_target):
-		if _current_target != null:
+		if is_instance_valid(_current_target):
 			_change_target(null)
+		else:
+			_assignment_tracker.unassign(_owner_ship)
+			_current_target = null
 		_evaluation_requested = true
 
 	if _evaluation_requested or _evaluation_elapsed_sec >= _current_evaluation_interval_sec:
@@ -272,16 +275,15 @@ func _collect_candidates() -> Array[ShipUnit]:
 		return []
 	var candidates := _selector.collect_valid_candidates(_owner_ship, values as Array)
 	var fleet_controller := get_fleet_controller()
-	if fleet_controller != null and fleet_controller.has_method(&"filter_candidates_for_member"):
-		var filtered: Variant = fleet_controller.call(
-			&"filter_candidates_for_member",
+	if fleet_controller != null:
+		var valid_current_target := get_current_target()
+		var tracked_memory_targets := _memory.get_tracked_ships()
+		return fleet_controller.filter_candidates_for_member(
 			_owner_ship,
 			candidates,
-			_current_target,
-			_memory
+			valid_current_target,
+			tracked_memory_targets
 		)
-		if filtered is Array:
-			return filtered as Array[ShipUnit]
 	return candidates
 
 
@@ -584,10 +586,10 @@ func _schedule_next_interval() -> void:
 	)
 
 
-func get_fleet_controller() -> Node:
+func get_fleet_controller() -> FleetAIController:
 	if _fleet_controller_ref == null:
 		return null
-	return _fleet_controller_ref.get_ref() as Node
+	return _fleet_controller_ref.get_ref() as FleetAIController
 
 
 func _apply_fleet_recommendation(context: TargetEvaluationContext) -> void:

@@ -282,7 +282,7 @@ func filter_candidates_for_member(
 		owner: ShipUnit,
 		candidates: Array[ShipUnit],
 		current_target: ShipUnit,
-		memory: ThreatMemory
+		tracked_memory_targets: Array[ShipUnit]
 ) -> Array[ShipUnit]:
 	if candidates.size() <= 8:
 		return candidates
@@ -291,7 +291,7 @@ func filter_candidates_for_member(
 	var preferred := [get_primary_target()]
 	preferred.append_array(get_secondary_targets())
 	preferred.append_array(get_emergency_targets())
-	preferred.append_array(memory.get_tracked_ships())
+	preferred.append_array(tracked_memory_targets)
 	if current_target != null:
 		preferred.append(current_target)
 	for target_value in preferred:
