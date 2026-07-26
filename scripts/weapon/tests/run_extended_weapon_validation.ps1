@@ -15,7 +15,8 @@ $tests = @(
 	"res://scripts/combat/tests/ProjectileCollisionTest.gd",
 	"res://scripts/world/tests/BattleSceneSmokeTest.gd",
 	"res://scripts/world/tests/BattleLoopStateTest.gd",
-	"res://scripts/world/tests/ReferenceLifetimeSafetyTest.gd"
+	"res://scripts/world/tests/ReferenceLifetimeSafetyTest.gd",
+	"res://scripts/aircraft/tests/CarrierAircraftSystemTest.gd"
 )
 
 foreach ($test in $tests) {

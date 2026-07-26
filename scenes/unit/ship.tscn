@@ -1,4 +1,4 @@
-[gd_scene load_steps=21 format=3 uid="uid://dtiv3xr6a37g4"]
+[gd_scene load_steps=22 format=3 uid="uid://dtiv3xr6a37g4"]
 
 [ext_resource type="Script" path="res://scripts/unit/ShipUnit.gd" id="1_ship"]
 [ext_resource type="Script" path="res://scripts/unit/ShipMovement.gd" id="2_movement"]
@@ -15,6 +15,7 @@
 [ext_resource type="Script" path="res://scripts/weapon/TorpedoAimPreview.gd" id="13_torpedo_preview"]
 [ext_resource type="Script" path="res://scripts/unit/ShipWakeEmitter.gd" id="14_ship_wake"]
 [ext_resource type="Script" path="res://scripts/weapon/CannonAimPreview.gd" id="15_cannon_preview"]
+[ext_resource type="Script" path="res://scripts/aircraft/CarrierAirGroup.gd" id="16_air_group"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_hull"]
 size = Vector3(2.2, 0.8, 7)
@@ -103,3 +104,7 @@ script = ExtResource("6_visual_builder")
 
 [node name="ShipBuoyancy" type="Node" parent="."]
 script = ExtResource("8_buoyancy")
+
+[node name="CarrierAirGroup" type="Node" parent="."]
+process_mode = 4
+script = ExtResource("16_air_group")

@@ -30,6 +30,9 @@ const WEAPON_DATABASE_SCRIPT := preload("res://scripts/data/WeaponDatabase.gd")
 @onready var ai: ShipAI = $ShipAI
 @onready var visual_builder: Node = $ShipVisualBuilder
 @onready var buoyancy: Node = $ShipBuoyancy
+@onready var carrier_air_group: CarrierAirGroup = get_node_or_null(
+	"CarrierAirGroup"
+) as CarrierAirGroup
 
 var _player_throttle_axis := 0.0
 var _player_rudder_axis := 0.0
@@ -137,6 +140,32 @@ func fire_cannons() -> void:
 
 func fire_torpedoes() -> void:
 	combat.fire_torpedoes()
+
+
+func launch_air_squadron(
+		squadron_id: String,
+		world_position: Vector3
+) -> AircraftSquadron:
+	if carrier_air_group == null:
+		return null
+	return carrier_air_group.launch_squadron(squadron_id, world_position)
+
+
+func recall_air_squadrons() -> void:
+	if carrier_air_group != null:
+		carrier_air_group.request_all_squadrons_return()
+
+
+func debug_launch_first_squadron(
+		world_position: Vector3
+) -> AircraftSquadron:
+	if carrier_air_group == null:
+		return null
+	return carrier_air_group.debug_launch_first_squadron(world_position)
+
+
+func debug_recall_all_squadrons() -> void:
+	recall_air_squadrons()
 
 
 func equip_weapon(
@@ -372,6 +401,16 @@ func _setup_components() -> void:
 	health.setup(ship_data.defense_stats if ship_data != null else null)
 	targeting.setup(self, ship_data.ai_role_profile if ship_data != null else null, _ai_candidate_provider)
 	ai.setup(self, ship_data)
+	if carrier_air_group != null:
+		if ship_data != null and ship_data.carrier_air_group_data != null:
+			carrier_air_group.setup(
+				self,
+				ship_data.carrier_air_group_data
+			)
+			carrier_air_group.process_mode = Node.PROCESS_MODE_INHERIT
+		else:
+			carrier_air_group.setup(self, null)
+			carrier_air_group.process_mode = Node.PROCESS_MODE_DISABLED
 	if not targeting.target_changed.is_connected(_on_target_changed):
 		targeting.target_changed.connect(_on_target_changed)
 	if not health.died.is_connected(_on_health_died):

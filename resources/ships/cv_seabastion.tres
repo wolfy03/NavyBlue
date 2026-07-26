@@ -1,9 +1,10 @@
-[gd_resource type="Resource" script_class="ShipData" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="ShipData" load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/ShipData.gd" id="1_ship"]
 [ext_resource type="Script" path="res://scripts/combat/ShipDefenseStats.gd" id="2_defense"]
 [ext_resource type="Resource" path="res://resources/ai_roles/carrier_ai_role.tres" id="3_role"]
 [ext_resource type="Script" path="res://scripts/data/ShipWeaponSlotData.gd" id="4_slot"]
+[ext_resource type="Resource" path="res://resources/aircraft/air_groups/seabastion_air_group.tres" id="5_air_group"]
 
 [sub_resource type="Resource" id="Resource_defense"]
 resource_local_to_scene = true
@@ -53,3 +54,4 @@ defense_stats = SubResource("Resource_defense")
 ai_role_profile = ExtResource("3_role")
 strategic_value = 1.4
 combat_role = &"support"
+carrier_air_group_data = ExtResource("5_air_group")

@@ -69,6 +69,8 @@ settings = ExtResource("10_settings")
 
 [node name="Ships" type="Node3D" parent="." unique_id=963148669]
 
+[node name="Aircraft" type="Node3D" parent="." groups=["aircraft_root"]]
+
 [node name="Projectiles" type="Node3D" parent="."]
 
 [node name="CombatEffectController" type="Node3D" parent="."]

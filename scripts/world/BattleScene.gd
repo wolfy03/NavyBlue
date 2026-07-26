@@ -105,6 +105,29 @@ func get_battle_units() -> Array:
 	return _battle_units.duplicate()
 
 
+func debug_launch_first_squadron(
+		world_position: Vector3
+) -> AircraftSquadron:
+	var player_carrier := player_ship as ShipUnit
+	if player_carrier == null \
+			or not is_instance_valid(player_carrier) \
+			or player_carrier.ship_data == null \
+			or player_carrier.ship_data.ship_class \
+				!= ShipData.ShipClass.AIRCRAFT_CARRIER:
+		return null
+	return player_carrier.debug_launch_first_squadron(world_position)
+
+
+func debug_recall_all_squadrons() -> void:
+	var player_carrier := player_ship as ShipUnit
+	if player_carrier != null \
+			and is_instance_valid(player_carrier) \
+			and player_carrier.ship_data != null \
+			and player_carrier.ship_data.ship_class \
+				== ShipData.ShipClass.AIRCRAFT_CARRIER:
+		player_carrier.debug_recall_all_squadrons()
+
+
 func get_fleet_controllers() -> Array[FleetAIController]:
 	var result: Array[FleetAIController] = []
 	for controller_value in _fleet_controllers.values():

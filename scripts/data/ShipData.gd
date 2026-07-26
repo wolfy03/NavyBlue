@@ -44,3 +44,6 @@ enum ShipClass {
 @export_category("Combat Role")
 @export var strategic_value := 1.0
 @export var combat_role: StringName = &"line_combatant"
+
+@export_category("Carrier")
+@export var carrier_air_group_data: CarrierAirGroupData
