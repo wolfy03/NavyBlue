@@ -366,6 +366,22 @@ func _process_ship_hit(collision: ShellCollisionResult) -> void:
 	)
 	hit_info.projectile_info = _get_projectile_damage_info()
 	var damage_result := DamageResolver.resolve_hit(hit_info)
+	ShipImpactEffectService.emit_shell_impact(
+		self,
+		collision.position,
+		hit_normal,
+		velocity,
+		damage_result,
+		projectile_data as ShellProjectileData
+	)
+	if has_node("/root/EventBus"):
+		get_node("/root/EventBus").shell_hit.emit(
+			self,
+			collision.target_ship,
+			collision.position,
+			hit_normal,
+			damage_result
+		)
 	ship_hit_resolved.emit(damage_result)
 	if damage_result.hit_outcome == HitOutcome.Type.RICOCHET:
 		_spawn_ricochet_visual(
@@ -524,10 +540,10 @@ func _get_cached_ocean_manager() -> Node:
 		if ocean_manager_ref != null else null
 
 
-func _validate_collision_mask() -> bool:
+func _validate_collision_mask(report_warning: bool = true) -> bool:
 	if shell_collision_mask != 0:
 		return true
-	if not _collision_mask_warning_emitted:
+	if report_warning and not _collision_mask_warning_emitted:
 		_collision_mask_warning_emitted = true
 		push_warning("Shell projectile collision mask is empty.")
 	return false

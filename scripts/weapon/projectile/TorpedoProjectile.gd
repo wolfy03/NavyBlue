@@ -268,6 +268,15 @@ func _resolve_ship_hit(
 		source_weapon_id
 	)
 	var result := DamageResolver.resolve_hit(hit_info)
+	ShipImpactEffectService.emit_torpedo_impact(
+		self,
+		hit_position,
+		-direction,
+		direction,
+		result,
+		torpedo_data,
+		water_height_m
+	)
 	hit_resolved.emit(result)
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").torpedo_hit.emit(self, target_ship, result)

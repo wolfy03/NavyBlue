@@ -9,6 +9,8 @@ signal deactivated(effect)
 @export_range(-48.0, 12.0, 0.1) var base_volume_db: float = -8.0
 @export_range(0.5, 2.0, 0.01) var min_pitch: float = 0.85
 @export_range(0.5, 2.0, 0.01) var max_pitch: float = 1.18
+@export_range(1.0, 50.0, 0.5, "or_greater")
+var visual_scale_multiplier := 1.0
 
 @onready var main_plume: GPUParticles3D = $MainPlumeParticles
 @onready var droplets: GPUParticles3D = $DropletParticles
@@ -37,11 +39,14 @@ func activate(world_position: Vector3, strength: float, impact_velocity: Vector3
 	_align_to_surface(surface_normal)
 
 	var safe_strength := clampf(strength, 0.25, 4.0)
-	var velocity_factor := clampf(impact_velocity.length() / 45.0, 0.65, 2.2)
-	scale = Vector3.ONE * (0.65 + safe_strength * 0.22)
-	_configure_particle_runtime(main_plume, 1.75 + safe_strength * 1.18, velocity_factor)
-	_configure_particle_runtime(droplets, 1.65 + safe_strength * 1.15, velocity_factor)
-	_configure_particle_runtime(mist, 1.45 + safe_strength * 1.1, 0.7)
+	var velocity_factor := clampf(impact_velocity.length() / 55.0, 0.15, 1.0)
+	var effect_scale := (
+		0.65 + safe_strength * 0.12
+	) * visual_scale_multiplier
+	scale = Vector3.ONE * effect_scale
+	_configure_particle_runtime(main_plume, 0.75 + safe_strength * 0.18, velocity_factor)
+	_configure_particle_runtime(droplets, 0.65 + safe_strength * 0.15, velocity_factor)
+	_configure_particle_runtime(mist, 0.45 + safe_strength * 0.1, 0.7)
 
 	_restart_particles(main_plume)
 	_restart_particles(droplets)
@@ -71,6 +76,13 @@ func is_available() -> bool:
 
 
 func _setup_particles() -> void:
+	var effect_aabb := AABB(
+		Vector3(-60.0, -15.0, -60.0),
+		Vector3(120.0, 150.0, 120.0)
+	)
+	main_plume.visibility_aabb = effect_aabb
+	droplets.visibility_aabb = effect_aabb
+	mist.visibility_aabb = effect_aabb
 	_setup_plume()
 	_setup_droplets()
 	_setup_mist()
@@ -82,53 +94,56 @@ func _setup_particles() -> void:
 func _setup_plume() -> void:
 	main_plume.one_shot = true
 	main_plume.amount = 48
-	main_plume.lifetime = 1.2
+	main_plume.lifetime = 1.8
 	main_plume.explosiveness = 0.82
 	main_plume.fixed_fps = 30
+	main_plume.local_coords = false
 	var material := ParticleProcessMaterial.new()
 	material.direction = Vector3.UP
 	material.spread = 14.0
-	material.initial_velocity_min = 8.0
-	material.initial_velocity_max = 16.0
-	material.gravity = Vector3(0.0, -13.0, 0.0)
+	material.initial_velocity_min = 18.0
+	material.initial_velocity_max = 42.0
+	material.gravity = Vector3(0.0, -18.0, 0.0)
 	material.scale_min = 0.18
 	material.scale_max = 0.42
 	material.color = Color(0.74, 0.93, 1.0, 0.82)
 	main_plume.process_material = material
 	var mesh := SphereMesh.new()
-	mesh.radius = 0.12
-	mesh.height = 0.35
+	mesh.radius = 3.0
+	mesh.height = 10.0
 	main_plume.draw_pass_1 = mesh
 
 
 func _setup_droplets() -> void:
 	droplets.one_shot = true
 	droplets.amount = 82
-	droplets.lifetime = 1.5
+	droplets.lifetime = 2.2
 	droplets.explosiveness = 0.92
 	droplets.fixed_fps = 30
+	droplets.local_coords = false
 	var material := ParticleProcessMaterial.new()
 	material.direction = Vector3.UP
 	material.spread = 52.0
-	material.initial_velocity_min = 5.5
-	material.initial_velocity_max = 15.0
-	material.gravity = Vector3(0.0, -19.0, 0.0)
+	material.initial_velocity_min = 12.0
+	material.initial_velocity_max = 34.0
+	material.gravity = Vector3(0.0, -22.0, 0.0)
 	material.scale_min = 0.035
 	material.scale_max = 0.095
 	material.color = Color(0.66, 0.88, 1.0, 0.76)
 	droplets.process_material = material
 	var mesh := SphereMesh.new()
-	mesh.radius = 0.055
-	mesh.height = 0.11
+	mesh.radius = 10.22
+	mesh.height = 10.55
 	droplets.draw_pass_1 = mesh
 
 
 func _setup_mist() -> void:
 	mist.one_shot = true
 	mist.amount = 36
-	mist.lifetime = 2.1
+	mist.lifetime = 2.8
 	mist.explosiveness = 0.55
 	mist.fixed_fps = 20
+	mist.local_coords = false
 	var material := ParticleProcessMaterial.new()
 	material.direction = Vector3.UP
 	material.spread = 64.0
@@ -136,11 +151,11 @@ func _setup_mist() -> void:
 	material.initial_velocity_max = 3.2
 	material.gravity = Vector3(0.0, 0.8, 0.0)
 	material.scale_min = 0.45
-	material.scale_max = 1.2
+	material.scale_max = 2.2
 	material.color = Color(0.78, 0.92, 1.0, 0.28)
 	mist.process_material = material
 	var mesh := QuadMesh.new()
-	mesh.size = Vector2(1.0, 1.0)
+	mesh.size = Vector2(18.0, 18.0)
 	mist.draw_pass_1 = mesh
 
 

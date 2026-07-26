@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene load_steps=18 format=3 uid="uid://c346y3o6qqqhd"]
 
 [ext_resource type="Script" uid="uid://cj802p5ep0lqm" path="res://scripts/world/BattleScene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bqtoaaf4qto5a" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://scripts/world/BattleStateController.gd" id="9_battle_state"]
 [ext_resource type="Resource" path="res://resources/settings/default_battlefield_settings.tres" id="10_settings"]
 [ext_resource type="Script" path="res://scripts/world/BattlefieldBounds.gd" id="11_bounds"]
+[ext_resource type="Script" path="res://scripts/effects/CombatEffectController.gd" id="12_effects"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -69,6 +70,9 @@ settings = ExtResource("10_settings")
 [node name="Ships" type="Node3D" parent="." unique_id=963148669]
 
 [node name="Projectiles" type="Node3D" parent="."]
+
+[node name="CombatEffectController" type="Node3D" parent="."]
+script = ExtResource("12_effects")
 
 [node name="SpawnSystem" type="Node" parent="." unique_id=127868479]
 script = ExtResource("6_spawn")

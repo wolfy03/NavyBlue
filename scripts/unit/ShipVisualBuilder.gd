@@ -9,6 +9,7 @@ var bow_mesh: MeshInstance3D
 var deck_mesh: MeshInstance3D
 var weapon_mount_root: Node3D
 var weapon_database := WEAPON_DATABASE_SCRIPT.new()
+var diagnostics_enabled := true
 
 
 func setup(
@@ -118,18 +119,20 @@ func _build_legacy_turrets(
 	if ship_data == null:
 		return mounts
 	if weapon_mount_root == null:
-		push_warning(
-			"Cannot build legacy weapons for ship '%s': WeaponMountRoot is missing."
-			% ship_data.id
-		)
+		if diagnostics_enabled:
+			push_warning(
+				"Cannot build legacy weapons for ship '%s': WeaponMountRoot is missing."
+				% ship_data.id
+			)
 		return mounts
 	_clear_mounts()
 	var weapon_data := weapon_database.get_weapon(ship_data.default_weapon_id)
 	if weapon_data == null:
-		push_warning(
-			"Legacy weapon data could not be loaded for ship '%s': %s"
-			% [ship_data.id, ship_data.default_weapon_id]
-		)
+		if diagnostics_enabled:
+			push_warning(
+				"Legacy weapon data could not be loaded for ship '%s': %s"
+				% [ship_data.id, ship_data.default_weapon_id]
+			)
 		return mounts
 	if weapon_data.id.is_empty():
 		push_warning(

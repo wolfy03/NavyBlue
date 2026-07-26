@@ -15,6 +15,8 @@ func _run() -> void:
 func _test_content_resources() -> void:
 	var ship_database := ShipDatabase.new()
 	var stage_database := StageDatabase.new()
+	ship_database.warn_on_fallback = false
+	stage_database.warn_on_fallback = false
 	var weapon_database := WeaponDatabase.new()
 	_check(ship_database.get_ship("dd_bluewind") is ShipData, "ShipDatabase returns ShipData")
 	_check(ship_database.get_ship("unknown_ship").id == "dd_bluewind", "ShipDatabase fallback is valid")
@@ -73,7 +75,13 @@ func _test_runtime_flow() -> void:
 				_check(projectile.projectile_data is ProjectileData, "Projectile receives ProjectileData")
 				_check(not str(projectile.get_meta("pool_key", "")).is_empty(), "Projectile is spawned through ObjectPool")
 				projectile.despawn()
-				_check(projectile.get_parent() == null, "Projectile returns to ObjectPool")
+				var object_pool := root.get_node_or_null("ObjectPool")
+				_check(
+					object_pool != null
+						and projectile.get_parent() == object_pool
+						and bool(projectile.get_meta("in_object_pool", false)),
+					"Projectile returns to ObjectPool"
+				)
 	scene.queue_free()
 	await process_frame
 	var object_pool := root.get_node_or_null("ObjectPool")

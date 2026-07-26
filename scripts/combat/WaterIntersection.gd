@@ -10,7 +10,8 @@ static func find_surface_intersection(
 		segment_start: Vector3,
 		segment_end: Vector3,
 		fallback_water_height_m: float = 0.0,
-		ocean_manager: Node = null
+		ocean_manager: Node = null,
+		report_invalid_manager_result: bool = true
 ) -> WaterSurfaceHit:
 	var active_manager := _get_ocean_manager(caller, ocean_manager)
 	if active_manager != null \
@@ -27,7 +28,9 @@ static func find_surface_intersection(
 			if manager_hit.hit:
 				return manager_hit
 			return manager_hit
-		if raw_hit != null and not _invalid_manager_result_warned:
+		if raw_hit != null \
+				and report_invalid_manager_result \
+				and not _invalid_manager_result_warned:
 			_invalid_manager_result_warned = true
 			push_warning(
 				"OceanManager returned an invalid water intersection result."

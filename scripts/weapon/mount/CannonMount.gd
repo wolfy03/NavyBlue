@@ -1,7 +1,7 @@
 extends "res://scripts/weapon/mount/WeaponMount.gd"
 class_name CannonMount
 
-static var _warned_range_ids: Dictionary = {}
+static var _warned_unreachable_range_ids: Dictionary = {}
 
 @export var projectile_scene: PackedScene = preload("res://scenes/weapon/projectile.tscn")
 @export var shell_stats: ShellStats = preload("res://scripts/combat/default_ap_shell.tres")
@@ -16,7 +16,7 @@ static var _warned_range_ids: Dictionary = {}
 @export var muzzle_velocity := 36.0
 @export var reload_seconds := 1.2
 @export var bonus_projectile_spread_degrees := 0.6
-@export_range(0.5, 1.0, 0.01) var physical_range_safety_ratio := 0.98
+@export_range(1.0, 1.05, 0.001) var physical_range_tolerance_ratio := 1.005
 
 @onready var base_mesh: MeshInstance3D = $Base
 @onready var barrel_pivot: Node3D = $BarrelPivot
@@ -45,11 +45,12 @@ func setup(
 	_apply_team_materials(team_color)
 	if weapon_data != null \
 			and not is_configured_range_physically_reachable() \
-			and not _warned_range_ids.has(weapon_data.id):
-		_warned_range_ids[weapon_data.id] = true
+			and not weapon_data.id.is_empty() \
+			and not _warned_unreachable_range_ids.has(weapon_data.id):
+		_warned_unreachable_range_ids[weapon_data.id] = true
 		push_warning(
-			"Configured cannon range is too close to or exceeds "
-			+ "the physical ballistic limit: %s" % weapon_data.id
+			"Configured cannon range exceeds the physical ballistic limit: %s"
+			% weapon_data.id
 		)
 
 
@@ -241,7 +242,8 @@ func get_physical_maximum_range_m() -> float:
 func is_configured_range_physically_reachable() -> bool:
 	var physical_maximum := get_physical_maximum_range_m()
 	return physical_maximum > 0.0 \
-		and get_range_m() <= physical_maximum * physical_range_safety_ratio
+		and get_range_m() \
+			<= physical_maximum * physical_range_tolerance_ratio
 
 
 func _apply_team_materials(team_color: Color) -> void:

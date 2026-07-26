@@ -68,6 +68,7 @@ func _test_resource_model() -> void:
 
 func _test_legacy_mount_null_safety() -> void:
 	var builder := ShipVisualBuilder.new()
+	builder.diagnostics_enabled = false
 	var ship_data := ShipData.new()
 	ship_data.id = "legacy_test_ship"
 	ship_data.default_weapon_id = "missing_legacy_weapon"
@@ -145,7 +146,10 @@ func _test_torpedo_physics_stability() -> void:
 	torpedo.linear_velocity = Vector3.ONE
 	torpedo.angular_velocity = Vector3.ONE
 	torpedo.despawn()
-	_check(torpedo.get_parent() == null, "torpedo returns to ObjectPool")
+	_check(
+		_is_stored_in_object_pool(torpedo),
+		"torpedo returns to ObjectPool"
+	)
 	_check(
 		torpedo.target_ref == null
 			and not torpedo.impact_processed
@@ -243,7 +247,10 @@ func _test_battle_weapon_flow() -> void:
 			spawned.call(&"_physics_process", 0.1)
 			_check(spawned.armed, "torpedo arms after travelling its safety distance")
 			spawned.despawn()
-			_check(spawned.get_parent() == null, "torpedo returns to ObjectPool")
+			_check(
+				_is_stored_in_object_pool(spawned),
+				"torpedo returns to ObjectPool"
+			)
 
 	var target := _find_ship_by_id(scene.get("enemies"), "bb_ironwake")
 	_check(target != null, "damage test finds the enemy battleship")
@@ -359,6 +366,15 @@ func _count_torpedoes(parent: Node) -> int:
 		if child is TorpedoProjectile:
 			count += 1
 	return count
+
+
+func _is_stored_in_object_pool(node: Node) -> bool:
+	var object_pool := root.get_node_or_null("ObjectPool")
+	return node != null \
+		and is_instance_valid(node) \
+		and object_pool != null \
+		and node.get_parent() == object_pool \
+		and bool(node.get_meta("in_object_pool", false))
 
 
 func _find_torpedo_from_ship(

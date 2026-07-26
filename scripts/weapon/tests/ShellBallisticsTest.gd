@@ -194,7 +194,8 @@ func _test_ocean_manager_fallbacks() -> void:
 		Vector3(0.0, 1.0, 0.0),
 		Vector3(0.0, -1.0, 1.0),
 		0.0,
-		invalid_manager
+		invalid_manager,
+		false
 	)
 	_check(
 		invalid_hit != null and invalid_hit.hit,
@@ -454,7 +455,7 @@ func _test_collision_exclusion_and_obstacle_policy() -> void:
 	)
 	shell.shell_collision_mask = 0
 	_check(
-		not bool(shell.call(&"_validate_collision_mask")),
+		not bool(shell.call(&"_validate_collision_mask", false)),
 		"empty shell collision masks are detected"
 	)
 	shell.queue_free()

@@ -3,7 +3,7 @@ extends Node
 var _pool: Dictionary = {}
 
 func spawn(scene: PackedScene, parent: Node) -> Node:
-	if scene == null or parent == null:
+	if scene == null or parent == null or not is_instance_valid(parent):
 		return null
 	var key := _get_scene_key(scene)
 	var objects: Array = _pool.get(key, [])
@@ -21,6 +21,7 @@ func spawn(scene: PackedScene, parent: Node) -> Node:
 	if node == null:
 		return null
 	node.set_meta("pool_key", key)
+	node.set_meta("in_object_pool", false)
 	if node.get_parent() != null:
 		node.get_parent().remove_child(node)
 	parent.add_child(node)
@@ -42,6 +43,8 @@ func recycle(node_value: Variant) -> bool:
 	var node := node_value as Node
 	if node == null:
 		return false
+	if bool(node.get_meta("in_object_pool", false)):
+		return true
 	var key := str(node.get_meta("pool_key", ""))
 	if key.is_empty():
 		key = node.scene_file_path
@@ -60,6 +63,11 @@ func recycle(node_value: Variant) -> bool:
 		recycled_body.sleeping = true
 	if node.get_parent():
 		node.get_parent().remove_child(node)
+	# Keep recycled nodes inside the SceneTree. Nodes detached from every
+	# parent are not owned by the pool and leak ObjectDB instances and RIDs
+	# when the game stops.
+	add_child(node)
+	node.set_meta("in_object_pool", true)
 	var objects: Array = _pool.get(key, [])
 	objects.append(node)
 	_pool[key] = objects
@@ -72,6 +80,12 @@ func clear_pool() -> void:
 		for node in objects:
 			if is_instance_valid(node):
 				node.queue_free()
+	_pool.clear()
+
+
+func _exit_tree() -> void:
+	# Child nodes are released by the SceneTree. Drop the auxiliary references
+	# so shutdown never retains stale pooled entries.
 	_pool.clear()
 
 func _get_scene_key(scene: PackedScene) -> String:

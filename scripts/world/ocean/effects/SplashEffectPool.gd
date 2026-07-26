@@ -8,6 +8,10 @@ class_name SplashEffectPool
 
 var _splashes: Array = []
 var _foams: Array = []
+var _missing_splash_warned := false
+var _invalid_splash_warned := false
+var _missing_foam_warned := false
+var _invalid_foam_warned := false
 
 
 func _ready() -> void:
@@ -21,14 +25,42 @@ func spawn_splash(
 		surface_normal: Vector3 = Vector3.UP
 ) -> void:
 	var effect := _acquire(_splashes)
-	if effect != null and effect.has_method(&"activate"):
-		effect.call(&"activate", world_position, strength, impact_velocity, surface_normal)
+	if effect == null:
+		if not _missing_splash_warned:
+			_missing_splash_warned = true
+			push_warning(
+				"SplashEffectPool could not acquire a splash effect."
+			)
+		return
+	if not effect.has_method(&"activate"):
+		if not _invalid_splash_warned:
+			_invalid_splash_warned = true
+			push_warning(
+				"Water splash effect does not implement activate()."
+			)
+		return
+	effect.call(
+		&"activate",
+		world_position,
+		strength,
+		impact_velocity,
+		surface_normal
+	)
 
 
 func spawn_foam(world_position: Vector3, strength: float) -> void:
 	var foam := _acquire(_foams)
-	if foam != null and foam.has_method(&"activate"):
-		foam.call(&"activate", world_position, strength)
+	if foam == null:
+		if not _missing_foam_warned:
+			_missing_foam_warned = true
+			push_warning("SplashEffectPool could not acquire a foam effect.")
+		return
+	if not foam.has_method(&"activate"):
+		if not _invalid_foam_warned:
+			_invalid_foam_warned = true
+			push_warning("Foam effect does not implement activate().")
+		return
+	foam.call(&"activate", world_position, strength)
 
 
 func get_active_splash_count() -> int:

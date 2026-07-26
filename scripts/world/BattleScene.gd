@@ -11,6 +11,9 @@ const DEFAULT_BATTLEFIELD_SETTINGS := preload("res://resources/settings/default_
 @onready var spawn_system: Node = get_node_or_null("SpawnSystem")
 @onready var battle_state_controller: Node = get_node_or_null("BattleStateController")
 @onready var projectiles_root: Node3D = get_node_or_null("Projectiles") as Node3D
+@onready var combat_effect_controller: Node = get_node_or_null(
+	"CombatEffectController"
+)
 @onready var camera: Camera3D = get_node_or_null("RTSCamera") as Camera3D
 @onready var input_manager: Node = get_node_or_null("PlayerInputManager")
 @onready var impact_marker: MeshInstance3D = get_node_or_null("ImpactMarker") as MeshInstance3D
@@ -29,6 +32,10 @@ var _fleet_controllers: Dictionary = {}
 
 func _ready() -> void:
 	BattleInputActions.ensure_defaults()
+	if combat_effect_controller == null:
+		push_warning(
+			"CombatEffectController is missing. Ship impact effects are disabled."
+		)
 	gravity = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 	if battlefield_bounds != null:
 		battlefield_bounds.settings = battlefield_settings

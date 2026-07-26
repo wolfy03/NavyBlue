@@ -8,8 +8,8 @@ const FOAM_SHADER := preload("res://scripts/world/ocean/effects/foam_patch.gdsha
 @export var ocean_manager_path: NodePath
 @export_range(0.01, 1.0, 0.001, "or_greater") var surface_offset: float = 0.035
 @export_range(1.0, 12.0, 0.1, "or_greater") var base_lifetime: float = 4.2
-@export_range(0.1, 20.0, 0.1, "or_greater") var base_radius: float = 1.0
-@export_range(0.1, 40.0, 0.1, "or_greater") var final_radius: float = 5.0
+@export_range(0.1, 20.0, 0.1, "or_greater") var base_radius: float = 10.0
+@export_range(0.1, 40.0, 0.1, "or_greater") var final_radius: float = 50.0
 
 @onready var mesh_instance: MeshInstance3D = $MeshInstance3D
 

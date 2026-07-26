@@ -1,8 +1,11 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/debug/ShellProjectileIntegrationTest.gd" id="1_test"]
+[ext_resource type="PackedScene" path="res://scenes/world/ocean.tscn" id="2_ocean"]
 
 [node name="ShellProjectileIntegrationTest" type="Node3D"]
 script = ExtResource("1_test")
 
 [node name="Projectiles" type="Node3D" parent="."]
+
+[node name="Ocean" parent="." instance=ExtResource("2_ocean")]

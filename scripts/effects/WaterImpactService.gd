@@ -1,6 +1,8 @@
 extends RefCounted
 class_name WaterImpactService
 
+static var _invalid_interaction_warned := false
+
 
 static func emit_impact(
 		caller: Node,
@@ -14,7 +16,14 @@ static func emit_impact(
 	var tree := caller.get_tree()
 	if tree != null:
 		var interaction := tree.get_first_node_in_group(&"ocean_interaction")
-		if interaction != null and interaction.has_method(&"register_impact_at"):
+		if interaction != null \
+				and not interaction.has_method(&"register_impact_at"):
+			if not _invalid_interaction_warned:
+				_invalid_interaction_warned = true
+				push_warning(
+					"OceanInteraction does not implement register_impact_at()."
+				)
+		elif interaction != null:
 			interaction.call(
 				&"register_impact_at",
 				position,

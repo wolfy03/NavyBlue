@@ -9,9 +9,11 @@ const SHIP_PATHS := {
 	"cv_seabastion": "res://resources/ships/cv_seabastion.tres",
 }
 
+var warn_on_fallback := true
+
 func get_ship(id: String) -> ShipData:
 	var resolved_id := id if SHIP_PATHS.has(id) else DEFAULT_SHIP_ID
-	if resolved_id != id:
+	if resolved_id != id and warn_on_fallback:
 		push_warning("Unknown ship id '%s'. Falling back to %s." % [id, DEFAULT_SHIP_ID])
 	var path := str(SHIP_PATHS[resolved_id])
 	var data := load(path) as ShipData

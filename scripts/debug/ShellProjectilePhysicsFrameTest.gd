@@ -8,6 +8,7 @@ var _last_fired_projectile: Node
 var _water_impact_count := 0
 var _last_water_impact_position := Vector3.ZERO
 var _original_time_scale := 1.0
+var _ocean_interaction: Node
 
 
 func _ready() -> void:
@@ -34,6 +35,13 @@ func _run() -> void:
 	if event_bus != null:
 		event_bus.projectile_water_impact.connect(_on_water_impact)
 	await get_tree().process_frame
+	_ocean_interaction = get_tree().get_first_node_in_group(
+		&"ocean_interaction"
+	)
+	_check(
+		_ocean_interaction != null,
+		"physics-frame integration scene contains OceanInteraction"
+	)
 
 	for requested_distance in _get_test_distances(weapon.range_meters):
 		await _run_distance_case(mount, weapon, requested_distance)
@@ -126,6 +134,12 @@ func _run_distance_case(
 		_water_impact_count == 1,
 		"actual shell emits one water impact at %.0f m" % requested_distance
 	)
+	var pool_state_after := _get_pool_state()
+	_check(
+		int(pool_state_after.get("active_splashes", 0)) > 0,
+		"physics-frame impact activates a real splash at %.0f m"
+			% requested_distance
+	)
 	_check(
 		error_m <= requested_distance * allowed_ratio,
 		"physics-frame error stays within %.0f%% at %.0f m" % [
@@ -166,6 +180,14 @@ func _on_mount_fired(projectile: Node) -> void:
 func _on_water_impact(position: Vector3, _strength: float) -> void:
 	_water_impact_count += 1
 	_last_water_impact_position = position
+
+
+func _get_pool_state() -> Dictionary:
+	if _ocean_interaction == null \
+			or not is_instance_valid(_ocean_interaction) \
+			or not _ocean_interaction.has_method(&"get_pool_debug_state"):
+		return {}
+	return _ocean_interaction.call(&"get_pool_debug_state") as Dictionary
 
 
 func _check(condition: bool, description: String) -> void:

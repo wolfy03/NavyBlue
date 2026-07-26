@@ -5,6 +5,13 @@ signal ship_destroyed(ship)
 signal ship_damaged(ship, amount: float, damage_info)
 signal projectile_fired(projectile)
 signal projectile_water_impact(position: Vector3, strength: float)
+signal shell_hit(
+	projectile,
+	target_ship,
+	hit_position: Vector3,
+	hit_normal: Vector3,
+	result
+)
 signal torpedo_fired(torpedo)
 signal torpedo_hit(torpedo, target_ship, result)
 signal flooding_started(ship, duration_seconds: float)
