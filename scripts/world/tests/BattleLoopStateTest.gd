@@ -9,12 +9,50 @@ func _initialize() -> void:
 
 func _run() -> void:
 	_snapshot_run_save()
+	await _test_freed_enemy_reference_safety()
+	await _test_freed_death_connection_safety()
 	await _test_battle_clear_and_reward_selection()
 	await _test_battle_failure()
 	_restore_run_save()
 	for failure in _failures:
 		push_error("BATTLE LOOP TEST: %s" % failure)
 	quit(0 if _failures.is_empty() else 1)
+
+func _test_freed_enemy_reference_safety() -> void:
+	var controller := BattleStateController.new()
+	root.add_child(controller)
+	var freed_enemy := Node.new()
+	root.add_child(freed_enemy)
+	controller.enemies = [freed_enemy]
+	freed_enemy.free()
+	_check(
+		controller._all_enemies_destroyed(),
+		"freed enemy references count as destroyed"
+	)
+	_check(
+		controller.enemies.is_empty(),
+		"freed enemy references are pruned from battle state"
+	)
+	controller.free()
+	await process_frame
+
+func _test_freed_death_connection_safety() -> void:
+	var controller := BattleStateController.new()
+	root.add_child(controller)
+	var freed_health := Node.new()
+	root.add_child(freed_health)
+	controller._death_connections = [{
+		"health": freed_health,
+		"callback": Callable(),
+	}]
+	freed_health.free()
+	controller.stop_battle()
+	_check(
+		controller._death_connections.is_empty(),
+		"freed health connections are safely cleared"
+	)
+	controller.free()
+	await process_frame
 
 func _test_battle_clear_and_reward_selection() -> void:
 	var scene: Node = await _instantiate_battle_scene()
@@ -54,6 +92,12 @@ func _test_battle_failure() -> void:
 	var scene: Node = await _instantiate_battle_scene()
 	if scene == null:
 		return
+	var enemies: Array = scene.get("enemies").duplicate()
+	if not enemies.is_empty():
+		_apply_lethal_damage(enemies[0])
+		for _frame in 3:
+			await process_frame
+			await physics_frame
 	_apply_lethal_damage(scene.get("player_ship"))
 	for _frame in 8:
 		await process_frame

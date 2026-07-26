@@ -6,8 +6,8 @@ class_name SplashEffectPool
 @export_range(1, 128, 1, "or_greater") var splash_pool_size: int = 32
 @export_range(1, 256, 1, "or_greater") var foam_pool_size: int = 64
 
-var _splashes: Array[Node] = []
-var _foams: Array[Node] = []
+var _splashes: Array = []
+var _foams: Array = []
 
 
 func _ready() -> void:
@@ -53,7 +53,7 @@ func _build_pool() -> void:
 	_create_instances(_foams, foam_patch_scene, foam_pool_size)
 
 
-func _create_instances(target: Array[Node], scene: PackedScene, count: int) -> void:
+func _create_instances(target: Array, scene: PackedScene, count: int) -> void:
 	if scene == null:
 		return
 	for _index in count:
@@ -68,14 +68,19 @@ func _create_instances(target: Array[Node], scene: PackedScene, count: int) -> v
 			node.set_physics_process(false)
 
 
-func _acquire(pool: Array[Node]) -> Node:
-	for node in pool:
+func _acquire(pool: Array) -> Node:
+	_prune_freed_nodes(pool)
+	for node_value: Variant in pool:
+		var node := node_value as Node
 		if _is_available(node):
 			return node
 
 	var oldest: Node
 	var oldest_time := INF
-	for node in pool:
+	for node_value: Variant in pool:
+		var node := node_value as Node
+		if node == null:
+			continue
 		var activated_time := float(node.get(&"last_activated_msec")) if node.get(&"last_activated_msec") != null else 0.0
 		if activated_time < oldest_time:
 			oldest_time = activated_time
@@ -85,7 +90,10 @@ func _acquire(pool: Array[Node]) -> Node:
 	return oldest
 
 
-func _is_available(node: Node) -> bool:
+func _is_available(node_value: Variant) -> bool:
+	if node_value == null or not is_instance_valid(node_value):
+		return false
+	var node := node_value as Node
 	if node == null:
 		return false
 	if node.has_method(&"is_available"):
@@ -94,9 +102,18 @@ func _is_available(node: Node) -> bool:
 	return active_value == null or not bool(active_value)
 
 
-func _count_active(pool: Array[Node]) -> int:
+func _count_active(pool: Array) -> int:
+	_prune_freed_nodes(pool)
 	var count := 0
-	for node in pool:
-		if not _is_available(node):
+	for node_value: Variant in pool:
+		if not _is_available(node_value):
 			count += 1
 	return count
+
+
+func _prune_freed_nodes(pool: Array) -> void:
+	for index in range(pool.size() - 1, -1, -1):
+		var node_value: Variant = pool[index]
+		if node_value == null or not is_instance_valid(node_value) \
+				or not (node_value is Node):
+			pool.remove_at(index)

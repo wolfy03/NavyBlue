@@ -45,14 +45,20 @@ func start_battle(stage_data: StageData, next_player_ship: Node, next_allies: Ar
 func stop_battle() -> void:
 	battle_active = false
 	for connection in _death_connections:
-		var health: Node = connection.get("health")
+		var health_value: Variant = connection.get("health")
 		var callback: Callable = connection.get("callback")
-		if health != null and is_instance_valid(health) and health.is_connected("died", callback):
+		if health_value == null or not is_instance_valid(health_value):
+			continue
+		var health := health_value as Node
+		if health != null and health.is_connected("died", callback):
 			health.disconnect("died", callback)
 	_death_connections.clear()
 
-func _connect_ship_death(ship: Node, callback: Callable) -> void:
-	if not is_instance_valid(ship):
+func _connect_ship_death(ship_value: Variant, callback: Callable) -> void:
+	if ship_value == null or not is_instance_valid(ship_value):
+		return
+	var ship := ship_value as Node
+	if ship == null:
 		return
 	var health := ship.get_node_or_null("ShipHealth")
 	if health == null or not health.has_signal("died"):
@@ -67,7 +73,8 @@ func _connect_ship_death(ship: Node, callback: Callable) -> void:
 func _on_player_died() -> void:
 	_fail_battle()
 
-func _on_enemy_died(_enemy: Node) -> void:
+func _on_enemy_died(enemy: Variant) -> void:
+	enemies.erase(enemy)
 	call_deferred("_check_result")
 
 func _check_result() -> void:
@@ -80,18 +87,23 @@ func _check_result() -> void:
 		_clear_battle()
 
 func _all_enemies_destroyed() -> bool:
-	for enemy in enemies:
+	for index in range(enemies.size() - 1, -1, -1):
+		var enemy: Variant = enemies[index]
 		if _is_ship_alive(enemy):
 			return false
+		enemies.remove_at(index)
 	return true
 
-func _is_ship_alive(ship: Node) -> bool:
-	if not is_instance_valid(ship):
+func _is_ship_alive(ship: Variant) -> bool:
+	if ship == null or not is_instance_valid(ship):
 		return false
-	var health := ship.get_node_or_null("ShipHealth")
+	var ship_node := ship as Node
+	if ship_node == null:
+		return false
+	var health := ship_node.get_node_or_null("ShipHealth")
 	if health != null and health.get("current_health") != null:
 		return float(health.get("current_health")) > 0.0
-	return not ship.is_queued_for_deletion()
+	return not ship_node.is_queued_for_deletion()
 
 func _clear_battle() -> void:
 	if result_emitted:

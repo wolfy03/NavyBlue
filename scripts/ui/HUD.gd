@@ -81,7 +81,9 @@ func _on_ship_destroyed(ship: Node) -> void:
 
 
 func _remove_ship_indicator(instance_id: int) -> void:
-	var indicator: ShipStatusIndicator = _ship_indicators.get(instance_id)
-	if is_instance_valid(indicator):
-		indicator.queue_free()
+	var indicator_value: Variant = _ship_indicators.get(instance_id)
+	if indicator_value != null and is_instance_valid(indicator_value):
+		var indicator := indicator_value as ShipStatusIndicator
+		if indicator != null:
+			indicator.queue_free()
 	_ship_indicators.erase(instance_id)

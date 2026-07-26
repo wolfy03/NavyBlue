@@ -14,7 +14,7 @@ signal move_command_issued(target: Vector3, ships: Array)
 var controlled_ship
 var camera: RTSCamera
 var battlefield_bounds: BattlefieldBounds
-var selected_ships: Array[Node3D] = []
+var selected_ships: Array = []
 var _movement_marker: Node3D
 
 func setup(ship, view_camera: Camera3D, water_y: float = 0.0, bounds: BattlefieldBounds = null) -> void:

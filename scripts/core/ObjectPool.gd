@@ -7,7 +7,16 @@ func spawn(scene: PackedScene, parent: Node) -> Node:
 		return null
 	var key := _get_scene_key(scene)
 	var objects: Array = _pool.get(key, [])
-	var node: Node = objects.pop_back() if not objects.is_empty() else scene.instantiate()
+	var node: Node
+	while not objects.is_empty():
+		var candidate_value: Variant = objects.pop_back()
+		if candidate_value == null or not is_instance_valid(candidate_value):
+			continue
+		node = candidate_value as Node
+		if node != null:
+			break
+	if node == null:
+		node = scene.instantiate()
 	_pool[key] = objects
 	if node == null:
 		return null
@@ -27,7 +36,10 @@ func spawn(scene: PackedScene, parent: Node) -> Node:
 		node.call(&"on_spawned_from_pool")
 	return node
 
-func recycle(node: Node) -> bool:
+func recycle(node_value: Variant) -> bool:
+	if node_value == null or not is_instance_valid(node_value):
+		return false
+	var node := node_value as Node
 	if node == null:
 		return false
 	var key := str(node.get_meta("pool_key", ""))

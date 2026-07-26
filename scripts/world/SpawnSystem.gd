@@ -7,7 +7,7 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 @export var spawn_points_path: NodePath = NodePath("../SpawnPoints")
 
 var ship_database := SHIP_DATABASE_SCRIPT.new()
-var spawned_units: Array[Node] = []
+var spawned_units: Array = []
 
 func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 	clear_spawned_units()
@@ -80,8 +80,11 @@ func spawn_enemy_fleet(enemy_spawns: Array, parent: Node) -> Array:
 	return enemies
 
 func clear_spawned_units() -> void:
-	for unit in spawned_units:
-		if is_instance_valid(unit):
+	for unit_value in spawned_units:
+		if unit_value == null or not is_instance_valid(unit_value):
+			continue
+		var unit := unit_value as Node
+		if unit != null:
 			unit.queue_free()
 	spawned_units.clear()
 

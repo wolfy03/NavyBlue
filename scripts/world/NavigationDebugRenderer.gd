@@ -17,7 +17,7 @@ var _immediate_mesh := ImmediateMesh.new()
 var _material := StandardMaterial3D.new()
 var _camera: RTSCamera
 var _debug_label: Label
-var _ships: Array[Node3D] = []
+var _ships: Array = []
 
 func _ready() -> void:
 	enabled = settings.debug_draw_enabled and not OS.has_feature("release")
@@ -83,8 +83,11 @@ func _draw_grid_and_bounds() -> void:
 	_add_line(Vector3(-100.0, sea_y + 3.0, 0.0), Vector3(100.0, sea_y + 3.0, 0.0), Color.WHITE)
 	_add_line(Vector3(0.0, sea_y + 3.0, -100.0), Vector3(0.0, sea_y + 3.0, 100.0), Color.WHITE)
 
-func _draw_ship_navigation(ship: Node3D) -> void:
-	if not is_instance_valid(ship):
+func _draw_ship_navigation(ship_value: Variant) -> void:
+	if ship_value == null or not is_instance_valid(ship_value):
+		return
+	var ship := ship_value as Node3D
+	if ship == null:
 		return
 	var origin := ship.global_position + Vector3.UP * 4.0
 	var forward := -ship.global_transform.basis.z

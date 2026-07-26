@@ -39,9 +39,9 @@ func activate(world_position: Vector3, strength: float, impact_velocity: Vector3
 	var safe_strength := clampf(strength, 0.25, 4.0)
 	var velocity_factor := clampf(impact_velocity.length() / 45.0, 0.65, 2.2)
 	scale = Vector3.ONE * (0.65 + safe_strength * 0.22)
-	_configure_particle_runtime(main_plume, 0.75 + safe_strength * 0.18, velocity_factor)
-	_configure_particle_runtime(droplets, 0.65 + safe_strength * 0.15, velocity_factor)
-	_configure_particle_runtime(mist, 0.45 + safe_strength * 0.1, 0.7)
+	_configure_particle_runtime(main_plume, 1.75 + safe_strength * 1.18, velocity_factor)
+	_configure_particle_runtime(droplets, 1.65 + safe_strength * 1.15, velocity_factor)
+	_configure_particle_runtime(mist, 1.45 + safe_strength * 1.1, 0.7)
 
 	_restart_particles(main_plume)
 	_restart_particles(droplets)

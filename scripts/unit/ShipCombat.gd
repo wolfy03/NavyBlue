@@ -13,7 +13,9 @@ var owner_ship: ShipUnit
 func setup(next_owner_ship: ShipUnit, next_weapon_mounts: Array) -> void:
 	owner_ship = next_owner_ship
 	weapon_mounts.clear()
-	for mount_value in next_weapon_mounts:
+	for mount_value: Variant in next_weapon_mounts:
+		if mount_value == null or not is_instance_valid(mount_value):
+			continue
 		var mount := mount_value as WeaponMount
 		if mount != null:
 			weapon_mounts.append(mount)
@@ -27,16 +29,18 @@ func set_target(next_target) -> void:
 func clear_target() -> void:
 	target = null
 	has_aim_point = false
-	for mount in weapon_mounts:
-		if is_instance_valid(mount):
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount != null:
 			mount.clear_aim()
 
 
 func set_aim_point(world_point: Vector3) -> void:
 	aim_point = world_point
 	has_aim_point = true
-	for mount in weapon_mounts:
-		if is_instance_valid(mount):
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount != null:
 			mount.aim_at(world_point)
 
 
@@ -47,8 +51,9 @@ func adjust_turret_pitch(delta_degrees: float) -> void:
 
 func fire_weapon_type(weapon_type: WeaponTypes.Type) -> int:
 	var fired_count := 0
-	for mount in weapon_mounts:
-		if not is_instance_valid(mount) or mount.get_weapon_type() != weapon_type:
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount == null or mount.get_weapon_type() != weapon_type:
 			continue
 		if mount.fire():
 			fired_count += 1
@@ -129,8 +134,9 @@ func update_weapon_mounts(next_owner_ship: Node3D, use_default_aim: bool) -> voi
 		)
 	if not has_aim_point:
 		return
-	for mount in weapon_mounts:
-		if is_instance_valid(mount):
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount != null:
 			mount.aim_at(aim_point)
 
 
@@ -143,8 +149,9 @@ func get_weapons_by_type(
 		weapon_type: WeaponTypes.Type
 ) -> Array[WeaponMount]:
 	var result: Array[WeaponMount] = []
-	for mount in weapon_mounts:
-		if is_instance_valid(mount) and mount.get_weapon_type() == weapon_type:
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount != null and mount.get_weapon_type() == weapon_type:
 			result.append(mount)
 	return result
 
@@ -153,8 +160,9 @@ func can_fire_weapon_type_at(
 		weapon_type: WeaponTypes.Type,
 		world_point: Vector3
 ) -> bool:
-	for mount in weapon_mounts:
-		if is_instance_valid(mount) \
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount != null \
 				and mount.get_weapon_type() == weapon_type \
 				and mount.can_fire_at(world_point):
 			return true
@@ -164,10 +172,11 @@ func can_fire_weapon_type_at(
 func is_target_within_any_weapon_range(target_ship: ShipUnit) -> bool:
 	if not _is_valid_target(target_ship):
 		return false
-	for mount in weapon_mounts:
-		if not is_instance_valid(mount):
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount == null:
 			continue
-		var distance := mount.get_distance_to_world_point(
+		var distance: float = mount.get_distance_to_world_point(
 			target_ship.global_position
 		)
 		if distance >= mount.get_minimum_range_m() \
@@ -179,8 +188,9 @@ func is_target_within_any_weapon_range(target_ship: ShipUnit) -> bool:
 func can_attack_target_now(target_ship: ShipUnit) -> bool:
 	if not _is_valid_target(target_ship):
 		return false
-	for mount in weapon_mounts:
-		if is_instance_valid(mount) \
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount != null \
 				and mount.get_fire_readiness_at(target_ship.global_position) \
 					== WeaponFireReadiness.State.READY:
 			return true
@@ -204,12 +214,15 @@ func get_best_fire_readiness_for_type(
 	var best_state := WeaponFireReadiness.State.NO_WEAPON_DATA
 	var best_priority := -1
 	var found_mount := false
-	for mount in weapon_mounts:
-		if not is_instance_valid(mount) \
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount == null \
 				or mount.get_weapon_type() != weapon_type:
 			continue
 		found_mount = true
-		var state := mount.get_fire_readiness_at(target_ship.global_position)
+		var state: WeaponFireReadiness.State = mount.get_fire_readiness_at(
+			target_ship.global_position
+		)
 		if state == WeaponFireReadiness.State.READY:
 			return state
 		var priority := _get_readiness_priority(state)
@@ -224,13 +237,20 @@ func get_primary_weapon_range_m() -> float:
 	var cannons := get_weapons_by_type(WeaponTypes.Type.CANNON)
 	if not cannons.is_empty():
 		return cannons[0].get_range_m()
-	return weapon_mounts[0].get_range_m() if not weapon_mounts.is_empty() else 0.0
+	for mount_value: Variant in weapon_mounts:
+		if mount_value == null or not is_instance_valid(mount_value):
+			continue
+		var mount := mount_value as WeaponMount
+		if mount != null:
+			return mount.get_range_m()
+	return 0.0
 
 
 func get_max_weapon_range_m(type_filter: Variant = null) -> float:
 	var maximum_range_m := 0.0
-	for mount in weapon_mounts:
-		if not is_instance_valid(mount):
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount == null:
 			continue
 		if type_filter != null and mount.get_weapon_type() != int(type_filter):
 			continue
@@ -239,8 +259,9 @@ func get_max_weapon_range_m(type_filter: Variant = null) -> float:
 
 
 func has_usable_weapon() -> bool:
-	for mount in weapon_mounts:
-		if is_instance_valid(mount) and mount.get_range_m() > 0.0:
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount != null and mount.get_range_m() > 0.0:
 			return true
 	return false
 
@@ -255,8 +276,9 @@ func get_estimated_damage_per_second() -> float:
 
 func get_total_salvo_damage(type_filter: Variant = null) -> float:
 	var total_damage := 0.0
-	for mount in weapon_mounts:
-		if not is_instance_valid(mount) \
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount == null \
 				or not _matches_weapon_type(mount, type_filter):
 			continue
 		total_damage += mount.get_salvo_damage()
@@ -265,8 +287,9 @@ func get_total_salvo_damage(type_filter: Variant = null) -> float:
 
 func get_total_sustained_dps(type_filter: Variant = null) -> float:
 	var total_damage_per_second := 0.0
-	for mount in weapon_mounts:
-		if not is_instance_valid(mount) \
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount == null \
 				or not _matches_weapon_type(mount, type_filter):
 			continue
 		total_damage_per_second += mount.get_sustained_dps()
@@ -275,8 +298,9 @@ func get_total_sustained_dps(type_filter: Variant = null) -> float:
 
 func get_total_ready_salvo_damage(type_filter: Variant = null) -> float:
 	var total_damage := 0.0
-	for mount in weapon_mounts:
-		if not is_instance_valid(mount) \
+	for mount_value: Variant in weapon_mounts:
+		var mount := _as_valid_weapon_mount(mount_value)
+		if mount == null \
 				or not _matches_weapon_type(mount, type_filter):
 			continue
 		total_damage += mount.get_ready_salvo_damage()
@@ -395,6 +419,12 @@ func _matches_weapon_type(
 		type_filter: Variant
 ) -> bool:
 	return type_filter == null or mount.get_weapon_type() == int(type_filter)
+
+
+func _as_valid_weapon_mount(value: Variant) -> WeaponMount:
+	if value == null or not is_instance_valid(value):
+		return null
+	return value as WeaponMount
 
 
 func _is_valid_target(target_ship: ShipUnit) -> bool:

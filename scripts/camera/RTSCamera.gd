@@ -16,7 +16,7 @@ class_name RTSCamera
 
 @export_category("Movement")
 @export var min_move_speed_mps := 450.0
-@export var max_move_speed_mps := 1200.0
+@export var max_move_speed_mps := 2400.0
 @export var fast_move_multiplier := 2.0
 @export var rotation_speed_deg_sec := 70.0
 @export var movement_smoothing_sec := 0.2
@@ -25,8 +25,8 @@ class_name RTSCamera
 
 @export_category("Mouse")
 @export var edge_scroll_enabled := true
-@export var edge_margin_pixels := 24.0
-@export var drag_pan_scale := 1.0
+@export var edge_margin_pixels := 72.0
+@export var drag_pan_scale := 3.0
 @export var zoom_factor_per_step := 0.82
 @export var zoom_smoothing_sec := 0.24
 

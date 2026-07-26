@@ -50,7 +50,7 @@ var _secondary_target_ids: Dictionary = {}
 var _emergency_target_ids: Dictionary = {}
 var _emergency_threats: Dictionary = {}
 var _emergency_cooldowns: Dictionary = {}
-var _hostile_candidate_cache: Array[ShipUnit] = []
+var _hostile_candidate_cache: Array = []
 var _fleet_update_elapsed_sec := 0.0
 var _role_update_elapsed_sec := 0.0
 var _tactical_update_elapsed_sec := 0.0
@@ -1001,14 +1001,19 @@ func _detect_proximity_emergencies() -> void:
 
 
 func _on_ship_damaged(
-		damaged_ship: Node,
+		damaged_ship_value: Variant,
 		damage: float,
 		damage_info: Dictionary
 ) -> void:
-	var damaged := damaged_ship as ShipUnit
+	if damaged_ship_value == null or not is_instance_valid(damaged_ship_value):
+		return
+	var damaged := damaged_ship_value as ShipUnit
 	if damaged == null or not owns_member(damaged):
 		return
-	var attacker := damage_info.get("attacker_ship") as ShipUnit
+	var attacker_value: Variant = damage_info.get("attacker_ship")
+	if attacker_value == null or not is_instance_valid(attacker_value):
+		return
+	var attacker := attacker_value as ShipUnit
 	if attacker == null or not damaged.is_hostile_to(attacker):
 		return
 	var damage_ratio := damage / maxf(damaged.health.max_health, 1.0)
@@ -1087,7 +1092,16 @@ func _update_safe_rear_direction() -> void:
 
 
 func _get_hostile_candidates() -> Array[ShipUnit]:
-	return _hostile_candidate_cache
+	for index in range(_hostile_candidate_cache.size() - 1, -1, -1):
+		var candidate_value: Variant = _hostile_candidate_cache[index]
+		if not _is_alive_tree_ship(candidate_value):
+			_hostile_candidate_cache.remove_at(index)
+	var result: Array[ShipUnit] = []
+	for candidate_value in _hostile_candidate_cache:
+		var candidate := candidate_value as ShipUnit
+		if candidate != null:
+			result.append(candidate)
+	return result
 
 
 func _refresh_hostile_candidate_cache() -> void:
@@ -1102,8 +1116,11 @@ func _refresh_hostile_candidate_cache() -> void:
 		return
 	var representative := members[0]
 	for value in values as Array:
+		if value == null or not is_instance_valid(value):
+			continue
 		var candidate := value as ShipUnit
-		if candidate == null or owns_member(candidate) or not candidate.is_alive():
+		if candidate == null or owns_member(candidate) \
+				or not _is_alive_tree_ship(candidate):
 			continue
 		if representative.is_hostile_to(candidate):
 			_hostile_candidate_cache.append(candidate)
@@ -1288,9 +1305,11 @@ func _apply_difficulty_error_with_bounds(
 	result.position = base_position
 
 
-func _is_alive_tree_ship(ship: ShipUnit) -> bool:
+func _is_alive_tree_ship(ship_value: Variant) -> bool:
+	if ship_value == null or not is_instance_valid(ship_value):
+		return false
+	var ship := ship_value as ShipUnit
 	return ship != null \
-		and is_instance_valid(ship) \
 		and ship.is_alive() \
 		and not ship.is_queued_for_deletion() \
 		and ship.is_inside_tree()

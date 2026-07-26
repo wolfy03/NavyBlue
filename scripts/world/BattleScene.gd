@@ -22,7 +22,7 @@ var allies: Array = []
 var enemies: Array = []
 var gravity := 9.8
 var stage_database := STAGE_DATABASE_SCRIPT.new()
-var _battle_units: Array[Node3D] = []
+var _battle_units: Array = []
 var friendly_fleet_ai: FleetAIController
 var enemy_fleet_ai: FleetAIController
 var _fleet_controllers: Dictionary = {}
@@ -101,8 +101,8 @@ func get_battle_units() -> Array:
 func get_fleet_controllers() -> Array[FleetAIController]:
 	var result: Array[FleetAIController] = []
 	for controller_value in _fleet_controllers.values():
-		var controller := controller_value as FleetAIController
-		if controller != null and is_instance_valid(controller):
+		var controller := _as_valid_fleet_controller(controller_value)
+		if controller != null:
 			result.append(controller)
 	return result
 
@@ -202,8 +202,12 @@ func _register_battle_unit(node) -> void:
 
 func _prune_battle_units() -> void:
 	for index in range(_battle_units.size() - 1, -1, -1):
-		var ship := _battle_units[index]
-		if not is_instance_valid(ship) or ship.is_queued_for_deletion() or not ship.is_inside_tree():
+		var ship_value: Variant = _battle_units[index]
+		if ship_value == null or not is_instance_valid(ship_value):
+			_battle_units.remove_at(index)
+			continue
+		var ship := ship_value as Node3D
+		if ship == null or ship.is_queued_for_deletion() or not ship.is_inside_tree():
 			_battle_units.remove_at(index)
 
 
@@ -214,7 +218,9 @@ func _get_or_create_fleet_controller(ship: ShipUnit) -> FleetAIController:
 			else &"friendly_main"
 	var fleet_key := _make_fleet_key(ship.team, resolved_fleet_id)
 	if _fleet_controllers.has(fleet_key):
-		var existing := _fleet_controllers[fleet_key] as FleetAIController
+		var existing := _as_valid_fleet_controller(
+			_fleet_controllers[fleet_key]
+		)
 		if existing == null:
 			_fleet_controllers.erase(fleet_key)
 		elif existing.team != ship.team:
@@ -255,7 +261,9 @@ func _on_fleet_became_empty(
 		empty_fleet_id: StringName
 ) -> void:
 	var fleet_key := _make_fleet_key(empty_team, empty_fleet_id)
-	var controller := _fleet_controllers.get(fleet_key) as FleetAIController
+	var controller := _as_valid_fleet_controller(
+		_fleet_controllers.get(fleet_key)
+	)
 	if controller == null or not controller.is_empty():
 		return
 	_fleet_controllers.erase(fleet_key)
@@ -267,9 +275,8 @@ func _refresh_primary_fleet_references() -> void:
 	friendly_fleet_ai = null
 	enemy_fleet_ai = null
 	for controller_value in _fleet_controllers.values():
-		var controller := controller_value as FleetAIController
-		if controller == null or not is_instance_valid(controller) \
-				or controller.is_queued_for_deletion():
+		var controller := _as_valid_fleet_controller(controller_value)
+		if controller == null or controller.is_queued_for_deletion():
 			continue
 		if controller.fleet_id == &"enemy_main" \
 				and controller.team == FactionRelations.ENEMY:
@@ -279,6 +286,12 @@ func _refresh_primary_fleet_references() -> void:
 				or controller.team == FactionRelations.ALLY
 		):
 			friendly_fleet_ai = controller
+
+
+func _as_valid_fleet_controller(value: Variant) -> FleetAIController:
+	if value == null or not is_instance_valid(value):
+		return null
+	return value as FleetAIController
 
 
 func _resolve_ai_difficulty_profile() -> AIDifficultyProfile:

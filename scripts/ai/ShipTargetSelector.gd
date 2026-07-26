@@ -17,8 +17,10 @@ func find_target(owner_ship: Node3D, candidates: Array) -> Node3D:
 func collect_valid_candidates(owner_ship: Node3D, candidates: Array) -> Array[ShipUnit]:
 	var result: Array[ShipUnit] = []
 	for candidate_value in candidates:
+		if candidate_value == null or not is_instance_valid(candidate_value):
+			continue
 		var candidate := candidate_value as ShipUnit
-		if candidate == null or candidate == owner_ship or not is_instance_valid(candidate):
+		if candidate == null or candidate == owner_ship:
 			continue
 		if candidate.is_queued_for_deletion() or not candidate.is_inside_tree():
 			continue
