@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="NavyBlue"
-run/main_scene="uid://c346y3o6qqqhd"
+run/main_scene="uid://cew8fa8vj5vba"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 

@@ -48,7 +48,7 @@ func _on_start_new_game_pressed() -> void:
 			"scrap": 0,
 		},
 		"player_ship_state": {
-			"ship_id": "dd_bluewind",
+			"ship_id": "cv_seabastion",
 		},
 	})
 

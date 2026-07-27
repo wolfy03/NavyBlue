@@ -20,9 +20,15 @@ func _run() -> void:
 	await process_frame
 	await physics_frame
 	scene.process_mode = Node.PROCESS_MODE_DISABLED
-	var player := scene.get("player_ship") as ShipUnit
-	_check(player != null, "player ship spawns")
+	var player := _find_ship_by_id(
+		scene.get_battle_units(),
+		"dd_bluewind"
+	)
+	_check(player != null, "destroyer weapon test ship spawns")
 	if player != null:
+		player.team = FactionRelations.PLAYER
+		for mount in player.get_weapon_mounts():
+			mount.owner_team = player.team
 		_test_mount_traverse(player)
 		_test_fire_readiness(player, scene.get("allies") as Array)
 		_test_cannon_elevation_readiness(player)
@@ -38,6 +44,14 @@ func _run() -> void:
 	if object_pool != null:
 		object_pool.clear_pool()
 	_finish()
+
+
+func _find_ship_by_id(ships: Array, ship_id: String) -> ShipUnit:
+	for value in ships:
+		var ship := value as ShipUnit
+		if ship != null and ship.ship_id == ship_id:
+			return ship
+	return null
 
 
 func _test_mount_traverse(player: ShipUnit) -> void:

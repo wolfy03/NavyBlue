@@ -212,6 +212,7 @@ func _sync_carrier_selection() -> void:
 	for value in selected_ships:
 		var candidate := value as ShipUnit
 		if candidate != null \
+				and candidate.player_controlled \
 				and candidate.ship_data != null \
 				and candidate.ship_data.carrier_air_group_data != null:
 			carrier = candidate

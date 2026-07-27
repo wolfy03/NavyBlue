@@ -5,6 +5,7 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 
 @export var ship_scene: PackedScene = preload("res://scenes/unit/ship.tscn")
 @export var spawn_points_path: NodePath = NodePath("../SpawnPoints")
+@export var debug_carrier_spawns := false
 
 var ship_database := SHIP_DATABASE_SCRIPT.new()
 var spawned_units: Array = []
@@ -35,7 +36,7 @@ func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 
 func spawn_player_ship(ship_id: String, spawn_info: Dictionary, parent: Node) -> Node:
 	var info := spawn_info.duplicate(true)
-	info["ship_id"] = ship_id if not ship_id.is_empty() else str(info.get("ship_id", "cv_seabastion"))
+	info["ship_id"] = ship_id if not ship_id.is_empty() else str(info.get("ship_id", "dd_bluewind"))
 	info["team"] = str(info.get("team", "player"))
 	info["is_player"] = true
 	info["color"] = info.get("color", Color(0.18, 0.48, 0.95))
@@ -162,6 +163,13 @@ func _spawn_ship_from_info(spawn_info: Dictionary, parent: Node) -> Node:
 	var spawn_name := str(spawn_info.get("name", spawn_info.get("spawn_name", "")))
 	if not spawn_name.is_empty():
 		ship.name = spawn_name
+	if debug_carrier_spawns \
+			and ship_data.ship_class \
+				== ShipData.ShipClass.AIRCRAFT_CARRIER:
+		print_debug(
+			"Carrier spawned: name=%s team=%s player_controlled=%s"
+			% [ship.name, ship.team, ship.player_controlled]
+		)
 	spawned_units.append(ship)
 	if has_node("/root/EventBus"):
 		get_node("/root/EventBus").ship_spawned.emit(ship)

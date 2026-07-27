@@ -22,6 +22,9 @@ $tests = @(
 	"res://scripts/aircraft/tests/CarrierAirGroupRuntimeTest.gd",
 	"res://scripts/aircraft/tests/CarrierAirGroupSaveRestoreTest.gd",
 	"res://scripts/aircraft/tests/CarrierAirGroupAITest.gd",
+	"res://scripts/aircraft/tests/CarrierAirGroupAIActivationTest.gd",
+	"res://scripts/aircraft/tests/CarrierAirGroupAILaunchTest.gd",
+	"res://scripts/aircraft/tests/CarrierCommandAuthorityTest.gd",
 	"res://scripts/aircraft/tests/CarrierCommandControllerTest.gd",
 	"res://scripts/aircraft/tests/CarrierBattleEndResolutionTest.gd"
 )

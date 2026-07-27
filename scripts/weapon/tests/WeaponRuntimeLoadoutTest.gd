@@ -100,7 +100,6 @@ func _test_runtime_mount_isolation_and_rebuild() -> void:
 	root.add_child(scene)
 	await process_frame
 	await physics_frame
-	var player := scene.get("player_ship") as ShipUnit
 	var enemies: Array = scene.get("enemies")
 	var enemy_destroyer: ShipUnit
 	for enemy_value in enemies:
@@ -108,6 +107,17 @@ func _test_runtime_mount_isolation_and_rebuild() -> void:
 		if enemy != null and enemy.ship_id == "dd_bluewind":
 			enemy_destroyer = enemy
 			break
+	var spawn_system := scene.get_node_or_null("SpawnSystem") as SpawnSystem
+	var ships_root := scene.get_node_or_null("Ships")
+	var player := spawn_system.spawn_ship(
+		"dd_bluewind",
+		FactionRelations.PLAYER,
+		false,
+		null,
+		Color(0.18, 0.48, 0.95),
+		ships_root
+	) as ShipUnit if spawn_system != null else null
+	await process_frame
 	_check(player != null and enemy_destroyer != null, "runtime test resolves two destroyers")
 	if player == null or enemy_destroyer == null:
 		scene.queue_free()

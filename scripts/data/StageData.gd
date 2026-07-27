@@ -5,7 +5,7 @@ class_name StageData
 @export var display_name: String = "Test Level"
 @export var sea_id: String = "test_sea"
 @export var difficulty: float = 1.0
-@export var player_ship_id: String = "dd_bluewind"
+@export var player_ship_id: String = "cv_seabastion"
 @export var player_spawn: Dictionary = {}
 @export var ally_spawns: Array = []
 @export var enemy_spawns: Array = []

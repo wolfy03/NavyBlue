@@ -188,12 +188,16 @@ func _test_battle_weapon_flow() -> void:
 	await physics_frame
 	scene.process_mode = Node.PROCESS_MODE_DISABLED
 
-	var player := scene.get("player_ship") as ShipUnit
-	_check(player != null, "battle spawns the player ship")
+	var player := _find_ship_by_id(
+		scene.get_battle_units(),
+		"dd_bluewind"
+	)
+	_check(player != null, "battle spawns a destroyer weapon test ship")
 	if player == null:
 		scene.queue_free()
 		await process_frame
 		return
+	player.team = FactionRelations.PLAYER
 	var mounts := player.get_weapon_mounts()
 	var cannons := player.combat.get_weapons_by_type(WeaponTypes.Type.CANNON)
 	var torpedoes := player.combat.get_weapons_by_type(WeaponTypes.Type.TORPEDO)
@@ -202,11 +206,16 @@ func _test_battle_weapon_flow() -> void:
 	_check(torpedoes.size() == 2, "ShipCombat exposes two torpedo mounts")
 	var aim_preview := player.get_node_or_null("TorpedoAimPreview") \
 		as TorpedoAimPreview
+	var port_mount := player.weapon_mount_root.get_node_or_null("center_port") \
+		as TorpedoMount
 	_check(aim_preview != null, "player ship includes a torpedo aim preview")
 	if aim_preview != null:
-		player.combat.set_aim_point(
-			player.global_position + Vector3(-1200.0, 0.0, 0.0)
-		)
+		var preview_aim_point := player.global_position \
+			+ -port_mount.global_transform.basis.z.normalized() * 1200.0 \
+			if port_mount != null \
+			else player.global_position + Vector3(-1200.0, 0.0, 0.0)
+		preview_aim_point.y = player.global_position.y
+		player.combat.set_aim_point(preview_aim_point)
 		aim_preview.call(&"_refresh_preview")
 		_check(
 			aim_preview.visible
@@ -214,11 +223,11 @@ func _test_battle_weapon_flow() -> void:
 			"torpedo arc and path preview builds a visible line surface"
 		)
 
-	var port_mount := player.weapon_mount_root.get_node_or_null("center_port") \
-		as TorpedoMount
 	_check(port_mount != null, "port torpedo mount uses TorpedoMount scene")
 	if port_mount != null:
-		var aim_point := player.global_position + Vector3(-1200.0, 0.0, 0.0)
+		var aim_point := port_mount.global_position \
+			+ -port_mount.global_transform.basis.z.normalized() * 1200.0
+		aim_point.y = player.global_position.y
 		port_mount.aim_at(aim_point)
 		port_mount.update_traverse_toward(
 			aim_point,

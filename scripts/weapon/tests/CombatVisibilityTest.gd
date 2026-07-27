@@ -22,13 +22,19 @@ func _run() -> void:
 	var player := scene.player_ship as ShipUnit
 	_check(player != null, "player ship exists")
 	if player != null:
+		var destroyer := _find_ship_by_id(
+			scene.get_battle_units(),
+			"dd_bluewind"
+		)
 		_test_ballistic_configuration(player)
 		_test_maximum_range_pitch(player)
 		_test_impact_marker(scene, player)
 		_test_cannon_range_preview(player)
 		_test_shell_trail(scene, player)
-		_test_torpedo_visibility(scene, player)
-		_test_ship_wake_scaling(scene, player)
+		_check(destroyer != null, "battle contains a destroyer")
+		if destroyer != null:
+			_test_torpedo_visibility(scene, destroyer)
+			_test_ship_wake_scaling(scene, destroyer)
 
 	scene.queue_free()
 	await process_frame
@@ -196,7 +202,9 @@ func _test_torpedo_visibility(scene: BattleScene, player: ShipUnit) -> void:
 	_check(mount != null, "player has a port torpedo mount")
 	if mount == null:
 		return
-	var aim_point := player.global_position + Vector3(-1200.0, 0.0, 0.0)
+	var aim_point := mount.global_position \
+		+ -mount.global_transform.basis.z.normalized() * 1200.0
+	aim_point.y = player.global_position.y
 	mount.aim_at(aim_point)
 	mount.update_traverse_toward(
 		aim_point,

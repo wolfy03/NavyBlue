@@ -8,13 +8,13 @@ id = "test_level"
 display_name = "Test Level"
 sea_id = "test_sea"
 difficulty = 1.0
-player_ship_id = "dd_bluewind"
+player_ship_id = "cv_seabastion"
 player_spawn = {
 "is_player": true,
 "name": "Player",
 "position": Vector3(0, 0, 1800),
 "rotation_y": 0.0,
-"ship_id": "dd_bluewind",
+"ship_id": "cv_seabastion",
 "team": "player"
 }
 ally_spawns = [{

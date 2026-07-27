@@ -451,8 +451,21 @@ func _setup_components() -> void:
 	health.setup(ship_data.defense_stats if ship_data != null else null)
 	targeting.setup(self, ship_data.ai_role_profile if ship_data != null else null, _ai_candidate_provider)
 	ai.setup(self, ship_data)
+	if not targeting.target_changed.is_connected(_on_target_changed):
+		targeting.target_changed.connect(_on_target_changed)
+	if not health.died.is_connected(_on_health_died):
+		health.died.connect(_on_health_died)
+	if not health.damage_result_applied.is_connected(_on_damage_result_applied):
+		health.damage_result_applied.connect(_on_damage_result_applied)
+	_setup_carrier_components()
+
+
+func _setup_carrier_components() -> void:
+	var has_air_group := ship_data != null \
+		and ship_data.carrier_air_group_data != null \
+		and carrier_air_group != null
 	if carrier_air_group != null:
-		if ship_data != null and ship_data.carrier_air_group_data != null:
+		if has_air_group:
 			carrier_air_group.setup(
 				self,
 				ship_data.carrier_air_group_data
@@ -461,22 +474,17 @@ func _setup_components() -> void:
 		else:
 			carrier_air_group.setup(self, null)
 			carrier_air_group.process_mode = Node.PROCESS_MODE_DISABLED
+	var enable_air_group_ai := has_air_group \
+		and not player_controlled \
+		and carrier_air_group_ai != null
 	if carrier_air_group_ai != null:
-		if carrier_air_group != null \
-				and ship_data != null \
-				and ship_data.carrier_air_group_data != null \
-				and not player_controlled:
+		if enable_air_group_ai:
+			carrier_air_group_ai.process_mode = \
+				Node.PROCESS_MODE_INHERIT
 			carrier_air_group_ai.setup(self, carrier_air_group)
-			carrier_air_group_ai.process_mode = Node.PROCESS_MODE_INHERIT
 		else:
-			carrier_air_group_ai.setup(null, null)
+			carrier_air_group_ai.shutdown()
 			carrier_air_group_ai.process_mode = Node.PROCESS_MODE_DISABLED
-	if not targeting.target_changed.is_connected(_on_target_changed):
-		targeting.target_changed.connect(_on_target_changed)
-	if not health.died.is_connected(_on_health_died):
-		health.died.connect(_on_health_died)
-	if not health.damage_result_applied.is_connected(_on_damage_result_applied):
-		health.damage_result_applied.connect(_on_damage_result_applied)
 
 
 func _rebuild_weapon_mounts() -> void:
@@ -542,6 +550,9 @@ func _find_weapon_slot(slot_id: StringName) -> ShipWeaponSlotData:
 
 
 func _on_health_died() -> void:
+	if carrier_air_group_ai != null:
+		carrier_air_group_ai.shutdown()
+		carrier_air_group_ai.process_mode = Node.PROCESS_MODE_DISABLED
 	sink()
 
 
