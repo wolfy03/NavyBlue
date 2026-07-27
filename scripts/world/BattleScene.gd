@@ -3,6 +3,9 @@ class_name BattleScene
 
 const STAGE_DATABASE_SCRIPT := preload("res://scripts/data/StageDatabase.gd")
 const DEFAULT_BATTLEFIELD_SETTINGS := preload("res://resources/settings/default_battlefield_settings.tres")
+const BASIC_DIVE_BOMBING_MISSION: AirMissionData = preload(
+	"res://resources/aircraft/missions/basic_dive_bombing.tres"
+)
 
 @export var battlefield_settings: BattlefieldSettings = DEFAULT_BATTLEFIELD_SETTINGS
 
@@ -126,6 +129,20 @@ func debug_recall_all_squadrons() -> void:
 			and player_carrier.ship_data.ship_class \
 				== ShipData.ShipClass.AIRCRAFT_CARRIER:
 		player_carrier.debug_recall_all_squadrons()
+
+
+func debug_launch_carrier_strike(
+		carrier: ShipUnit,
+		target_ship: ShipUnit
+) -> AircraftSquadron:
+	if carrier == null or not is_instance_valid(carrier) \
+			or target_ship == null or not is_instance_valid(target_ship):
+		return null
+	return carrier.launch_air_strike(
+		"",
+		target_ship,
+		BASIC_DIVE_BOMBING_MISSION
+	)
 
 
 func get_fleet_controllers() -> Array[FleetAIController]:

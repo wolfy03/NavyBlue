@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://b8fim51lv0pqu"]
 
-[ext_resource type="Script" path="res://scripts/weapon/Turret.gd" id="1_turret"]
+[ext_resource type="Script" path="res://scripts/weapon/mount/CannonMount.gd" id="1_turret"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_base"]
 top_radius = 0.42

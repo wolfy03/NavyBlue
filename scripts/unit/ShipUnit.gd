@@ -12,7 +12,7 @@ const WEAPON_DATABASE_SCRIPT := preload("res://scripts/data/WeaponDatabase.gd")
 @export var team_color := Color(0.2, 0.55, 1.0)
 @export var engine_output_change_rate := 0.55
 # Deprecated: compatibility only. New weapons use WeaponData.mount_scene.
-@export var turret_scene: PackedScene = preload("res://scenes/weapon/turret.tscn")
+@export var turret_scene: PackedScene
 @export var weapon_loadout: ShipWeaponLoadout
 
 @onready var hull_collision: CollisionShape3D = $HullCollision
@@ -154,6 +154,20 @@ func launch_air_squadron(
 func recall_air_squadrons() -> void:
 	if carrier_air_group != null:
 		carrier_air_group.request_all_squadrons_return()
+
+
+func launch_air_strike(
+		squadron_id: String,
+		target_ship: Node3D,
+		mission_data: AirMissionData
+) -> AircraftSquadron:
+	if carrier_air_group == null:
+		return null
+	return carrier_air_group.launch_strike_squadron(
+		squadron_id,
+		target_ship,
+		mission_data
+	)
 
 
 func debug_launch_first_squadron(

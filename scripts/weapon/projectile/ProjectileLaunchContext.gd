@@ -1,7 +1,8 @@
 extends RefCounted
 class_name ProjectileLaunchContext
 
-var source_ship: ShipUnit
+# A projectile source may be a ShipUnit or an AircraftUnit.
+var source_ship: Node
 var source_team: StringName = &"neutral"
 var source_weapon_id: StringName
 var initial_transform := Transform3D.IDENTITY
