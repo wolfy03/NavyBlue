@@ -16,6 +16,7 @@ var camera: RTSCamera
 var battlefield_bounds: BattlefieldBounds
 var selected_ships: Array = []
 var _movement_marker: Node3D
+var carrier_command_controller: CarrierCommandController
 
 func setup(ship, view_camera: Camera3D, water_y: float = 0.0, bounds: BattlefieldBounds = null) -> void:
 	controlled_ship = ship
@@ -27,6 +28,13 @@ func setup(ship, view_camera: Camera3D, water_y: float = 0.0, bounds: Battlefiel
 		_select_only(controlled_ship)
 	if camera != null:
 		camera.set_selection_provider(self)
+
+
+func set_carrier_command_controller(
+		controller: CarrierCommandController
+) -> void:
+	carrier_command_controller = controller
+	_sync_carrier_selection()
 
 func _physics_process(_delta: float) -> void:
 	_prune_selection()
@@ -48,6 +56,10 @@ func _physics_process(_delta: float) -> void:
 	if Input.is_action_just_pressed(&"turret_pitch_down"):
 		_adjust_selected_turret_pitch(-pitch_step_degrees)
 	if Input.is_action_just_pressed(&"command_cancel"):
+		if carrier_command_controller != null \
+				and carrier_command_controller.is_targeting():
+			carrier_command_controller.cancel_targeting()
+			return
 		cancel_selected_commands()
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -58,6 +70,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		MOUSE_BUTTON_LEFT:
 			_handle_primary_click(mouse_event.position)
 		MOUSE_BUTTON_RIGHT:
+			if carrier_command_controller != null \
+					and carrier_command_controller.is_targeting():
+				carrier_command_controller.cancel_targeting()
+				return
 			_issue_move_command_from_screen(mouse_event.position)
 
 func get_selected_ships() -> Array:
@@ -76,6 +92,12 @@ func cancel_selected_commands() -> void:
 
 func _handle_primary_click(screen_position: Vector2) -> void:
 	var clicked_ship := _pick_ship(screen_position)
+	if carrier_command_controller != null \
+			and carrier_command_controller.is_targeting():
+		carrier_command_controller.try_issue_strike(
+			clicked_ship as ShipUnit
+		)
+		return
 	if clicked_ship != null and clicked_ship.get(&"team") != &"enemy":
 		if Input.is_action_pressed(&"selection_additive"):
 			_toggle_selection(clicked_ship)
@@ -152,6 +174,7 @@ func _select_only(ship: Node3D) -> void:
 	if is_instance_valid(ship):
 		selected_ships.append(ship)
 	selection_changed.emit(get_selected_ships())
+	_sync_carrier_selection()
 
 func _toggle_selection(ship: Node3D) -> void:
 	var index := selected_ships.find(ship)
@@ -160,11 +183,17 @@ func _toggle_selection(ship: Node3D) -> void:
 	else:
 		selected_ships.append(ship)
 	selection_changed.emit(get_selected_ships())
+	_sync_carrier_selection()
 
 func _prune_selection() -> void:
+	var changed := false
 	for index in range(selected_ships.size() - 1, -1, -1):
 		if not is_instance_valid(selected_ships[index]):
 			selected_ships.remove_at(index)
+			changed = true
+	if changed:
+		selection_changed.emit(selected_ships.duplicate())
+		_sync_carrier_selection()
 
 func _is_pointer_over_ui() -> bool:
 	var hovered := get_viewport().gui_get_hovered_control()
@@ -174,3 +203,17 @@ func _adjust_selected_turret_pitch(delta_degrees: float) -> void:
 	for ship in selected_ships:
 		if is_instance_valid(ship) and ship.has_method(&"adjust_turret_pitch"):
 			ship.call(&"adjust_turret_pitch", delta_degrees)
+
+
+func _sync_carrier_selection() -> void:
+	if carrier_command_controller == null:
+		return
+	var carrier: ShipUnit
+	for value in selected_ships:
+		var candidate := value as ShipUnit
+		if candidate != null \
+				and candidate.ship_data != null \
+				and candidate.ship_data.carrier_air_group_data != null:
+			carrier = candidate
+			break
+	carrier_command_controller.set_selected_carrier(carrier)

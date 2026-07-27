@@ -33,6 +33,9 @@ const WEAPON_DATABASE_SCRIPT := preload("res://scripts/data/WeaponDatabase.gd")
 @onready var carrier_air_group: CarrierAirGroup = get_node_or_null(
 	"CarrierAirGroup"
 ) as CarrierAirGroup
+@onready var carrier_air_group_ai: CarrierAirGroupAI = get_node_or_null(
+	"CarrierAirGroupAI"
+) as CarrierAirGroupAI
 
 var _player_throttle_axis := 0.0
 var _player_rudder_axis := 0.0
@@ -159,7 +162,7 @@ func recall_air_squadrons() -> void:
 func launch_air_strike(
 		squadron_id: String,
 		target_ship: Node3D,
-		mission_data: AirMissionData
+		mission_data: AirMissionData = null
 ) -> AircraftSquadron:
 	if carrier_air_group == null:
 		return null
@@ -180,6 +183,39 @@ func debug_launch_first_squadron(
 
 func debug_recall_all_squadrons() -> void:
 	recall_air_squadrons()
+
+
+func restore_run_state(data: Dictionary) -> void:
+	if health != null:
+		var saved_maximum := maxf(
+			float(data.get("maximum_hp", health.max_health)),
+			1.0
+		)
+		var saved_current := float(data.get(
+			"current_hp",
+			saved_maximum * float(data.get("hp_ratio", 1.0))
+		))
+		health.current_health = clampf(
+			saved_current,
+			0.0,
+			health.max_health
+		)
+	if movement != null:
+		var saved_output := clampf(
+			float(data.get("engine_output", 0.0)),
+			-1.0,
+			1.0
+		)
+		movement.engine_output = saved_output
+		movement.set_movement_command(saved_output, 0.0)
+	var damage_value: Variant = data.get("damage_status", {})
+	if damage_status != null and damage_value is Dictionary:
+		damage_status.restore_from_save_data(damage_value)
+
+
+func resolve_battle_end(success: bool) -> void:
+	if carrier_air_group != null:
+		carrier_air_group.resolve_battle_end(success)
 
 
 func equip_weapon(
@@ -425,6 +461,16 @@ func _setup_components() -> void:
 		else:
 			carrier_air_group.setup(self, null)
 			carrier_air_group.process_mode = Node.PROCESS_MODE_DISABLED
+	if carrier_air_group_ai != null:
+		if carrier_air_group != null \
+				and ship_data != null \
+				and ship_data.carrier_air_group_data != null \
+				and not player_controlled:
+			carrier_air_group_ai.setup(self, carrier_air_group)
+			carrier_air_group_ai.process_mode = Node.PROCESS_MODE_INHERIT
+		else:
+			carrier_air_group_ai.setup(null, null)
+			carrier_air_group_ai.process_mode = Node.PROCESS_MODE_DISABLED
 	if not targeting.target_changed.is_connected(_on_target_changed):
 		targeting.target_changed.connect(_on_target_changed)
 	if not health.died.is_connected(_on_health_died):

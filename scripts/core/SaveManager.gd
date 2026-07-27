@@ -81,7 +81,7 @@ func _default_profile_data() -> Dictionary:
 
 func _default_run_data() -> Dictionary:
 	return {
-		"version": 1,
+		"version": 2,
 		"is_run_active": false,
 		"current_sea_id": "",
 		"current_stage_id": "",
@@ -94,6 +94,7 @@ func _default_run_data() -> Dictionary:
 			"scrap": 0,
 		},
 		"player_ship_state": {},
+		"carrier_air_group_states": {},
 		"world_state": {},
 		"started_at_msec": 0,
 	}

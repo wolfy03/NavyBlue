@@ -17,7 +17,13 @@ $tests = @(
 	"res://scripts/world/tests/BattleLoopStateTest.gd",
 	"res://scripts/world/tests/ReferenceLifetimeSafetyTest.gd",
 	"res://scripts/aircraft/tests/CarrierAircraftSystemTest.gd",
-	"res://scripts/aircraft/tests/CarrierAircraftStrikeTest.gd"
+	"res://scripts/aircraft/tests/CarrierAircraftStrikeTest.gd",
+	"res://scripts/aircraft/tests/SquadronRuntimeStateTest.gd",
+	"res://scripts/aircraft/tests/CarrierAirGroupRuntimeTest.gd",
+	"res://scripts/aircraft/tests/CarrierAirGroupSaveRestoreTest.gd",
+	"res://scripts/aircraft/tests/CarrierAirGroupAITest.gd",
+	"res://scripts/aircraft/tests/CarrierCommandControllerTest.gd",
+	"res://scripts/aircraft/tests/CarrierBattleEndResolutionTest.gd"
 )
 
 foreach ($test in $tests) {

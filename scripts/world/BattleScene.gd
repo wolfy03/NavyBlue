@@ -3,9 +3,6 @@ class_name BattleScene
 
 const STAGE_DATABASE_SCRIPT := preload("res://scripts/data/StageDatabase.gd")
 const DEFAULT_BATTLEFIELD_SETTINGS := preload("res://resources/settings/default_battlefield_settings.tres")
-const BASIC_DIVE_BOMBING_MISSION: AirMissionData = preload(
-	"res://resources/aircraft/missions/basic_dive_bombing.tres"
-)
 
 @export var battlefield_settings: BattlefieldSettings = DEFAULT_BATTLEFIELD_SETTINGS
 
@@ -19,8 +16,13 @@ const BASIC_DIVE_BOMBING_MISSION: AirMissionData = preload(
 )
 @onready var camera: Camera3D = get_node_or_null("RTSCamera") as Camera3D
 @onready var input_manager: Node = get_node_or_null("PlayerInputManager")
+@onready var carrier_command_controller: CarrierCommandController = \
+	get_node_or_null("CarrierCommandController") as CarrierCommandController
 @onready var impact_marker: MeshInstance3D = get_node_or_null("ImpactMarker") as MeshInstance3D
 @onready var hud: Node = get_node_or_null("HUD")
+@onready var carrier_air_group_panel: CarrierAirGroupPanel = get_node_or_null(
+	"HUD/CarrierAirGroupPanel"
+) as CarrierAirGroupPanel
 @onready var battlefield_bounds: BattlefieldBounds = get_node_or_null("BattlefieldBounds") as BattlefieldBounds
 
 var player_ship
@@ -141,7 +143,7 @@ func debug_launch_carrier_strike(
 	return carrier.launch_air_strike(
 		"",
 		target_ship,
-		BASIC_DIVE_BOMBING_MISSION
+		null
 	)
 
 
@@ -375,6 +377,14 @@ func _setup_camera_and_ui() -> void:
 		push_warning("BattleScene camera is missing or does not support setup().")
 	if input_manager != null and input_manager.has_method("setup"):
 		input_manager.setup(player_ship, camera, battlefield_settings.sea_level_m, battlefield_bounds)
+		if carrier_command_controller != null:
+			carrier_command_controller.setup(
+				camera,
+				carrier_air_group_panel
+			)
+			input_manager.set_carrier_command_controller(
+				carrier_command_controller
+			)
 	else:
 		push_warning("PlayerInputManager is missing or does not support setup().")
 	if hud != null and hud.has_method("setup"):

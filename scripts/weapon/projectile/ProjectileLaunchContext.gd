@@ -1,10 +1,17 @@
 extends RefCounted
 class_name ProjectileLaunchContext
 
-# A projectile source may be a ShipUnit or an AircraftUnit.
-var source_ship: Node
+# A projectile source may be a ShipUnit, AircraftUnit, or future combat actor.
+var source_actor: Node
+# Deprecated: compatibility only. New code should use source_actor.
+var source_ship: Node:
+	get:
+		return source_actor
+	set(value):
+		source_actor = value
 var source_team: StringName = &"neutral"
 var source_weapon_id: StringName
+var source_projectile_data: ProjectileData
 var initial_transform := Transform3D.IDENTITY
 var initial_velocity := Vector3.ZERO
 var aim_point := Vector3.ZERO

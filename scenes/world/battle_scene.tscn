@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene load_steps=20 format=3 uid="uid://c346y3o6qqqhd"]
 
 [ext_resource type="Script" uid="uid://cj802p5ep0lqm" path="res://scripts/world/BattleScene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bqtoaaf4qto5a" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
@@ -12,6 +12,8 @@
 [ext_resource type="Resource" path="res://resources/settings/default_battlefield_settings.tres" id="10_settings"]
 [ext_resource type="Script" path="res://scripts/world/BattlefieldBounds.gd" id="11_bounds"]
 [ext_resource type="Script" path="res://scripts/effects/CombatEffectController.gd" id="12_effects"]
+[ext_resource type="Script" path="res://scripts/input/CarrierCommandController.gd" id="13_carrier_command"]
+[ext_resource type="PackedScene" path="res://scenes/ui/carrier_air_group_panel.tscn" id="14_carrier_panel"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -126,8 +128,13 @@ script = ExtResource("2_camera")
 [node name="PlayerInputManager" type="Node" parent="." unique_id=25421482]
 script = ExtResource("3_input")
 
+[node name="CarrierCommandController" type="Node" parent="."]
+script = ExtResource("13_carrier_command")
+
 [node name="HUD" type="CanvasLayer" parent="." unique_id=1555648183]
 script = ExtResource("4_hud")
+
+[node name="CarrierAirGroupPanel" parent="HUD" instance=ExtResource("14_carrier_panel")]
 
 [node name="ShipStatusOverlayRoot" type="Control" parent="HUD"]
 layout_mode = 3

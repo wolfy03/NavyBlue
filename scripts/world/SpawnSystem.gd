@@ -35,7 +35,7 @@ func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 
 func spawn_player_ship(ship_id: String, spawn_info: Dictionary, parent: Node) -> Node:
 	var info := spawn_info.duplicate(true)
-	info["ship_id"] = ship_id if not ship_id.is_empty() else str(info.get("ship_id", "dd_bluewind"))
+	info["ship_id"] = ship_id if not ship_id.is_empty() else str(info.get("ship_id", "cv_seabastion"))
 	info["team"] = str(info.get("team", "player"))
 	info["is_player"] = true
 	info["color"] = info.get("color", Color(0.18, 0.48, 0.95))
@@ -152,6 +152,13 @@ func _spawn_ship_from_info(spawn_info: Dictionary, parent: Node) -> Node:
 	ship.fleet_id = StringName(str(spawn_info.get("fleet_id", "")))
 	spawn_parent.add_child(ship)
 	ship.global_transform = _get_spawn_transform(spawn_info)
+	if is_player and has_node("/root/RunManager"):
+		var run_manager := get_node("/root/RunManager")
+		var saved_player_state: Dictionary = \
+			run_manager.player_ship_state.duplicate(true)
+		if ship.has_method(&"restore_run_state"):
+			ship.restore_run_state(saved_player_state)
+		run_manager.restore_carrier_air_group(ship as ShipUnit)
 	var spawn_name := str(spawn_info.get("name", spawn_info.get("spawn_name", "")))
 	if not spawn_name.is_empty():
 		ship.name = spawn_name

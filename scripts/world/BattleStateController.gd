@@ -110,6 +110,8 @@ func _clear_battle() -> void:
 		return
 	result_emitted = true
 	stop_battle()
+	_resolve_player_components(true)
+	_clear_active_projectiles()
 	var reward_system := REWARD_SYSTEM_SCRIPT.new()
 	var rewards: Array = reward_system.roll_upgrade_rewards(3, reward_table_id)
 	var reward_ids: Array[String] = reward_system.get_reward_ids(rewards)
@@ -133,6 +135,8 @@ func _fail_battle() -> void:
 		return
 	result_emitted = true
 	stop_battle()
+	_resolve_player_components(false)
+	_clear_active_projectiles()
 	if has_node("/root/RunManager"):
 		var run_manager = get_node("/root/RunManager")
 		run_manager.finish_run({
@@ -147,3 +151,22 @@ func _fail_battle() -> void:
 	battle_failed.emit(stage_id)
 	if has_node("/root/GameManager"):
 		get_node("/root/GameManager").enter_game_over()
+
+
+func _resolve_player_components(success: bool) -> void:
+	if player_ship == null or not is_instance_valid(player_ship):
+		return
+	if player_ship.has_method(&"resolve_battle_end"):
+		player_ship.call(&"resolve_battle_end", success)
+
+
+func _clear_active_projectiles() -> void:
+	var projectiles := get_parent().get_node_or_null("Projectiles") \
+		if get_parent() != null else null
+	if projectiles == null:
+		return
+	for child in projectiles.get_children():
+		if child.has_method(&"despawn"):
+			child.call(&"despawn")
+		else:
+			child.queue_free()

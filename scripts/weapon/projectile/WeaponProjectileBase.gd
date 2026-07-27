@@ -29,11 +29,13 @@ func setup_projectile_data(data: ProjectileData) -> void:
 func launch_with_context(context: ProjectileLaunchContext) -> void:
 	if context == null:
 		return
+	if projectile_data == null and context.source_projectile_data != null:
+		setup_projectile_data(context.source_projectile_data)
 	global_transform = context.initial_transform
 	projectile_runtime_stats = context.runtime_stats.duplicate_stats() \
 		if context.runtime_stats != null else WeaponRuntimeStats.new()
 	_apply_launch_source(
-		context.source_ship,
+		context.source_actor,
 		context.source_team,
 		context.source_weapon_id
 	)

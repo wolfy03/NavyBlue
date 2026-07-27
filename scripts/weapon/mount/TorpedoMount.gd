@@ -87,9 +87,10 @@ func _launch_torpedo(index: int, total_count: int) -> bool:
 		weapon_data.projectile_data as TorpedoProjectileData
 	)
 	var context := ProjectileLaunchContext.new()
-	context.source_ship = owner_ship
+	context.source_actor = owner_ship
 	context.source_team = owner_team
 	context.source_weapon_id = StringName(weapon_data.id)
+	context.source_projectile_data = weapon_data.projectile_data
 	context.initial_transform = launch_transform
 	context.aim_point = aim_point
 	context.runtime_stats = runtime_stats.duplicate_stats()

@@ -2,6 +2,8 @@ extends Node
 
 const DEFAULT_SEA_ID := "test_sea"
 const DEFAULT_STAGE_ID := "test_level"
+const SAVE_VERSION := 2
+const PLAYER_CARRIER_KEY := "player_carrier"
 
 var is_run_active := false
 var current_sea_id := ""
@@ -15,6 +17,7 @@ var currency: Dictionary = {
 	"scrap": 0,
 }
 var player_ship_state: Dictionary = {}
+var carrier_air_group_states: Dictionary = {}
 var world_state: Dictionary = {}
 var started_at_msec := 0
 
@@ -28,6 +31,14 @@ func start_new_run(config: Dictionary = {}) -> void:
 	difficulty = float(config.get("difficulty", 1.0))
 	currency = config.get("currency", {"gold": 0, "scrap": 0})
 	player_ship_state = config.get("player_ship_state", {})
+	var configured_carrier_states: Variant = config.get(
+		"carrier_air_group_states",
+		{}
+	)
+	carrier_air_group_states = (
+		(configured_carrier_states as Dictionary).duplicate(true)
+		if configured_carrier_states is Dictionary else {}
+	)
 	world_state = config.get("world_state", {})
 	started_at_msec = Time.get_ticks_msec()
 	_emit_started()
@@ -46,6 +57,7 @@ func reset_run() -> void:
 		"scrap": 0,
 	}
 	player_ship_state.clear()
+	carrier_air_group_states.clear()
 	world_state.clear()
 	started_at_msec = 0
 	_emit_updated()
@@ -96,8 +108,15 @@ func capture_player_ship(ship) -> void:
 	if ship == null:
 		player_ship_state = {}
 	else:
+		var current_hp := float(ship.get_current_hp()) \
+			if ship.has_method(&"get_current_hp") else 0.0
+		var maximum_hp := float(ship.health.max_health) \
+			if ship is ShipUnit and ship.health != null else current_hp
 		player_ship_state = {
 			"ship_id": str(ship.get("ship_id")),
+			"current_hp": current_hp,
+			"maximum_hp": maximum_hp,
+			"hp_ratio": current_hp / maxf(maximum_hp, 1.0),
 			"engine_output": ship.get_engine_output() if ship.has_method("get_engine_output") else 0.0,
 			"position": _vector3_to_dictionary(ship.global_position if ship is Node3D else Vector3.ZERO),
 			"rotation": _vector3_to_dictionary(ship.global_rotation if ship is Node3D else Vector3.ZERO),
@@ -105,7 +124,54 @@ func capture_player_ship(ship) -> void:
 				if ship.has_method("get_weapon_loadout_save_data") else {},
 			"weapon_runtime_stats": ship.get_weapon_runtime_stats_save_data() \
 				if ship.has_method("get_weapon_runtime_stats_save_data") else {},
+			"damage_status": ship.damage_status.to_save_data() \
+				if ship is ShipUnit and ship.damage_status != null else {},
 		}
+		var ship_unit := ship as ShipUnit
+		if ship_unit != null \
+				and ship_unit.ship_data != null \
+				and ship_unit.ship_data.carrier_air_group_data != null:
+			capture_carrier_air_group(ship_unit)
+		elif ship_unit != null and ship_unit.player_controlled:
+			carrier_air_group_states.erase(PLAYER_CARRIER_KEY)
+	_emit_updated()
+
+
+func capture_carrier_air_group(carrier: ShipUnit) -> void:
+	if carrier == null or not is_instance_valid(carrier) \
+			or carrier.carrier_air_group == null \
+			or carrier.ship_data == null \
+			or carrier.ship_data.carrier_air_group_data == null:
+		return
+	var carrier_key := _get_carrier_key(carrier)
+	var group_state := carrier.carrier_air_group.to_save_data()
+	carrier_air_group_states[carrier_key] = {
+		"ship_id": carrier.ship_id,
+		"air_group_id": carrier.ship_data.carrier_air_group_data.id,
+		"squadrons": (
+			group_state.get("squadrons", {}) as Dictionary
+		).duplicate(true),
+	}
+
+
+func restore_carrier_air_group(carrier: ShipUnit) -> void:
+	if carrier == null or not is_instance_valid(carrier) \
+			or carrier.carrier_air_group == null:
+		return
+	var saved_value: Variant = carrier_air_group_states.get(
+		_get_carrier_key(carrier),
+		{}
+	)
+	if not saved_value is Dictionary:
+		return
+	var saved := saved_value as Dictionary
+	carrier.carrier_air_group.restore_from_save_data(
+		saved.duplicate(true)
+	)
+
+
+func clear_carrier_air_group_state(carrier_key: String) -> void:
+	carrier_air_group_states.erase(carrier_key)
 	_emit_updated()
 
 func finish_run(result: Dictionary = {}) -> void:
@@ -115,7 +181,7 @@ func finish_run(result: Dictionary = {}) -> void:
 
 func to_save_data() -> Dictionary:
 	return {
-		"version": 1,
+		"version": SAVE_VERSION,
 		"is_run_active": is_run_active,
 		"current_sea_id": current_sea_id,
 		"current_stage_id": current_stage_id,
@@ -125,6 +191,8 @@ func to_save_data() -> Dictionary:
 		"difficulty": difficulty,
 		"currency": currency.duplicate(true),
 		"player_ship_state": player_ship_state.duplicate(true),
+		"carrier_air_group_states":
+			carrier_air_group_states.duplicate(true),
 		"world_state": world_state.duplicate(true),
 		"started_at_msec": started_at_msec,
 	}
@@ -138,7 +206,18 @@ func restore_from_save_data(data: Dictionary) -> void:
 	pending_rewards = _to_upgrade_id_array(data.get("pending_rewards", []))
 	difficulty = float(data.get("difficulty", 1.0))
 	currency = data.get("currency", {"gold": 0, "scrap": 0})
-	player_ship_state = data.get("player_ship_state", {})
+	var player_state_value: Variant = data.get("player_ship_state", {})
+	player_ship_state = (
+		(player_state_value as Dictionary).duplicate(true)
+		if player_state_value is Dictionary else {}
+	)
+	var carrier_states_value: Variant = data.get(
+		"carrier_air_group_states",
+		{}
+	)
+	carrier_air_group_states = (
+		carrier_states_value as Dictionary
+	).duplicate(true) if carrier_states_value is Dictionary else {}
 	world_state = data.get("world_state", {})
 	started_at_msec = int(data.get("started_at_msec", 0))
 	_emit_updated()
@@ -192,6 +271,16 @@ func _vector3_to_dictionary(value: Vector3) -> Dictionary:
 		"y": value.y,
 		"z": value.z,
 	}
+
+
+func _get_carrier_key(carrier: ShipUnit) -> String:
+	if carrier.player_controlled:
+		return PLAYER_CARRIER_KEY
+	return "%s:%s:%s" % [
+		carrier.ship_id,
+		String(carrier.fleet_id),
+		carrier.name,
+	]
 
 func _emit_started() -> void:
 	if has_node("/root/EventBus"):

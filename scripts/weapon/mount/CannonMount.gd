@@ -128,9 +128,10 @@ func _launch_shell(index: int, total_count: int) -> bool:
 	if projectile.has_method(&"setup_projectile_data"):
 		projectile.call(&"setup_projectile_data", active_data)
 	var context := ProjectileLaunchContext.new()
-	context.source_ship = owner_ship
+	context.source_actor = owner_ship
 	context.source_team = owner_team
 	context.source_weapon_id = StringName(weapon_data.id) if weapon_data != null else StringName()
+	context.source_projectile_data = active_data
 	context.initial_transform = launch_transform
 	context.initial_velocity = -launch_transform.basis.z.normalized() \
 		* get_modified_projectile_speed(muzzle_velocity)
@@ -144,7 +145,7 @@ func _launch_shell(index: int, total_count: int) -> bool:
 			context.initial_velocity,
 			context.source_team,
 			shell_stats,
-			context.source_ship,
+			context.source_actor,
 			context.source_weapon_id
 		)
 	else:

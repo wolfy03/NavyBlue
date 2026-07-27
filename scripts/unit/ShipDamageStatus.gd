@@ -66,6 +66,30 @@ func get_movement_speed_multiplier() -> float:
 	return flooding_speed_multiplier if is_flooding() else 1.0
 
 
+func to_save_data() -> Dictionary:
+	return {
+		"flooding_time_left": flooding_time_left,
+		"flooding_damage_per_second": flooding_damage_per_second,
+	}
+
+
+func restore_from_save_data(data: Dictionary) -> void:
+	flooding_time_left = maxf(
+		float(data.get("flooding_time_left", 0.0)),
+		0.0
+	)
+	flooding_damage_per_second = maxf(
+		float(data.get("flooding_damage_per_second", 0.0)),
+		0.0
+	)
+	# HitInfo contains runtime Node references and is intentionally not saved.
+	flooding_source = null
+	if flooding_time_left > 0.0 and flooding_damage_per_second > 0.0:
+		flooding_started.emit()
+	elif flooding_time_left <= 0.0:
+		flooding_damage_per_second = 0.0
+
+
 func _clear_flooding() -> void:
 	flooding_time_left = 0.0
 	flooding_damage_per_second = 0.0
