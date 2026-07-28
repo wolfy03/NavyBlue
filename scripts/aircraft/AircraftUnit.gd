@@ -18,6 +18,8 @@ signal destroyed(aircraft: AircraftUnit)
 @onready var weapon_controller: AircraftWeaponController = get_node_or_null(
 	"AircraftWeaponController"
 ) as AircraftWeaponController
+@onready var fighter_combat_controller: FighterCombatController = \
+	get_node_or_null("FighterCombatController") as FighterCombatController
 
 var aircraft_data: AircraftData
 var team: StringName = &"neutral"
@@ -46,6 +48,8 @@ func setup(
 			self,
 			aircraft_data.weapon_data if aircraft_data != null else null
 		)
+	if fighter_combat_controller != null:
+		fighter_combat_controller.setup(self)
 	_apply_team_material()
 	activate()
 	if has_node("/root/EventBus"):
@@ -80,8 +84,11 @@ func deactivate() -> void:
 		collision_shape.disabled = true
 
 
-func apply_damage(amount: float) -> float:
-	return health.apply_damage(amount) if health != null else 0.0
+func apply_damage(
+		amount: float,
+		info: AircraftDamageInfo = null
+) -> float:
+	return health.apply_damage(amount, info) if health != null else 0.0
 
 
 func is_alive() -> bool:
@@ -93,6 +100,27 @@ func is_alive() -> bool:
 
 func get_world_velocity() -> Vector3:
 	return velocity
+
+
+func get_forward_direction() -> Vector3:
+	var forward := -global_transform.basis.z
+	return forward.normalized() \
+		if forward.length_squared() > 0.0001 else Vector3.FORWARD
+
+
+func get_fighter_combat_data() -> FighterCombatData:
+	return aircraft_data.fighter_combat_data \
+		if aircraft_data != null else null
+
+
+func get_aircraft_role() -> AircraftData.AircraftRole:
+	return aircraft_data.role \
+		if aircraft_data != null \
+		else AircraftData.AircraftRole.RECON
+
+
+func get_team() -> StringName:
+	return team
 
 
 func destroy_for_cleanup() -> void:
@@ -132,6 +160,8 @@ func _on_health_died() -> void:
 	if _destroyed_emitted:
 		return
 	_destroyed_emitted = true
+	if fighter_combat_controller != null:
+		fighter_combat_controller.disable_combat()
 	deactivate()
 	destroyed.emit(self)
 	if has_node("/root/EventBus"):

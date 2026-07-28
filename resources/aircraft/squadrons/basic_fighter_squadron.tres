@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="SquadronData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/SquadronData.gd" id="1_squadron"]
+[ext_resource type="Resource" path="res://resources/aircraft/types/basic_fighter.tres" id="2_aircraft"]
+[ext_resource type="Resource" path="res://resources/aircraft/missions/basic_intercept.tres" id="3_mission"]
+
+[resource]
+script = ExtResource("1_squadron")
+id = "basic_fighter_squadron"
+display_name = "Basic Fighter Squadron"
+aircraft_data = ExtResource("2_aircraft")
+aircraft_count = 4
+formation_spacing_m = 22.0
+launch_interval_sec = 0.2
+rearm_duration_sec = 18.0
+default_mission_data = ExtResource("3_mission")

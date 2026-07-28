@@ -39,15 +39,26 @@ enum ReleaseMode {
 @export var attack_egress_distance_m: float = 700.0
 @export var return_after_ammunition_depleted: bool = true
 
+@export_category("Gun")
+@export var gun_data: AircraftGunData
+
 
 func is_valid_configuration() -> bool:
-	return not id.is_empty() \
-		and projectile_data != null \
-		and projectile_scene != null \
-		and ammunition_per_sortie > 0 \
-		and projectiles_per_release > 0 \
-		and maximum_release_distance_m >= minimum_release_distance_m \
-		and maximum_release_altitude_m >= minimum_release_altitude_m
+	if id.is_empty():
+		return false
+	match weapon_type:
+		WeaponType.BOMB, WeaponType.TORPEDO:
+			return _is_valid_released_payload()
+		WeaponType.AIR_TO_AIR_GUN:
+			return gun_data != null \
+				and gun_data.is_valid_configuration() \
+				and ammunition_per_sortie > 0
+		WeaponType.AIR_TO_AIR_MISSILE:
+			return projectile_data != null \
+				and projectile_scene != null
+		WeaponType.RECON_PAYLOAD:
+			return true
+	return false
 
 
 func supports_release(distance_m: float, altitude_m: float) -> bool:
@@ -55,3 +66,12 @@ func supports_release(distance_m: float, altitude_m: float) -> bool:
 		and distance_m <= maxf(maximum_release_distance_m, 0.0) \
 		and altitude_m >= maxf(minimum_release_altitude_m, 0.0) \
 		and altitude_m <= maxf(maximum_release_altitude_m, 0.0)
+
+
+func _is_valid_released_payload() -> bool:
+	return projectile_data != null \
+		and projectile_scene != null \
+		and ammunition_per_sortie > 0 \
+		and projectiles_per_release > 0 \
+		and maximum_release_distance_m >= minimum_release_distance_m \
+		and maximum_release_altitude_m >= minimum_release_altitude_m

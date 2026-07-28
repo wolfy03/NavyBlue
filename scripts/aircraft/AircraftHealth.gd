@@ -16,7 +16,10 @@ func setup(data: AircraftData) -> void:
 	health_changed.emit(current_health, maximum_health)
 
 
-func apply_damage(amount: float) -> float:
+func apply_damage(
+		amount: float,
+		_info: AircraftDamageInfo = null
+) -> float:
 	if _dead or amount <= 0.0:
 		return 0.0
 	var previous := current_health

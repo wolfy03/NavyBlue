@@ -196,6 +196,72 @@ func can_launch_strike(squadron_id: String = "") -> bool:
 		and get_default_strike_mission(squadron_id) != null
 
 
+func launch_intercept_squadron(
+		squadron_id: String,
+		target_squadron: AircraftSquadron,
+		mission_data: AirMissionData = null
+) -> AircraftSquadron:
+	var resolved_id := _resolve_fighter_squadron_id(squadron_id)
+	if resolved_id.is_empty() \
+			or not can_launch_intercept(resolved_id, target_squadron):
+		return null
+	var template := get_squadron_data(resolved_id)
+	var active_mission := mission_data \
+		if mission_data != null \
+		else get_default_mission(resolved_id)
+	if template == null or template.aircraft_data == null \
+			or active_mission == null:
+		return null
+	var squadron := launch_squadron(
+		resolved_id,
+		target_squadron.formation_center
+	)
+	if squadron == null:
+		return null
+	if not squadron.assign_intercept_mission(
+		target_squadron,
+		active_mission,
+		owner_ship.get_instance_id() \
+			^ target_squadron.get_instance_id() \
+			^ resolved_id.hash()
+	):
+		request_squadron_return(squadron)
+		return null
+	return squadron
+
+
+func get_launchable_fighter_squadron_ids() -> Array[String]:
+	var result: Array[String] = []
+	for squadron_id in get_launchable_squadron_ids():
+		var template := get_squadron_data(squadron_id)
+		if _template_has_fighter_gun(template) \
+				and get_default_mission(squadron_id) != null \
+				and get_default_mission(squadron_id).mission_type \
+					== AirMissionData.MissionType.INTERCEPT_AIRCRAFT:
+			result.append(squadron_id)
+	return result
+
+
+func can_launch_intercept(
+		squadron_id: String,
+		target_squadron: AircraftSquadron
+) -> bool:
+	if not can_launch_squadron(squadron_id) \
+			or not _template_has_fighter_gun(
+				get_squadron_data(squadron_id)
+			) \
+			or not _is_valid_intercept_target(target_squadron):
+		return false
+	var mission := get_default_mission(squadron_id)
+	if mission == null or mission.mission_type \
+			!= AirMissionData.MissionType.INTERCEPT_AIRCRAFT:
+		return false
+	var template := get_squadron_data(squadron_id)
+	return owner_ship.global_position.distance_to(
+		target_squadron.formation_center
+	) <= maxf(template.aircraft_data.combat_radius_m, 0.0)
+
+
 func request_squadron_return(squadron: AircraftSquadron) -> void:
 	if squadron == null or not is_instance_valid(squadron) \
 			or not active_squadrons.has(squadron):
@@ -239,6 +305,17 @@ func get_launchable_squadron_ids() -> Array[String]:
 	return result
 
 
+func get_launchable_strike_squadron_ids() -> Array[String]:
+	var result: Array[String] = []
+	for squadron_id in get_launchable_squadron_ids():
+		var mission_data := get_default_mission(squadron_id)
+		if mission_data != null \
+				and mission_data.mission_type \
+					== AirMissionData.MissionType.STRIKE_SHIP:
+			result.append(squadron_id)
+	return result
+
+
 func resolve_squadron_id(requested_id: String) -> String:
 	if not requested_id.is_empty():
 		return requested_id \
@@ -277,6 +354,16 @@ func get_squadron_data(squadron_id: String) -> SquadronData:
 
 
 func get_default_strike_mission(
+		squadron_id: String
+) -> AirMissionData:
+	var mission := get_default_mission(squadron_id)
+	return mission \
+		if mission != null \
+		and mission.mission_type \
+			== AirMissionData.MissionType.STRIKE_SHIP else null
+
+
+func get_default_mission(
 		squadron_id: String
 ) -> AirMissionData:
 	var template := get_squadron_data(squadron_id)
@@ -721,12 +808,36 @@ func _resolve_strike_squadron_id(requested_id: String) -> String:
 	return ""
 
 
+func _resolve_fighter_squadron_id(requested_id: String) -> String:
+	if not requested_id.is_empty():
+		return requested_id \
+			if can_launch_squadron(requested_id) \
+			and _template_has_fighter_gun(
+				get_squadron_data(requested_id)
+			) else ""
+	var launchable := get_launchable_fighter_squadron_ids()
+	return launchable[0] if not launchable.is_empty() else ""
+
+
 func _template_has_bomb_payload(template: SquadronData) -> bool:
 	if template == null or template.aircraft_data == null:
 		return false
 	var weapon_data := template.aircraft_data.weapon_data
 	return weapon_data != null \
 		and weapon_data.weapon_type == AircraftWeaponData.WeaponType.BOMB \
+		and weapon_data.is_valid_configuration()
+
+
+func _template_has_fighter_gun(template: SquadronData) -> bool:
+	if template == null or template.aircraft_data == null \
+			or template.aircraft_data.role \
+				!= AircraftData.AircraftRole.FIGHTER \
+			or template.aircraft_data.fighter_combat_data == null:
+		return false
+	var weapon_data := template.aircraft_data.weapon_data
+	return weapon_data != null \
+		and weapon_data.weapon_type \
+			== AircraftWeaponData.WeaponType.AIR_TO_AIR_GUN \
 		and weapon_data.is_valid_configuration()
 
 
@@ -739,6 +850,24 @@ func _is_valid_strike_target(target_ship: Node3D) -> bool:
 			and not bool(target_ship.call(&"is_alive")):
 		return false
 	return owner_ship.is_hostile_to(target_ship)
+
+
+func _is_valid_intercept_target(
+		target_squadron: AircraftSquadron
+) -> bool:
+	return target_squadron != null \
+		and is_instance_valid(target_squadron) \
+		and not target_squadron.is_queued_for_deletion() \
+		and target_squadron.state not in [
+			AircraftSquadron.State.RETURNING,
+			AircraftSquadron.State.RECOVERING,
+			AircraftSquadron.State.DESTROYED,
+		] \
+		and target_squadron.get_alive_aircraft_count() > 0 \
+		and FactionRelations.are_hostile(
+			owner_ship.team,
+			target_squadron.get_team()
+		)
 
 
 func _validate_data_once() -> void:
@@ -788,6 +917,23 @@ func _is_valid_template(template: SquadronData) -> bool:
 			"Squadron '%s' has no AircraftWeaponData." % template.id
 		)
 		return false
+	if template.aircraft_data.role == AircraftData.AircraftRole.FIGHTER:
+		if template.aircraft_data.fighter_combat_data == null:
+			_warn_validation_once(
+				"fighter_%s" % template.id,
+				"Fighter squadron '%s' has no FighterCombatData."
+				% template.id
+			)
+			return false
+		var fighter_errors := template.aircraft_data \
+			.fighter_combat_data.validate()
+		if not fighter_errors.is_empty():
+			_warn_validation_once(
+				"fighter_config_%s" % template.id,
+				"Fighter squadron '%s' has invalid combat data: %s"
+				% [template.id, "; ".join(fighter_errors)]
+			)
+			return false
 	if template.aircraft_count <= 0:
 		_warn_validation_once(
 			"count_%s" % template.id,

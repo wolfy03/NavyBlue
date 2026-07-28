@@ -70,6 +70,23 @@ func try_issue_strike(target_ship: ShipUnit) -> bool:
 	return true
 
 
+func command_carrier_intercept(
+		carrier: ShipUnit,
+		target_squadron: AircraftSquadron,
+		squadron_id: String
+) -> bool:
+	if not _is_carrier(carrier) \
+			or target_squadron == null \
+			or not is_instance_valid(target_squadron) \
+			or carrier.carrier_air_group == null:
+		return false
+	return carrier.carrier_air_group.launch_intercept_squadron(
+		squadron_id,
+		target_squadron,
+		carrier.carrier_air_group.get_default_mission(squadron_id)
+	) != null
+
+
 func is_targeting() -> bool:
 	return _targeting
 

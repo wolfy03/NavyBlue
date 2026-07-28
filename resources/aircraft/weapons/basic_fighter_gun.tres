@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="AircraftWeaponData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/AircraftWeaponData.gd" id="1_weapon"]
+[ext_resource type="Resource" path="res://resources/aircraft/weapons/basic_fighter_gun_profile.tres" id="2_gun"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = "basic_fighter_gun"
+display_name = "Basic Fighter Gun"
+weapon_type = 2
+ammunition_per_sortie = 240
+return_after_ammunition_depleted = true
+gun_data = ExtResource("2_gun")

@@ -7,11 +7,16 @@ class_name CombatEffectController
 @export var torpedo_impact_scene: PackedScene = preload(
 	"res://scenes/effects/torpedo_ship_impact_effect.tscn"
 )
+@export var fighter_tracer_scene: PackedScene = preload(
+	"res://scenes/effects/fighter_tracer_effect.tscn"
+)
 @export_range(1, 96, 1, "or_greater") var shell_pool_size := 32
 @export_range(1, 64, 1, "or_greater") var torpedo_pool_size := 16
+@export_range(1, 128, 1, "or_greater") var fighter_tracer_pool_size := 32
 
 var _shell_pool: ReusableEffectPool
 var _torpedo_pool: ReusableEffectPool
+var _fighter_tracer_pool: ReusableEffectPool
 
 
 func _ready() -> void:
@@ -26,6 +31,19 @@ func _ready() -> void:
 		torpedo_impact_scene,
 		torpedo_pool_size
 	)
+	_fighter_tracer_pool = _create_pool(
+		&"FighterTracerPool",
+		fighter_tracer_scene,
+		fighter_tracer_pool_size
+	)
+	if has_node("/root/EventBus"):
+		var event_bus := get_node("/root/EventBus")
+		if not event_bus.fighter_gun_burst_fired.is_connected(
+			_on_fighter_gun_burst_fired
+		):
+			event_bus.fighter_gun_burst_fired.connect(
+				_on_fighter_gun_burst_fired
+			)
 
 
 func spawn_shell_impact(
@@ -77,6 +95,14 @@ func get_debug_state() -> Dictionary:
 		"torpedo_pool_size": (
 			_torpedo_pool.get_pool_size() if _torpedo_pool != null else 0
 		),
+		"active_fighter_tracers": (
+			_fighter_tracer_pool.get_active_count() \
+			if _fighter_tracer_pool != null else 0
+		),
+		"fighter_tracer_pool_size": (
+			_fighter_tracer_pool.get_pool_size() \
+			if _fighter_tracer_pool != null else 0
+		),
 	}
 
 
@@ -85,6 +111,45 @@ func clear_pools() -> void:
 		_shell_pool.clear_pool()
 	if _torpedo_pool != null:
 		_torpedo_pool.clear_pool()
+	if _fighter_tracer_pool != null:
+		_fighter_tracer_pool.clear_pool()
+
+
+func _exit_tree() -> void:
+	if has_node("/root/EventBus"):
+		var event_bus := get_node("/root/EventBus")
+		if event_bus.fighter_gun_burst_fired.is_connected(
+			_on_fighter_gun_burst_fired
+		):
+			event_bus.fighter_gun_burst_fired.disconnect(
+				_on_fighter_gun_burst_fired
+			)
+
+
+func _on_fighter_gun_burst_fired(
+		attacker: AircraftUnit,
+		target: AircraftUnit,
+		rounds_fired: int,
+		hit_count: int,
+		_hit_probability: float
+) -> void:
+	if _fighter_tracer_pool == null \
+			or attacker == null \
+			or target == null \
+			or not is_instance_valid(attacker) \
+			or not is_instance_valid(target):
+		return
+	var gun_data: AircraftGunData
+	if attacker.weapon_controller != null \
+			and attacker.weapon_controller.weapon_data != null:
+		gun_data = attacker.weapon_controller.weapon_data.gun_data
+	_fighter_tracer_pool.spawn_effect([
+		attacker.global_position,
+		target.global_position,
+		rounds_fired,
+		hit_count,
+		gun_data.tracer_interval if gun_data != null else 3,
+	])
 
 
 func _create_pool(

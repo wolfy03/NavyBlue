@@ -26,5 +26,8 @@ enum AircraftRole {
 @export_category("Armament")
 @export var weapon_data: AircraftWeaponData
 
+@export_category("Fighter")
+@export var fighter_combat_data: FighterCombatData
+
 @export_category("Visual")
 @export var aircraft_scene: PackedScene

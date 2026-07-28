@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="StageData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
+
+[resource]
+script = ExtResource("1_stage")
+id = "fighter_combat_test"
+display_name = "Fighter Combat Test"
+sea_id = "test_sea"
+difficulty = 1.0
+player_ship_id = "cv_seabastion"
+player_spawn = {
+"is_player": true,
+"name": "FighterPlayerCarrier",
+"position": Vector3(-1800, 0, 1200),
+"rotation_y": 0.0,
+"ship_id": "cv_seabastion",
+"team": "player"
+}
+ally_spawns = []
+enemy_spawns = [{
+"is_player": false,
+"name": "FighterEnemyCarrier",
+"position": Vector3(1800, 0, -1200),
+"rotation_y": 180.0,
+"ship_id": "cv_seabastion",
+"team": "enemy"
+}]
+reward_table_id = "test_rewards"
+next_stage_candidates = Array[String]([])

@@ -152,42 +152,75 @@ func update_ai(delta: float) -> void:
 	if readiness_reason != LaunchBlockReason.NONE:
 		_set_launch_block_reason(readiness_reason)
 		return
-	var launchable_ids := air_group.get_launchable_squadron_ids()
-	if launchable_ids.is_empty():
-		_set_launch_block_reason(
-			LaunchBlockReason.NO_READY_SQUADRON
-		)
+	if profile.prioritize_interception and _try_launch_interceptor():
 		return
-	var squadron_id := launchable_ids[0]
-	var mission_data := air_group.get_default_strike_mission(
-		squadron_id
+	if _try_launch_strike():
+		return
+	_set_launch_block_reason(LaunchBlockReason.NO_TARGET)
+
+
+func _try_launch_interceptor() -> bool:
+	var fighter_ids := air_group.get_launchable_fighter_squadron_ids()
+	if fighter_ids.is_empty():
+		return false
+	var coordinator := _get_aircraft_combat_coordinator()
+	if coordinator == null:
+		return false
+	var squadron_id := fighter_ids[0]
+	var template := air_group.get_squadron_data(squadron_id)
+	var mission_data := air_group.get_default_mission(squadron_id)
+	if template == null or template.aircraft_data == null \
+			or mission_data == null \
+			or mission_data.mission_type \
+				!= AirMissionData.MissionType.INTERCEPT_AIRCRAFT:
+		return false
+	var fighter_data := template.aircraft_data.fighter_combat_data
+	var detection_range := minf(
+		maxf(profile.intercept_detection_range_m, 0.0),
+		maxf(fighter_data.detection_range_m, 0.0)
 	)
-	if mission_data == null:
-		_set_launch_block_reason(LaunchBlockReason.NO_MISSION)
-		return
-	if mission_data.mission_type \
-			!= AirMissionData.MissionType.STRIKE_SHIP:
-		_set_launch_block_reason(
-			LaunchBlockReason.UNSUPPORTED_MISSION
-		)
-		return
-	_combat_radius_m = _get_squadron_combat_radius(squadron_id)
-	var target := select_strike_target()
+	var target := coordinator.find_best_intercept_target_for_team(
+		owner_carrier.team,
+		owner_carrier.global_position,
+		detection_range,
+		fighter_data,
+		maxi(profile.maximum_interceptors_per_target, 1)
+	)
 	if target == null:
-		_set_launch_block_reason(LaunchBlockReason.NO_TARGET)
-		return
-	var squadron := air_group.launch_strike_squadron(
+		return false
+	var squadron := air_group.launch_intercept_squadron(
 		squadron_id,
 		target,
 		mission_data
 	)
 	if squadron == null:
-		_set_launch_block_reason(
-			_resolve_failed_launch_reason(squadron_id, target)
-		)
-		return
+		return false
 	_set_launch_block_reason(LaunchBlockReason.NONE)
-	_log_launch(squadron_id, target)
+	_log_air_launch(squadron_id, target)
+	return true
+
+
+func _try_launch_strike() -> bool:
+	for squadron_id in air_group.get_launchable_strike_squadron_ids():
+		var mission_data := air_group.get_default_mission(squadron_id)
+		_combat_radius_m = _get_squadron_combat_radius(squadron_id)
+		var target := select_strike_target()
+		if target == null:
+			continue
+		var squadron := air_group.launch_strike_squadron(
+			squadron_id,
+			target,
+			mission_data
+		)
+		if squadron == null:
+			_set_launch_block_reason(
+				_resolve_failed_launch_reason(squadron_id, target)
+			)
+			return false
+		_set_launch_block_reason(LaunchBlockReason.NONE)
+		_log_launch(squadron_id, target)
+		return true
+	return false
 
 
 func select_strike_target() -> ShipUnit:
@@ -484,6 +517,25 @@ func _log_launch(squadron_id: String, target: ShipUnit) -> void:
 			"Carrier strike launched carrier=%s squadron=%s target=%s"
 			% [owner_carrier.name, squadron_id, target.name]
 		)
+
+
+func _log_air_launch(
+		squadron_id: String,
+		target: AircraftSquadron
+) -> void:
+	if debug_diagnostics:
+		print_debug(
+			"Carrier interceptor launched carrier=%s squadron=%s target=%s"
+			% [owner_carrier.name, squadron_id, target.name]
+		)
+
+
+func _get_aircraft_combat_coordinator() -> AircraftCombatCoordinator:
+	if get_tree() == null:
+		return null
+	return get_tree().get_first_node_in_group(
+		&"aircraft_combat_coordinator"
+	) as AircraftCombatCoordinator
 
 
 func _log_recall() -> void:

@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="AircraftData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/AircraftData.gd" id="1_aircraft"]
+[ext_resource type="PackedScene" path="res://scenes/aircraft/aircraft_unit.tscn" id="2_scene"]
+[ext_resource type="Resource" path="res://resources/aircraft/weapons/basic_fighter_gun.tres" id="3_weapon"]
+[ext_resource type="Resource" path="res://resources/aircraft/fighter/basic_fighter_combat.tres" id="4_fighter"]
+
+[resource]
+script = ExtResource("1_aircraft")
+id = "basic_fighter"
+display_name = "Basic Fighter"
+role = 0
+cruise_speed_mps = 150.0
+maximum_speed_mps = 210.0
+turn_rate_deg_sec = 65.0
+operating_altitude_m = 220.0
+combat_radius_m = 8000.0
+arrival_distance_m = 35.0
+maximum_hp = 24.0
+weapon_data = ExtResource("3_weapon")
+fighter_combat_data = ExtResource("4_fighter")
+aircraft_scene = ExtResource("2_scene")

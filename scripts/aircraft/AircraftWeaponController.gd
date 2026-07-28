@@ -3,11 +3,18 @@ class_name AircraftWeaponController
 
 signal weapon_released(aircraft: AircraftUnit, projectile: Node)
 signal ammunition_depleted
+signal gun_burst_fired(
+	aircraft: AircraftUnit,
+	target: AircraftUnit,
+	rounds_fired: int,
+	hits: int
+)
 
 var owner_aircraft: AircraftUnit
 var weapon_data: AircraftWeaponData
 var remaining_ammunition := 0
 var release_cooldown_left := 0.0
+var gun_burst_cooldown_left := 0.0
 
 var _pending_release_count := 0
 var _pending_target_position := Vector3.ZERO
@@ -36,6 +43,7 @@ func reset_for_sortie() -> void:
 		0
 	)
 	release_cooldown_left = 0.0
+	gun_burst_cooldown_left = 0.0
 	_pending_release_count = 0
 	_pending_target_position = Vector3.ZERO
 	_pending_target_velocity = Vector3.ZERO
@@ -46,6 +54,10 @@ func update_weapon(delta: float) -> void:
 	release_cooldown_left = maxf(
 		0.0,
 		release_cooldown_left - maxf(delta, 0.0)
+	)
+	gun_burst_cooldown_left = maxf(
+		0.0,
+		gun_burst_cooldown_left - maxf(delta, 0.0)
 	)
 	if _pending_release_count <= 0 or release_cooldown_left > 0.0:
 		return
@@ -65,6 +77,11 @@ func can_release() -> bool:
 		and is_instance_valid(owner_aircraft) \
 		and owner_aircraft.is_alive() \
 		and weapon_data != null \
+		and weapon_data.weapon_type \
+			in [
+				AircraftWeaponData.WeaponType.BOMB,
+				AircraftWeaponData.WeaponType.TORPEDO,
+			] \
 		and weapon_data.is_valid_configuration() \
 		and remaining_ammunition > 0 \
 		and release_cooldown_left <= 0.0 \
@@ -79,12 +96,76 @@ func get_remaining_ammunition() -> int:
 	return remaining_ammunition
 
 
+func can_fire_gun_burst() -> bool:
+	return _release_enabled \
+		and owner_aircraft != null \
+		and is_instance_valid(owner_aircraft) \
+		and owner_aircraft.is_alive() \
+		and weapon_data != null \
+		and weapon_data.weapon_type \
+			== AircraftWeaponData.WeaponType.AIR_TO_AIR_GUN \
+		and weapon_data.gun_data != null \
+		and weapon_data.gun_data.is_valid_configuration() \
+		and remaining_ammunition > 0 \
+		and gun_burst_cooldown_left <= 0.0
+
+
+func consume_gun_rounds(requested_rounds: int) -> int:
+	if not can_fire_gun_burst() or requested_rounds <= 0:
+		return 0
+	var consumed := mini(requested_rounds, remaining_ammunition)
+	remaining_ammunition -= consumed
+	if remaining_ammunition <= 0 and not _depletion_emitted:
+		_depletion_emitted = true
+		ammunition_depleted.emit()
+	return consumed
+
+
+func begin_gun_burst_cooldown() -> void:
+	if weapon_data == null or weapon_data.gun_data == null:
+		return
+	gun_burst_cooldown_left = maxf(
+		weapon_data.gun_data.burst_cooldown_sec,
+		0.0
+	)
+
+
+func emit_gun_burst_result(
+		target: AircraftUnit,
+		result: FighterShotResult
+) -> void:
+	if result == null or owner_aircraft == null:
+		return
+	gun_burst_fired.emit(
+		owner_aircraft,
+		target,
+		result.rounds_fired,
+		result.hit_count
+	)
+	if has_node("/root/EventBus"):
+		var event_bus := get_node("/root/EventBus")
+		event_bus.fighter_gun_burst_fired.emit(
+			owner_aircraft,
+			target,
+			result.rounds_fired,
+			result.hit_count,
+			result.hit_probability
+		)
+		if result.total_damage > 0.0:
+			event_bus.aircraft_gun_hit.emit(
+				owner_aircraft,
+				target,
+				result.total_damage
+			)
+
+
 func is_release_in_progress() -> bool:
 	return _pending_release_count > 0
 
 
 func disable_weapon_release() -> void:
 	_release_enabled = false
+	gun_burst_cooldown_left = 0.0
 	_pending_release_count = 0
 	_pending_target_position = Vector3.ZERO
 	_pending_target_velocity = Vector3.ZERO

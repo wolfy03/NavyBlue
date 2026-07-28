@@ -12,6 +12,9 @@ damaged_target_bonus = 24.0
 duplicate_target_penalty = 35.0
 strategic_value_weight = 20.0
 threat_to_carrier_weight = 18.0
+intercept_detection_range_m = 3000.0
+prioritize_interception = true
+maximum_interceptors_per_target = 2
 ship_class_weights = {
 0: 10.0,
 1: 14.0,

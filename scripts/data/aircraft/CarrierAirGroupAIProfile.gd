@@ -9,6 +9,10 @@ class_name CarrierAirGroupAIProfile
 @export var duplicate_target_penalty := 35.0
 @export var strategic_value_weight := 20.0
 @export var threat_to_carrier_weight := 18.0
+@export_category("Air Defense")
+@export var intercept_detection_range_m: float = 3000.0
+@export var prioritize_interception := true
+@export_range(1, 8, 1) var maximum_interceptors_per_target: int = 2
 @export var ship_class_weights: Dictionary = {
 	0: 10.0,
 	1: 14.0,

@@ -128,8 +128,13 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	var aircraft_root := battle.get_node_or_null("Aircraft")
+	var remaining_flight_nodes := 0
+	if aircraft_root != null:
+		for child in aircraft_root.get_children():
+			if child is AircraftUnit or child is AircraftSquadron:
+				remaining_flight_nodes += 1
 	_check(
-		aircraft_root != null and aircraft_root.get_child_count() == 0,
+		aircraft_root != null and remaining_flight_nodes == 0,
 		"recovered squadron and aircraft are removed"
 	)
 	carrier.carrier_air_group.call(&"_process", 1.0)

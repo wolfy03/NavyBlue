@@ -21,6 +21,14 @@ signal squadron_recovered(squadron)
 signal squadron_destroyed(squadron)
 signal air_mission_started(squadron, target)
 signal aircraft_weapon_released(aircraft, projectile)
+signal fighter_gun_burst_fired(
+	attacker,
+	target,
+	rounds_fired: int,
+	hit_count: int,
+	hit_probability: float
+)
+signal aircraft_gun_hit(attacker, target, damage: float)
 signal air_mission_completed(squadron)
 signal air_mission_failed(squadron)
 signal flooding_started(ship, duration_seconds: float)

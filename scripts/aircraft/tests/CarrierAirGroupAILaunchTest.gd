@@ -35,7 +35,7 @@ func _run() -> void:
 	group.process_mode = Node.PROCESS_MODE_INHERIT
 	ai.process_mode = Node.PROCESS_MODE_INHERIT
 	ai.setup(carrier, group)
-	var launchable := group.get_launchable_squadron_ids()
+	var launchable := group.get_launchable_strike_squadron_ids()
 	_check(
 		launchable == [SQUADRON_ID],
 		"AI resolves the concrete launchable squadron id"

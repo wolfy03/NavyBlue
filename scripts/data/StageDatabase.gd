@@ -12,6 +12,10 @@ const STAGE_PATHS := {
 		"res://resources/stages/tests/carrier_ai_test.tres",
 	"battle_loop_test":
 		"res://resources/stages/tests/battle_loop_test.tres",
+	"fighter_combat_test":
+		"res://resources/stages/tests/fighter_combat_test.tres",
+	"fighter_carrier_ai_test":
+		"res://resources/stages/tests/fighter_carrier_ai_test.tres",
 }
 
 var warn_on_fallback := true

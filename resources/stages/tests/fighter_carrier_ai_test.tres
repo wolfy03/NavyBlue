@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="StageData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
+
+[resource]
+script = ExtResource("1_stage")
+id = "fighter_carrier_ai_test"
+display_name = "Fighter Carrier AI Test"
+sea_id = "test_sea"
+difficulty = 1.0
+player_ship_id = "dd_bluewind"
+player_spawn = {
+"is_player": true,
+"name": "FighterAIPlayer",
+"position": Vector3(0, 0, 1800),
+"rotation_y": 0.0,
+"ship_id": "dd_bluewind",
+"team": "player"
+}
+ally_spawns = [{
+"is_player": false,
+"name": "FighterAllyCarrier",
+"position": Vector3(-600, 0, 800),
+"rotation_y": 0.0,
+"ship_id": "cv_seabastion",
+"team": "ally"
+}]
+enemy_spawns = [{
+"is_player": false,
+"name": "FighterEnemyCarrier",
+"position": Vector3(600, 0, -800),
+"rotation_y": 180.0,
+"ship_id": "cv_seabastion",
+"team": "enemy"
+}]
+reward_table_id = "test_rewards"
+next_stage_candidates = Array[String]([])

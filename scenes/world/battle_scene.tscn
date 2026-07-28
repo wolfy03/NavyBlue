@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene load_steps=21 format=3 uid="uid://c346y3o6qqqhd"]
 
 [ext_resource type="Script" uid="uid://cj802p5ep0lqm" path="res://scripts/world/BattleScene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bqtoaaf4qto5a" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://scripts/effects/CombatEffectController.gd" id="12_effects"]
 [ext_resource type="Script" path="res://scripts/input/CarrierCommandController.gd" id="13_carrier_command"]
 [ext_resource type="PackedScene" path="res://scenes/ui/carrier_air_group_panel.tscn" id="14_carrier_panel"]
+[ext_resource type="Script" path="res://scripts/aircraft/combat/AircraftCombatCoordinator.gd" id="15_air_combat"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -72,6 +73,9 @@ settings = ExtResource("10_settings")
 [node name="Ships" type="Node3D" parent="." unique_id=963148669]
 
 [node name="Aircraft" type="Node3D" parent="." groups=["aircraft_root"]]
+
+[node name="AircraftCombatCoordinator" type="Node" parent="Aircraft"]
+script = ExtResource("15_air_combat")
 
 [node name="Projectiles" type="Node3D" parent="." groups=["projectile_root"]]
 

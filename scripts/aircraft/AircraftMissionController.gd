@@ -25,6 +25,7 @@ var _target_ref: WeakRef
 var _event_finished := false
 var _approach_initialized := false
 var _move_destination := Vector3.ZERO
+var intercept_behavior: InterceptMissionBehavior
 
 
 func setup(next_owner_squadron: AircraftSquadron) -> void:
@@ -35,6 +36,7 @@ func setup(next_owner_squadron: AircraftSquadron) -> void:
 	_event_finished = false
 	_approach_initialized = false
 	_move_destination = Vector3.ZERO
+	intercept_behavior = null
 
 
 func assign_ship_strike(
@@ -97,10 +99,64 @@ func assign_return(next_mission_data: AirMissionData) -> bool:
 	return true
 
 
+func assign_aircraft_intercept(
+		target_squadron: AircraftSquadron,
+		next_mission_data: AirMissionData,
+		rng_seed: int = 0
+) -> bool:
+	if owner_squadron == null \
+			or not is_instance_valid(owner_squadron) \
+			or target_squadron == null \
+			or not is_instance_valid(target_squadron) \
+			or target_squadron == owner_squadron \
+			or next_mission_data == null \
+			or next_mission_data.mission_type \
+				!= AirMissionData.MissionType.INTERCEPT_AIRCRAFT \
+			or owner_squadron.get_aircraft_role() \
+				!= AircraftData.AircraftRole.FIGHTER \
+			or owner_squadron.get_fighter_combat_data() == null \
+			or not FactionRelations.are_hostile(
+				owner_squadron.get_team(),
+				target_squadron.get_team()
+			):
+		return false
+	var weapon_data := owner_squadron.get_aircraft_weapon_data()
+	if weapon_data == null \
+			or weapon_data.weapon_type \
+				!= AircraftWeaponData.WeaponType.AIR_TO_AIR_GUN:
+		return false
+	var behavior := InterceptMissionBehavior.new()
+	if not behavior.setup(
+		owner_squadron,
+		target_squadron,
+		next_mission_data,
+		rng_seed
+	):
+		return false
+	mission_data = next_mission_data
+	_target_ref = null
+	intercept_behavior = behavior
+	state = MissionState.APPROACHING
+	_event_finished = false
+	_approach_initialized = false
+	_emit_mission_started(target_squadron)
+	return true
+
+
 func update_mission(_delta: float) -> void:
 	if state == MissionState.IDLE \
 			or state == MissionState.COMPLETED \
 			or state == MissionState.FAILED:
+		return
+	if mission_data != null \
+			and mission_data.mission_type \
+				== AirMissionData.MissionType.INTERCEPT_AIRCRAFT:
+		if intercept_behavior == null:
+			fail_without_return()
+			return
+		intercept_behavior.update(_delta)
+		if intercept_behavior.is_finished():
+			_finish_intercept_event(intercept_behavior.successful)
 		return
 	if mission_data != null \
 			and mission_data.mission_type == AirMissionData.MissionType.MOVE:
@@ -132,12 +188,21 @@ func update_mission(_delta: float) -> void:
 func cancel_and_return() -> void:
 	if state == MissionState.COMPLETED or state == MissionState.FAILED:
 		return
+	if intercept_behavior != null \
+			and mission_data != null \
+			and mission_data.mission_type \
+				== AirMissionData.MissionType.INTERCEPT_AIRCRAFT:
+		intercept_behavior.cancel_and_return()
+		_finish_intercept_event(false)
+		return
 	_fail_and_return()
 
 
 func fail_without_return() -> void:
 	if _event_finished:
 		return
+	if intercept_behavior != null:
+		intercept_behavior.cancel_without_return()
 	_event_finished = true
 	state = MissionState.FAILED
 	mission_failed.emit()
@@ -150,7 +215,7 @@ func cancel_mission_due_to_carrier_loss() -> void:
 
 
 func has_valid_target() -> bool:
-	return get_target_ship() != null
+	return get_target_ship() != null or get_target_squadron() != null
 
 
 func get_target_ship() -> Node3D:
@@ -159,6 +224,11 @@ func get_target_ship() -> Node3D:
 	var value: Variant = _target_ref.get_ref()
 	var target := value as Node3D
 	return target if _is_valid_target(target) else null
+
+
+func get_target_squadron() -> AircraftSquadron:
+	return intercept_behavior.get_target_squadron() \
+		if intercept_behavior != null else null
 
 
 func _update_approach(target: Node3D) -> void:
@@ -271,6 +341,31 @@ func _emit_mission_started(target: Node3D) -> void:
 			owner_squadron,
 			target
 		)
+
+
+func _finish_intercept_event(success: bool) -> void:
+	if _event_finished:
+		return
+	_event_finished = true
+	state = MissionState.RETURNING \
+		if owner_squadron != null \
+		and is_instance_valid(owner_squadron) \
+		and owner_squadron.state == AircraftSquadron.State.RETURNING \
+		else (
+			MissionState.COMPLETED if success else MissionState.FAILED
+		)
+	if success:
+		mission_completed.emit()
+		if has_node("/root/EventBus"):
+			get_node("/root/EventBus").air_mission_completed.emit(
+				owner_squadron
+			)
+	else:
+		mission_failed.emit()
+		if has_node("/root/EventBus"):
+			get_node("/root/EventBus").air_mission_failed.emit(
+				owner_squadron
+			)
 
 
 func _calculate_approach_position(target: Node3D) -> Vector3:

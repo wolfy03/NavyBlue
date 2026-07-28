@@ -40,6 +40,9 @@ var _release_target_velocity := Vector3.ZERO
 var _carrier_unavailable_cleanup_left := -1.0
 var _requested_aircraft_count := -1
 var _formation_activated_emitted := false
+var _team: StringName = &"neutral"
+var _combat_formation_enabled := false
+var _fighter_target_squadron_ref: WeakRef
 
 
 func setup(
@@ -59,6 +62,7 @@ func setup(
 			or squadron_data.aircraft_data == null:
 		state = State.DESTROYED
 		return
+	_team = owner_carrier.team
 	formation_center = _get_carrier_launch_position()
 	_formation_forward = -owner_carrier.global_transform.basis.z.normalized()
 	if _formation_forward.length_squared() <= EPSILON:
@@ -66,6 +70,9 @@ func setup(
 	_spawn_aircraft()
 	if mission_controller != null:
 		mission_controller.setup(self)
+	var coordinator := get_combat_coordinator()
+	if coordinator != null:
+		coordinator.register_squadron(self)
 	set_physics_process(false)
 
 
@@ -86,6 +93,11 @@ func request_return() -> void:
 	if get_owner_carrier() == null:
 		_mark_destroyed()
 		return
+	clear_fighter_targets()
+	set_combat_formation_enabled(false)
+	var coordinator := get_combat_coordinator()
+	if coordinator != null:
+		coordinator.unregister_intercept_assignment(self)
 	state = State.RETURNING
 	return_requested.emit(self)
 	set_physics_process(true)
@@ -130,6 +142,102 @@ func assign_move_mission(
 func assign_return_mission(mission_data: AirMissionData) -> bool:
 	return mission_controller != null \
 		and mission_controller.assign_return(mission_data)
+
+
+func assign_intercept_mission(
+		target_squadron: AircraftSquadron,
+		mission_data: AirMissionData,
+		rng_seed: int = 0
+) -> bool:
+	return mission_controller != null \
+		and mission_controller.assign_aircraft_intercept(
+			target_squadron,
+			mission_data,
+			rng_seed
+		)
+
+
+func get_aircraft_role() -> AircraftData.AircraftRole:
+	return squadron_data.aircraft_data.role \
+		if squadron_data != null \
+		and squadron_data.aircraft_data != null \
+		else AircraftData.AircraftRole.RECON
+
+
+func get_team() -> StringName:
+	return _team
+
+
+func get_fighter_combat_data() -> FighterCombatData:
+	return squadron_data.aircraft_data.fighter_combat_data \
+		if squadron_data != null \
+		and squadron_data.aircraft_data != null else null
+
+
+func assign_fighter_targets(
+		target_squadron: AircraftSquadron
+) -> void:
+	if target_squadron == null or not is_instance_valid(target_squadron):
+		clear_fighter_targets()
+		return
+	var targets := target_squadron.get_alive_aircraft()
+	if targets.is_empty():
+		clear_fighter_targets()
+		return
+	var current_target_squadron := _fighter_target_squadron_ref.get_ref() \
+		as AircraftSquadron \
+		if _fighter_target_squadron_ref != null else null
+	var needs_assignment := current_target_squadron != target_squadron
+	if not needs_assignment:
+		for attacker in get_alive_aircraft():
+			if attacker.fighter_combat_controller == null \
+					or attacker.fighter_combat_controller.get_target() == null:
+				needs_assignment = true
+				break
+	if not needs_assignment:
+		return
+	_fighter_target_squadron_ref = weakref(target_squadron)
+	var attackers := get_alive_aircraft()
+	for index in range(attackers.size()):
+		var controller := attackers[index].fighter_combat_controller
+		if controller != null:
+			controller.set_target(targets[index % targets.size()])
+
+
+func clear_fighter_targets() -> void:
+	_fighter_target_squadron_ref = null
+	for aircraft in get_alive_aircraft():
+		if aircraft.fighter_combat_controller != null:
+			aircraft.fighter_combat_controller.clear_target()
+
+
+func update_fighter_combat(
+		delta: float,
+		rng: RandomNumberGenerator
+) -> Array[FighterShotResult]:
+	var results: Array[FighterShotResult] = []
+	for aircraft in get_alive_aircraft():
+		if aircraft.fighter_combat_controller == null:
+			continue
+		var result := aircraft.fighter_combat_controller.update_combat(
+			delta,
+			rng
+		)
+		if result != null:
+			results.append(result)
+	return results
+
+
+func set_combat_formation_enabled(enabled: bool) -> void:
+	_combat_formation_enabled = enabled
+
+
+func get_combat_coordinator() -> AircraftCombatCoordinator:
+	if get_tree() == null:
+		return null
+	return get_tree().get_first_node_in_group(
+		&"aircraft_combat_coordinator"
+	) as AircraftCombatCoordinator
 
 
 func request_weapon_release(
@@ -193,6 +301,13 @@ func get_current_mission_id() -> String:
 
 
 func get_current_target() -> Node3D:
+	if mission_controller != null \
+			and mission_controller.has_method(&"get_target_squadron"):
+		var target_squadron := mission_controller.call(
+			&"get_target_squadron"
+		) as AircraftSquadron
+		if target_squadron != null:
+			return target_squadron
 	if mission_controller == null \
 			or not mission_controller.has_method(&"get_target_ship"):
 		return null
@@ -212,11 +327,17 @@ func set_mission_destination(world_position: Vector3) -> void:
 func handle_carrier_unavailable(cleanup_grace_sec: float = 2.0) -> void:
 	_owner_carrier_ref = null
 	_release_queue.clear()
+	clear_fighter_targets()
 	for aircraft in get_alive_aircraft():
 		if aircraft.weapon_controller != null:
 			aircraft.weapon_controller.disable_weapon_release()
+		if aircraft.fighter_combat_controller != null:
+			aircraft.fighter_combat_controller.disable_combat()
 	if mission_controller != null:
 		mission_controller.cancel_mission_due_to_carrier_loss()
+	var coordinator := get_combat_coordinator()
+	if coordinator != null:
+		coordinator.unregister_intercept_assignment(self)
 	_carrier_unavailable_cleanup_left = maxf(cleanup_grace_sec, 0.0)
 	set_physics_process(true)
 
@@ -233,6 +354,7 @@ func get_owner_carrier() -> ShipUnit:
 
 
 func release_aircraft() -> void:
+	clear_fighter_targets()
 	for aircraft in aircraft_units:
 		if is_instance_valid(aircraft):
 			if aircraft.destroyed.is_connected(_on_aircraft_destroyed):
@@ -400,7 +522,8 @@ func _update_aircraft_formation_targets() -> void:
 	for aircraft in aircraft_units:
 		if not is_instance_valid(aircraft) or not aircraft.active:
 			continue
-		var offset := aircraft.formation_offset
+		var offset_multiplier := 0.8 if _combat_formation_enabled else 1.0
+		var offset := aircraft.formation_offset * offset_multiplier
 		var world_offset := right * offset.x \
 			+ Vector3.UP * offset.y \
 			+ _formation_forward * offset.z
@@ -488,6 +611,9 @@ func _complete_recovery() -> void:
 	if _completion_emitted:
 		return
 	_completion_emitted = true
+	var coordinator := get_combat_coordinator()
+	if coordinator != null:
+		coordinator.unregister_squadron(self)
 	state = State.RECOVERING
 	set_physics_process(false)
 	for aircraft in aircraft_units:
@@ -500,6 +626,9 @@ func _mark_destroyed() -> void:
 	if _completion_emitted:
 		return
 	_completion_emitted = true
+	var coordinator := get_combat_coordinator()
+	if coordinator != null:
+		coordinator.unregister_squadron(self)
 	state = State.DESTROYED
 	set_physics_process(false)
 	if not squadron_lost.get_connections().is_empty():
@@ -532,3 +661,9 @@ func _prune_aircraft() -> void:
 	for index in range(aircraft_units.size() - 1, -1, -1):
 		if not is_instance_valid(aircraft_units[index]):
 			aircraft_units.remove_at(index)
+
+
+func _exit_tree() -> void:
+	var coordinator := get_combat_coordinator()
+	if coordinator != null:
+		coordinator.unregister_squadron(self)
