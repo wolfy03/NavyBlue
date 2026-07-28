@@ -1,5 +1,9 @@
 extends SceneTree
 
+const WEAPON_STAGE: StageData = preload(
+	"res://resources/stages/tests/weapon_combat_test.tres"
+)
+
 var _failures: Array[String] = []
 
 
@@ -93,10 +97,12 @@ func _test_loadout_normalize_validate_and_repair() -> void:
 
 func _test_runtime_mount_isolation_and_rebuild() -> void:
 	var packed := load("res://scenes/world/battle_scene.tscn") as PackedScene
-	var scene := packed.instantiate() if packed != null else null
+	var scene := packed.instantiate() as BattleScene \
+		if packed != null else null
 	_check(scene != null, "battle scene instantiates for runtime weapon test")
 	if scene == null:
 		return
+	scene.stage_override = WEAPON_STAGE
 	root.add_child(scene)
 	await process_frame
 	await physics_frame
@@ -107,17 +113,7 @@ func _test_runtime_mount_isolation_and_rebuild() -> void:
 		if enemy != null and enemy.ship_id == "dd_bluewind":
 			enemy_destroyer = enemy
 			break
-	var spawn_system := scene.get_node_or_null("SpawnSystem") as SpawnSystem
-	var ships_root := scene.get_node_or_null("Ships")
-	var player := spawn_system.spawn_ship(
-		"dd_bluewind",
-		FactionRelations.PLAYER,
-		false,
-		null,
-		Color(0.18, 0.48, 0.95),
-		ships_root
-	) as ShipUnit if spawn_system != null else null
-	await process_frame
+	var player := scene.player_ship as ShipUnit
 	_check(player != null and enemy_destroyer != null, "runtime test resolves two destroyers")
 	if player == null or enemy_destroyer == null:
 		scene.queue_free()

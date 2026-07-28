@@ -1,6 +1,7 @@
 extends Control
 
 const BATTLE_SCENE_PATH := "res://scenes/world/battle_scene.tscn"
+const DEFAULT_PLAYER_SHIP_ID := GameConfig.DEFAULT_PLAYER_SHIP_ID
 
 @onready var tabs: TabContainer = $Root/Panel/VBox/Tabs
 @onready var new_game_button: Button = $Root/Panel/VBox/Tabs/NewGame/NewGameContent/StartNewGameButton
@@ -48,7 +49,7 @@ func _on_start_new_game_pressed() -> void:
 			"scrap": 0,
 		},
 		"player_ship_state": {
-			"ship_id": "cv_seabastion",
+			"ship_id": DEFAULT_PLAYER_SHIP_ID,
 		},
 	})
 

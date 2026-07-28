@@ -1,5 +1,9 @@
 extends SceneTree
 
+const BATTLE_LOOP_STAGE: StageData = preload(
+	"res://resources/stages/tests/battle_loop_test.tres"
+)
+
 var _failures: Array[String] = []
 var _had_run_save := false
 var _saved_run: Dictionary = {}
@@ -114,7 +118,8 @@ func _instantiate_battle_scene() -> Node:
 	_check(packed != null, "battle scene packed resource loads")
 	if packed == null:
 		return null
-	var scene := packed.instantiate()
+	var scene := packed.instantiate() as BattleScene
+	scene.stage_override = BATTLE_LOOP_STAGE
 	root.add_child(scene)
 	await process_frame
 	await physics_frame

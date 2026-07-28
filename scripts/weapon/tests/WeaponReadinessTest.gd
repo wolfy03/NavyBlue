@@ -1,6 +1,9 @@
 extends SceneTree
 
 const EPSILON := 0.01
+const WEAPON_STAGE: StageData = preload(
+	"res://resources/stages/tests/weapon_combat_test.tres"
+)
 
 var _failures: Array[String] = []
 
@@ -15,20 +18,15 @@ func _run() -> void:
 	if packed == null:
 		_finish()
 		return
-	var scene := packed.instantiate()
+	var scene := packed.instantiate() as BattleScene
+	scene.stage_override = WEAPON_STAGE
 	root.add_child(scene)
 	await process_frame
 	await physics_frame
 	scene.process_mode = Node.PROCESS_MODE_DISABLED
-	var player := _find_ship_by_id(
-		scene.get_battle_units(),
-		"dd_bluewind"
-	)
+	var player := scene.player_ship as ShipUnit
 	_check(player != null, "destroyer weapon test ship spawns")
 	if player != null:
-		player.team = FactionRelations.PLAYER
-		for mount in player.get_weapon_mounts():
-			mount.owner_team = player.team
 		_test_mount_traverse(player)
 		_test_fire_readiness(player, scene.get("allies") as Array)
 		_test_cannon_elevation_readiness(player)

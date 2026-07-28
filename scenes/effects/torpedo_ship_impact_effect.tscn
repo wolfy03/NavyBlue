@@ -1,0 +1,31 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/effects/TorpedoShipImpactEffect.gd" id="1_effect"]
+
+[node name="TorpedoShipImpactEffect" type="Node3D"]
+script = ExtResource("1_effect")
+
+[node name="UnderwaterFlashParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="BubbleParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="DebrisParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="ShockwaveMesh" type="MeshInstance3D" parent="."]
+visible = false
+
+[node name="SmokeParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="OmniLight3D" type="OmniLight3D" parent="."]
+visible = false
+shadow_enabled = false
+
+[node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="."]
+max_distance = 2200.0
+
+[node name="LifetimeTimer" type="Timer" parent="."]
+one_shot = true

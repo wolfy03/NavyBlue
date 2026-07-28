@@ -553,6 +553,8 @@ func _on_health_died() -> void:
 	if carrier_air_group_ai != null:
 		carrier_air_group_ai.shutdown()
 		carrier_air_group_ai.process_mode = Node.PROCESS_MODE_DISABLED
+	if carrier_air_group != null:
+		carrier_air_group.resolve_carrier_loss()
 	sink()
 
 

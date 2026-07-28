@@ -1,0 +1,28 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/effects/ShellShipImpactEffect.gd" id="1_effect"]
+
+[node name="ShellShipImpactEffect" type="Node3D"]
+script = ExtResource("1_effect")
+
+[node name="FlashParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="SparkParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="SmokeParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="DebrisParticles" type="GPUParticles3D" parent="."]
+emitting = false
+
+[node name="OmniLight3D" type="OmniLight3D" parent="."]
+visible = false
+shadow_enabled = false
+
+[node name="AudioStreamPlayer3D" type="AudioStreamPlayer3D" parent="."]
+max_distance = 1800.0
+
+[node name="LifetimeTimer" type="Timer" parent="."]
+one_shot = true

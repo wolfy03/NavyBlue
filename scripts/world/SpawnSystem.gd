@@ -2,6 +2,7 @@ extends Node
 class_name SpawnSystem
 
 const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
+const DEFAULT_PLAYER_SHIP_ID := GameConfig.DEFAULT_PLAYER_SHIP_ID
 
 @export var ship_scene: PackedScene = preload("res://scenes/unit/ship.tscn")
 @export var spawn_points_path: NodePath = NodePath("../SpawnPoints")
@@ -9,6 +10,7 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 
 var ship_database := SHIP_DATABASE_SCRIPT.new()
 var spawned_units: Array = []
+var _warned_invalid_ship_ids: Dictionary = {}
 
 func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 	clear_spawned_units()
@@ -36,7 +38,14 @@ func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 
 func spawn_player_ship(ship_id: String, spawn_info: Dictionary, parent: Node) -> Node:
 	var info := spawn_info.duplicate(true)
-	info["ship_id"] = ship_id if not ship_id.is_empty() else str(info.get("ship_id", "dd_bluewind"))
+	var info_ship_id := str(info.get("ship_id", ""))
+	info["ship_id"] = ship_id \
+		if not ship_id.is_empty() \
+		else (
+			info_ship_id
+			if not info_ship_id.is_empty()
+			else DEFAULT_PLAYER_SHIP_ID
+		)
 	info["team"] = str(info.get("team", "player"))
 	info["is_player"] = true
 	info["color"] = info.get("color", Color(0.18, 0.48, 0.95))
@@ -108,7 +117,20 @@ func spawn_ship(
 	return _spawn_ship_from_info(info, parent)
 
 func _spawn_ship_from_info(spawn_info: Dictionary, parent: Node) -> Node:
-	var ship_id := str(spawn_info.get("ship_id", "dd_bluewind"))
+	var ship_id := str(spawn_info.get(
+		"ship_id",
+		DEFAULT_PLAYER_SHIP_ID
+	))
+	if ship_id.is_empty():
+		ship_id = DEFAULT_PLAYER_SHIP_ID
+	if not ShipDatabase.SHIP_PATHS.has(ship_id):
+		if not _warned_invalid_ship_ids.has(ship_id):
+			_warned_invalid_ship_ids[ship_id] = true
+			push_warning(
+				"Unknown spawn ship id '%s'. Falling back to %s."
+				% [ship_id, DEFAULT_PLAYER_SHIP_ID]
+			)
+		ship_id = DEFAULT_PLAYER_SHIP_ID
 	var spawn_parent := _resolve_parent(parent)
 	if ship_scene == null or spawn_parent == null:
 		push_warning("SpawnSystem cannot spawn ship '%s' because ship_scene or parent is missing." % ship_id)

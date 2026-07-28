@@ -669,6 +669,10 @@ func _test_debug_throttle_and_empty_lifecycle() -> void:
 func _begin_arena() -> void:
 	_arena = Node3D.new()
 	root.add_child(_arena)
+	var aircraft_root := Node3D.new()
+	aircraft_root.name = "Aircraft"
+	aircraft_root.add_to_group(&"aircraft_root")
+	_arena.add_child(aircraft_root)
 	_provider_units.clear()
 
 

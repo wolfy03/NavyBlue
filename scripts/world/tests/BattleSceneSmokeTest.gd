@@ -1,5 +1,9 @@
 extends SceneTree
 
+const BATTLE_LOOP_STAGE: StageData = preload(
+	"res://resources/stages/tests/battle_loop_test.tres"
+)
+
 func _initialize() -> void:
 	call_deferred("_run")
 
@@ -10,7 +14,8 @@ func _run() -> void:
 		quit(1)
 		return
 
-	var scene := packed.instantiate()
+	var scene := packed.instantiate() as BattleScene
+	scene.stage_override = BATTLE_LOOP_STAGE
 	root.add_child(scene)
 	await process_frame
 	await physics_frame
@@ -37,7 +42,7 @@ func _run() -> void:
 		and controller != null \
 		and spawn_system != null \
 		and player_ship != null \
-		and allies.size() == 2 \
+		and allies.size() == 1 \
 		and enemies.size() == 3 \
 		and rewards.size() == 3 \
 		and reward_resources_ok \

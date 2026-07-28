@@ -1,5 +1,9 @@
 extends SceneTree
 
+const WEAPON_STAGE: StageData = preload(
+	"res://resources/stages/tests/weapon_combat_test.tres"
+)
+
 var _failures: Array[String] = []
 
 
@@ -182,22 +186,19 @@ func _test_battle_weapon_flow() -> void:
 	_check(packed != null, "battle scene loads")
 	if packed == null:
 		return
-	var scene := packed.instantiate()
+	var scene := packed.instantiate() as BattleScene
+	scene.stage_override = WEAPON_STAGE
 	root.add_child(scene)
 	await process_frame
 	await physics_frame
 	scene.process_mode = Node.PROCESS_MODE_DISABLED
 
-	var player := _find_ship_by_id(
-		scene.get_battle_units(),
-		"dd_bluewind"
-	)
+	var player := scene.player_ship as ShipUnit
 	_check(player != null, "battle spawns a destroyer weapon test ship")
 	if player == null:
 		scene.queue_free()
 		await process_frame
 		return
-	player.team = FactionRelations.PLAYER
 	var mounts := player.get_weapon_mounts()
 	var cannons := player.combat.get_weapons_by_type(WeaponTypes.Type.CANNON)
 	var torpedoes := player.combat.get_weapons_by_type(WeaponTypes.Type.TORPEDO)

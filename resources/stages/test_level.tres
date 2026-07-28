@@ -8,22 +8,24 @@ id = "test_level"
 display_name = "Test Level"
 sea_id = "test_sea"
 difficulty = 1.0
-player_ship_id = "cv_seabastion"
+player_ship_id = "dd_bluewind"
 player_spawn = {
 "is_player": true,
 "name": "Player",
 "position": Vector3(0, 0, 1800),
 "rotation_y": 0.0,
-"ship_id": "cv_seabastion",
+"ship_id": "dd_bluewind",
 "team": "player"
 }
 ally_spawns = [{
+"is_player": false,
 "name": "AllyCruiser",
 "position": Vector3(-450, 0, 2050),
 "rotation_y": -15.0,
 "ship_id": "cl_tidebreaker",
 "team": "ally"
 }, {
+"is_player": false,
 "name": "AllyCarrier",
 "position": Vector3(520, 0, 2250),
 "rotation_y": 10.0,
@@ -31,18 +33,21 @@ ally_spawns = [{
 "team": "ally"
 }]
 enemy_spawns = [{
+"is_player": false,
 "name": "EnemyDestroyer",
 "position": Vector3(-650, 0, -3600),
 "rotation_y": 175.0,
 "ship_id": "dd_bluewind",
 "team": "enemy"
 }, {
+"is_player": false,
 "name": "EnemyCruiser",
 "position": Vector3(0, 0, -3900),
 "rotation_y": 180.0,
 "ship_id": "cl_tidebreaker",
 "team": "enemy"
 }, {
+"is_player": false,
 "name": "EnemyBattleship",
 "position": Vector3(800, 0, -4200),
 "rotation_y": -170.0,

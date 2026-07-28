@@ -1,5 +1,9 @@
 extends SceneTree
 
+const WEAPON_STAGE: StageData = preload(
+	"res://resources/stages/tests/weapon_combat_test.tres"
+)
+
 var _failures: Array[String] = []
 
 
@@ -14,6 +18,7 @@ func _run() -> void:
 		_finish()
 		return
 	var scene := packed.instantiate() as BattleScene
+	scene.stage_override = WEAPON_STAGE
 	root.add_child(scene)
 	await process_frame
 	await physics_frame

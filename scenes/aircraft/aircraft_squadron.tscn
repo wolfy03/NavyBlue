@@ -1,0 +1,10 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/aircraft/AircraftSquadron.gd" id="1_squadron"]
+[ext_resource type="Script" path="res://scripts/aircraft/AircraftMissionController.gd" id="2_mission"]
+
+[node name="AircraftSquadron" type="Node3D"]
+script = ExtResource("1_squadron")
+
+[node name="AircraftMissionController" type="Node" parent="."]
+script = ExtResource("2_mission")

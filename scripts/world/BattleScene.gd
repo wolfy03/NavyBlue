@@ -5,6 +5,7 @@ const STAGE_DATABASE_SCRIPT := preload("res://scripts/data/StageDatabase.gd")
 const DEFAULT_BATTLEFIELD_SETTINGS := preload("res://resources/settings/default_battlefield_settings.tres")
 
 @export var battlefield_settings: BattlefieldSettings = DEFAULT_BATTLEFIELD_SETTINGS
+@export var stage_override: StageData
 
 @onready var ships_root: Node3D = get_node_or_null("Ships") as Node3D
 @onready var spawn_points: Node3D = get_node_or_null("SpawnPoints") as Node3D
@@ -34,6 +35,7 @@ var _battle_units: Array = []
 var friendly_fleet_ai: FleetAIController
 var enemy_fleet_ai: FleetAIController
 var _fleet_controllers: Dictionary = {}
+var _validated_stage_ids: Dictionary = {}
 
 func _ready() -> void:
 	BattleInputActions.ensure_defaults()
@@ -57,6 +59,9 @@ func _process(_delta: float) -> void:
 	_update_impact_marker()
 
 func _resolve_stage_data() -> StageData:
+	if stage_override != null:
+		_sync_stage_to_run(stage_override)
+		return stage_override
 	var stage_id := "test_level"
 	if has_node("/root/RunManager"):
 		var run_manager = get_node("/root/RunManager")
@@ -69,15 +74,23 @@ func _resolve_stage_data() -> StageData:
 			})
 		stage_id = run_manager.current_stage_id if not str(run_manager.current_stage_id).is_empty() else stage_id
 	var stage_data: StageData = stage_database.get_stage(stage_id)
+	_sync_stage_to_run(stage_data)
+	return stage_data
+
+
+func _sync_stage_to_run(stage_data: StageData) -> void:
+	if stage_data == null:
+		return
 	if has_node("/root/RunManager"):
 		var active_run_manager = get_node("/root/RunManager")
 		active_run_manager.set_stage(stage_data.sea_id, stage_data.id, active_run_manager.current_stage_index)
 		active_run_manager.set_difficulty(stage_data.difficulty)
-	return stage_data
 
 func _initialize_battle(stage_data: StageData) -> void:
 	if stage_data == null:
 		push_warning("BattleScene cannot initialize battle without StageData.")
+		return
+	if not _validate_stage_data_once(stage_data):
 		return
 	if spawn_system == null or not spawn_system.has_method("spawn_stage"):
 		push_warning("BattleScene cannot initialize battle because SpawnSystem is missing or invalid.")
@@ -97,6 +110,23 @@ func _initialize_battle(stage_data: StageData) -> void:
 		battle_state_controller.start_battle(stage_data, player_ship, allies, enemies)
 	else:
 		push_warning("BattleStateController is missing or invalid. Battle result detection is disabled.")
+
+
+func _validate_stage_data_once(stage_data: StageData) -> bool:
+	var validation_key := stage_data.id \
+		if not stage_data.id.is_empty() \
+		else str(stage_data.get_instance_id())
+	if _validated_stage_ids.has(validation_key):
+		return bool(_validated_stage_ids[validation_key])
+	var errors := stage_data.validate()
+	var valid := errors.is_empty()
+	_validated_stage_ids[validation_key] = valid
+	for error in errors:
+		push_warning(
+			"Stage '%s' validation failed: %s"
+			% [validation_key, error]
+		)
+	return valid
 
 func _spawn_test_fleets_legacy() -> Dictionary:
 	if spawn_system == null or not spawn_system.has_method("spawn_stage"):

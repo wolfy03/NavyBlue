@@ -1,7 +1,7 @@
 extends RefCounted
 class_name ShipDatabase
 
-const DEFAULT_SHIP_ID := "dd_bluewind"
+const DEFAULT_SHIP_ID := GameConfig.DEFAULT_PLAYER_SHIP_ID
 const SHIP_PATHS := {
 	"dd_bluewind": "res://resources/ships/dd_bluewind.tres",
 	"cl_tidebreaker": "res://resources/ships/cl_tidebreaker.tres",

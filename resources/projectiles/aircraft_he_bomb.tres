@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ShellProjectileData" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/ShellProjectileData.gd" id="1_data"]
+[ext_resource type="PackedScene" path="res://scenes/weapon/projectiles/shell_projectile.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_data")
+id = "aircraft_he_bomb"
+display_name = "Aircraft HE Bomb"
+damage = 90.0
+lifetime_seconds = 20.0
+explosion_radius = 18.0
+splash_strength = 1.8
+projectile_scene = ExtResource("3_scene")
+shell_type = 1
+penetration = 35.0
+muzzle_velocity = 0.0
+gravity_scale = 1.0
+mass_kg = 250.0
+penetration_damage_multiplier = 1.2
+non_penetration_damage_multiplier = 0.35
+ricochet_damage_multiplier = 0.25

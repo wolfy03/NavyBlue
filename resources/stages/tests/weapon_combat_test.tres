@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="StageData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
+
+[resource]
+script = ExtResource("1_stage")
+id = "weapon_combat_test"
+display_name = "Weapon Combat Test"
+sea_id = "test_sea"
+difficulty = 1.0
+player_ship_id = "dd_bluewind"
+player_spawn = {
+"is_player": true,
+"name": "WeaponPlayer",
+"position": Vector3(0, 0, 1800),
+"rotation_y": 0.0,
+"ship_id": "dd_bluewind",
+"team": "player"
+}
+ally_spawns = []
+enemy_spawns = [{
+"is_player": false,
+"name": "WeaponEnemyDestroyer",
+"position": Vector3(-650, 0, -3600),
+"rotation_y": 175.0,
+"ship_id": "dd_bluewind",
+"team": "enemy"
+}, {
+"is_player": false,
+"name": "WeaponEnemyCruiser",
+"position": Vector3(0, 0, -3900),
+"rotation_y": 180.0,
+"ship_id": "cl_tidebreaker",
+"team": "enemy"
+}, {
+"is_player": false,
+"name": "WeaponEnemyBattleship",
+"position": Vector3(800, 0, -4200),
+"rotation_y": -170.0,
+"ship_id": "bb_ironwake",
+"team": "enemy"
+}]
+reward_table_id = "test_rewards"
+next_stage_candidates = Array[String]([])

@@ -1,5 +1,9 @@
 extends SceneTree
 
+const BATTLE_LOOP_STAGE: StageData = preload(
+	"res://resources/stages/tests/battle_loop_test.tres"
+)
+
 var _failures: Array[String] = []
 
 func _initialize() -> void:
@@ -20,8 +24,11 @@ func _test_content_resources() -> void:
 	var weapon_database := WeaponDatabase.new()
 	_check(ship_database.get_ship("dd_bluewind") is ShipData, "ShipDatabase returns ShipData")
 	_check(ship_database.get_ship("unknown_ship").id == "dd_bluewind", "ShipDatabase fallback is valid")
-	var stage := stage_database.get_stage("test_level")
-	_check(stage is StageData and stage.enemy_spawns.size() == 3, "StageDatabase loads test_level.tres")
+	var stage := stage_database.get_stage("battle_loop_test")
+	_check(
+		stage is StageData and stage.enemy_spawns.size() == 3,
+		"StageDatabase loads the battle loop fixture"
+	)
 	_check(stage_database.get_stage("unknown_stage").id == "test_level", "StageDatabase fallback is valid")
 	var weapon := weapon_database.get_weapon("battleship_cannon")
 	_check(weapon is WeaponData, "WeaponDatabase returns WeaponData")
@@ -45,13 +52,18 @@ func _test_runtime_flow() -> void:
 	_check(packed != null, "battle_scene.tscn loads")
 	if packed == null:
 		return
-	var scene := packed.instantiate()
+	var scene := packed.instantiate() as BattleScene
+	scene.stage_override = BATTLE_LOOP_STAGE
 	root.add_child(scene)
 	await process_frame
 	await physics_frame
 	var player = scene.get("player_ship")
 	_check(player != null, "StageData spawns the player")
-	_check(scene.get("allies").size() == 2 and scene.get("enemies").size() == 3, "StageData spawns both fleets")
+	_check(
+		scene.get("allies").size() == 1 \
+			and scene.get("enemies").size() == 3,
+		"StageData spawns both fleets"
+	)
 	var controller := scene.get_node_or_null("BattleStateController")
 	_check(controller != null and controller.battle_active, "BattleStateController starts with the battle")
 	if player != null:

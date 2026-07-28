@@ -156,7 +156,9 @@ func capture_carrier_air_group(carrier: ShipUnit) -> void:
 
 func restore_carrier_air_group(carrier: ShipUnit) -> void:
 	if carrier == null or not is_instance_valid(carrier) \
-			or carrier.carrier_air_group == null:
+			or carrier.carrier_air_group == null \
+			or carrier.ship_data == null \
+			or carrier.ship_data.carrier_air_group_data == null:
 		return
 	var saved_value: Variant = carrier_air_group_states.get(
 		_get_carrier_key(carrier),
@@ -165,6 +167,24 @@ func restore_carrier_air_group(carrier: ShipUnit) -> void:
 	if not saved_value is Dictionary:
 		return
 	var saved := saved_value as Dictionary
+	var saved_ship_id := str(saved.get("ship_id", ""))
+	if not saved_ship_id.is_empty() \
+			and saved_ship_id != carrier.ship_id:
+		push_warning(
+			"Saved carrier ship '%s' does not match '%s'."
+			% [saved_ship_id, carrier.ship_id]
+		)
+		return
+	var saved_air_group_id := str(saved.get("air_group_id", ""))
+	var current_air_group_id := \
+		carrier.ship_data.carrier_air_group_data.id
+	if not saved_air_group_id.is_empty() \
+			and saved_air_group_id != current_air_group_id:
+		push_warning(
+			"Saved air group '%s' does not match '%s'."
+			% [saved_air_group_id, current_air_group_id]
+		)
+		return
 	carrier.carrier_air_group.restore_from_save_data(
 		saved.duplicate(true)
 	)

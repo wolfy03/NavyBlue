@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CarrierAirGroupAIProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/CarrierAirGroupAIProfile.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+decision_interval_sec = 1.5
+launch_health_threshold = 0.4
+recall_health_threshold = 0.25
+distance_weight = 1.0
+damaged_target_bonus = 24.0
+duplicate_target_penalty = 35.0
+strategic_value_weight = 20.0
+threat_to_carrier_weight = 18.0
+ship_class_weights = {
+0: 10.0,
+1: 14.0,
+2: 20.0,
+3: 24.0
+}
