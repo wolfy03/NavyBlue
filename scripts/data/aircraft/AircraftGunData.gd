@@ -28,3 +28,8 @@ func is_valid_configuration() -> bool:
 		and rounds_per_burst > 0 \
 		and burst_cooldown_sec >= 0.0 \
 		and damage_per_hit > 0.0
+
+
+func get_burst_duration_sec() -> float:
+	return float(maxi(rounds_per_burst, 1)) \
+		/ maxf(rounds_per_second, 0.01)

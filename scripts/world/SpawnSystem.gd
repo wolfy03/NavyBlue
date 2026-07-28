@@ -23,11 +23,19 @@ func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 		return _empty_spawn_result()
 
 	var player_info := stage_data.player_spawn.duplicate(true)
-	player_info["ship_id"] = str(player_info.get("ship_id", stage_data.player_ship_id))
+	var player_ship_id := _resolve_player_ship_id(
+		stage_data,
+		player_info
+	)
+	player_info["ship_id"] = player_ship_id
 	player_info["name"] = str(player_info.get("name", "Player"))
 	player_info["team"] = str(player_info.get("team", "player"))
 	player_info["is_player"] = true
-	var player_ship := spawn_player_ship(stage_data.player_ship_id, player_info, spawn_parent)
+	var player_ship := spawn_player_ship(
+		player_ship_id,
+		player_info,
+		spawn_parent
+	)
 	var allies := spawn_ally_fleet(stage_data.ally_spawns, spawn_parent)
 	var enemies := spawn_enemy_fleet(stage_data.enemy_spawns, spawn_parent)
 	return {
@@ -35,6 +43,25 @@ func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 		"allies": allies,
 		"enemies": enemies,
 	}
+
+
+func _resolve_player_ship_id(
+		stage_data: StageData,
+		spawn_info: Dictionary
+) -> String:
+	if has_node("/root/RunManager"):
+		var run_manager := get_node("/root/RunManager")
+		var run_ship_id := str(
+			run_manager.player_ship_state.get("ship_id", "")
+		)
+		if not run_ship_id.is_empty():
+			return run_ship_id
+	var spawn_ship_id := str(spawn_info.get("ship_id", ""))
+	if not spawn_ship_id.is_empty():
+		return spawn_ship_id
+	if stage_data != null and not stage_data.player_ship_id.is_empty():
+		return stage_data.player_ship_id
+	return DEFAULT_PLAYER_SHIP_ID
 
 func spawn_player_ship(ship_id: String, spawn_info: Dictionary, parent: Node) -> Node:
 	var info := spawn_info.duplicate(true)

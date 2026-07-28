@@ -26,6 +26,7 @@ var _event_finished := false
 var _approach_initialized := false
 var _move_destination := Vector3.ZERO
 var intercept_behavior: InterceptMissionBehavior
+var dive_bomb_behavior: DiveBombMissionBehavior
 
 
 func setup(next_owner_squadron: AircraftSquadron) -> void:
@@ -37,6 +38,7 @@ func setup(next_owner_squadron: AircraftSquadron) -> void:
 	_approach_initialized = false
 	_move_destination = Vector3.ZERO
 	intercept_behavior = null
+	dive_bomb_behavior = null
 
 
 func assign_ship_strike(
@@ -50,8 +52,16 @@ func assign_ship_strike(
 			or next_mission_data.mission_type \
 				!= AirMissionData.MissionType.STRIKE_SHIP:
 		return false
+	var behavior := DiveBombMissionBehavior.new()
+	if not behavior.setup(
+		owner_squadron,
+		target_ship,
+		next_mission_data
+	):
+		return false
 	mission_data = next_mission_data
 	_target_ref = weakref(target_ship)
+	dive_bomb_behavior = behavior
 	state = MissionState.APPROACHING
 	_event_finished = false
 	_approach_initialized = false
@@ -159,6 +169,16 @@ func update_mission(_delta: float) -> void:
 			_finish_intercept_event(intercept_behavior.successful)
 		return
 	if mission_data != null \
+			and mission_data.mission_type \
+				== AirMissionData.MissionType.STRIKE_SHIP:
+		if dive_bomb_behavior == null:
+			fail_without_return()
+			return
+		dive_bomb_behavior.update(_delta)
+		if dive_bomb_behavior.is_finished():
+			_finish_dive_bomb_event(dive_bomb_behavior.successful)
+		return
+	if mission_data != null \
 			and mission_data.mission_type == AirMissionData.MissionType.MOVE:
 		_update_move_mission()
 		return
@@ -195,6 +215,13 @@ func cancel_and_return() -> void:
 		intercept_behavior.cancel_and_return()
 		_finish_intercept_event(false)
 		return
+	if dive_bomb_behavior != null \
+			and mission_data != null \
+			and mission_data.mission_type \
+				== AirMissionData.MissionType.STRIKE_SHIP:
+		dive_bomb_behavior.cancel_and_return()
+		_finish_dive_bomb_event(false)
+		return
 	_fail_and_return()
 
 
@@ -203,6 +230,8 @@ func fail_without_return() -> void:
 		return
 	if intercept_behavior != null:
 		intercept_behavior.cancel_without_return()
+	if dive_bomb_behavior != null:
+		dive_bomb_behavior.cancel_without_return()
 	_event_finished = true
 	state = MissionState.FAILED
 	mission_failed.emit()
@@ -212,6 +241,27 @@ func fail_without_return() -> void:
 
 func cancel_mission_due_to_carrier_loss() -> void:
 	fail_without_return()
+
+
+func cancel_current_mission_for_player_command() -> void:
+	if state in [
+		MissionState.IDLE,
+		MissionState.COMPLETED,
+		MissionState.FAILED,
+		MissionState.RETURNING,
+	]:
+		return
+	if intercept_behavior != null:
+		intercept_behavior.cancel_without_return()
+	if dive_bomb_behavior != null:
+		dive_bomb_behavior.cancel_without_return()
+	intercept_behavior = null
+	dive_bomb_behavior = null
+	mission_data = null
+	_target_ref = null
+	_event_finished = true
+	_approach_initialized = false
+	state = MissionState.IDLE
 
 
 func has_valid_target() -> bool:
@@ -229,6 +279,31 @@ func get_target_ship() -> Node3D:
 func get_target_squadron() -> AircraftSquadron:
 	return intercept_behavior.get_target_squadron() \
 		if intercept_behavior != null else null
+
+
+func _finish_dive_bomb_event(success: bool) -> void:
+	if _event_finished:
+		return
+	_event_finished = true
+	state = MissionState.RETURNING \
+		if owner_squadron != null \
+		and is_instance_valid(owner_squadron) \
+		and owner_squadron.state == AircraftSquadron.State.RETURNING \
+		else (
+			MissionState.COMPLETED if success else MissionState.FAILED
+		)
+	if success:
+		mission_completed.emit()
+		if has_node("/root/EventBus"):
+			get_node("/root/EventBus").air_mission_completed.emit(
+				owner_squadron
+			)
+	else:
+		mission_failed.emit()
+		if has_node("/root/EventBus"):
+			get_node("/root/EventBus").air_mission_failed.emit(
+				owner_squadron
+			)
 
 
 func _update_approach(target: Node3D) -> void:

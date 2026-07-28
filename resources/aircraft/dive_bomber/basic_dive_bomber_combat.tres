@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="DiveBomberCombatData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/DiveBomberCombatData.gd" id="1_dive"]
+
+[resource]
+script = ExtResource("1_dive")
+dive_entry_altitude_m = 180.0
+dive_angle_degrees = 65.0
+dive_speed_mps = 210.0
+minimum_dive_time_before_release_sec = 0.5
+minimum_release_altitude_m = 70.0
+maximum_release_altitude_m = 160.0
+automatic_pull_out_altitude_m = 45.0
+pull_out_distance_m = 500.0
+pull_out_climb_angle_degrees = 25.0
+maximum_dive_target_angle_degrees = 25.0
+dive_entry_distance_m = 900.0
+automatic_release_distance_m = 180.0

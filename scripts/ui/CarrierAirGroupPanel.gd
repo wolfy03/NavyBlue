@@ -2,11 +2,15 @@ extends PanelContainer
 class_name CarrierAirGroupPanel
 
 signal strike_targeting_requested(squadron_id: String)
+signal manual_launch_requested(squadron_id: String)
+signal active_squadron_selection_requested(squadron: AircraftSquadron)
 
 @onready var title_label: Label = %TitleLabel
 @onready var squadron_selector: OptionButton = %SquadronSelector
 @onready var status_label: Label = %StatusLabel
 @onready var strike_button: Button = %StrikeButton
+@onready var manual_launch_button: Button = %ManualLaunchButton
+@onready var select_active_button: Button = %SelectActiveButton
 @onready var return_button: Button = %ReturnButton
 @onready var return_all_button: Button = %ReturnAllButton
 @onready var targeting_label: Label = %TargetingLabel
@@ -20,6 +24,8 @@ var _targeting := false
 func _ready() -> void:
 	visible = false
 	strike_button.pressed.connect(_on_strike_pressed)
+	manual_launch_button.pressed.connect(_on_manual_launch_pressed)
+	select_active_button.pressed.connect(_on_select_active_pressed)
 	return_button.pressed.connect(_on_return_pressed)
 	return_all_button.pressed.connect(_on_return_all_pressed)
 	squadron_selector.item_selected.connect(_on_squadron_selected)
@@ -70,6 +76,21 @@ func get_selected_squadron_id() -> String:
 	return _selected_squadron_id
 
 
+func set_world_selected_squadrons(
+		squadrons: Array[AircraftSquadron]
+) -> void:
+	var carrier := _get_carrier()
+	if carrier == null:
+		return
+	for squadron in squadrons:
+		if squadron != null \
+				and is_instance_valid(squadron) \
+				and squadron.get_owner_carrier() == carrier \
+				and squadron.squadron_data != null:
+			_select_squadron_id(squadron.squadron_data.id)
+			return
+
+
 func _refresh_status() -> void:
 	var carrier := _get_carrier()
 	if carrier == null or carrier.carrier_air_group == null:
@@ -113,7 +134,8 @@ func _refresh_status() -> void:
 		+ "%s\n"
 		+ "Ready %d  Active %d  Lost %d\n"
 		+ "%s  Rearm %.1fs\n"
-		+ "Mission %s  Target %s"
+		+ "Mission %s  Target %s\n"
+		+ "Ammunition %d active / %d per aircraft"
 	) % [
 		str(snapshot.get("display_name", _selected_squadron_id)),
 		role_name,
@@ -125,9 +147,18 @@ func _refresh_status() -> void:
 		float(state_data.get("rearm_time_left", 0.0)),
 		mission_text,
 		target_text,
+		int(snapshot.get("active_ammunition", 0)),
+		int(snapshot.get("ammunition_per_aircraft", 0)),
 	]
+	var role := int(snapshot.get("aircraft_role", -1))
+	strike_button.visible = role \
+		== AircraftData.AircraftRole.DIVE_BOMBER
 	strike_button.disabled = _targeting \
 		or not air_group.can_launch_strike(_selected_squadron_id)
+	manual_launch_button.disabled = _targeting \
+		or not air_group.can_launch_squadron(_selected_squadron_id)
+	select_active_button.disabled = air_group \
+		.get_active_squadron_by_id(_selected_squadron_id) == null
 	return_button.disabled = int(state_data.get("active_aircraft", 0)) <= 0
 	return_all_button.disabled = air_group.get_active_squadron_count() <= 0
 
@@ -218,11 +249,42 @@ func _on_squadron_selected(index: int) -> void:
 		squadron_selector.get_item_metadata(index)
 	)
 	_refresh_status()
+	_emit_active_squadron_selection()
 
 
 func _on_strike_pressed() -> void:
 	if not _selected_squadron_id.is_empty():
 		strike_targeting_requested.emit(_selected_squadron_id)
+
+
+func _on_manual_launch_pressed() -> void:
+	if not _selected_squadron_id.is_empty():
+		manual_launch_requested.emit(_selected_squadron_id)
+
+
+func _on_select_active_pressed() -> void:
+	_emit_active_squadron_selection()
+
+
+func _emit_active_squadron_selection() -> void:
+	var carrier := _get_carrier()
+	if carrier == null or carrier.carrier_air_group == null:
+		return
+	var squadron := carrier.carrier_air_group.get_active_squadron_by_id(
+		_selected_squadron_id
+	)
+	if squadron != null:
+		active_squadron_selection_requested.emit(squadron)
+
+
+func _select_squadron_id(squadron_id: String) -> void:
+	for index in squadron_selector.item_count:
+		if str(squadron_selector.get_item_metadata(index)) \
+				== squadron_id:
+			squadron_selector.select(index)
+			_selected_squadron_id = squadron_id
+			_refresh_status()
+			return
 
 
 func _on_return_pressed() -> void:

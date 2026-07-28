@@ -14,3 +14,4 @@ var angle_factor := 0.0
 var pilot_factor := 0.0
 var relative_speed_factor := 0.0
 var target_evasion_factor := 0.0
+var attacker_instance_id := 0

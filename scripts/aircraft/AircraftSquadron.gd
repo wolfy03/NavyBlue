@@ -6,6 +6,7 @@ signal squadron_lost(squadron)
 signal aircraft_lost(squadron, aircraft: AircraftUnit)
 signal formation_activated(squadron)
 signal return_requested(squadron)
+signal player_selection_changed(selected: bool)
 
 enum State {
 	FORMING,
@@ -16,17 +17,40 @@ enum State {
 	DESTROYED,
 }
 
+enum CommandAuthority {
+	AI,
+	PLAYER,
+}
+
+enum ManualDiveCommandState {
+	NONE,
+	READY,
+	DIVING,
+	RELEASED,
+	PULLING_OUT,
+}
+
 const EPSILON := 0.0001
 
-@onready var mission_controller: Node = get_node_or_null(
+@onready var mission_controller: AircraftMissionController = get_node_or_null(
 	"AircraftMissionController"
-)
+) as AircraftMissionController
+@onready var dive_bomb_controller: DiveBombAttackController = \
+	get_node_or_null("DiveBombAttackController") as DiveBombAttackController
+@onready var selection_indicator: MeshInstance3D = \
+	get_node_or_null("SelectionIndicator") as MeshInstance3D
+
+@export var manual_return_after_release := false
 
 var squadron_data: SquadronData
 var aircraft_units: Array[AircraftUnit] = []
 var state: State = State.FORMING
 var destination: Vector3 = Vector3.ZERO
 var formation_center: Vector3 = Vector3.ZERO
+var command_authority: CommandAuthority = CommandAuthority.AI
+var player_selected := false
+var manual_dive_state: ManualDiveCommandState = \
+	ManualDiveCommandState.NONE
 
 var _owner_carrier_ref: WeakRef
 var _formation_forward: Vector3 = Vector3.FORWARD
@@ -43,6 +67,9 @@ var _formation_activated_emitted := false
 var _team: StringName = &"neutral"
 var _combat_formation_enabled := false
 var _fighter_target_squadron_ref: WeakRef
+var _manual_move_target := Vector3.ZERO
+var _has_manual_move_target := false
+var _manual_attack_target_ref: WeakRef
 
 
 func setup(
@@ -63,6 +90,7 @@ func setup(
 		state = State.DESTROYED
 		return
 	_team = owner_carrier.team
+	add_to_group(&"aircraft_squadrons")
 	formation_center = _get_carrier_launch_position()
 	_formation_forward = -owner_carrier.global_transform.basis.z.normalized()
 	if _formation_forward.length_squared() <= EPSILON:
@@ -70,6 +98,8 @@ func setup(
 	_spawn_aircraft()
 	if mission_controller != null:
 		mission_controller.setup(self)
+	if dive_bomb_controller != null:
+		dive_bomb_controller.setup(self)
 	var coordinator := get_combat_coordinator()
 	if coordinator != null:
 		coordinator.register_squadron(self)
@@ -94,7 +124,14 @@ func request_return() -> void:
 		_mark_destroyed()
 		return
 	clear_fighter_targets()
+	cancel_pending_weapon_release()
 	set_combat_formation_enabled(false)
+	set_player_selected(false)
+	manual_dive_state = ManualDiveCommandState.NONE
+	_has_manual_move_target = false
+	_manual_attack_target_ref = null
+	if dive_bomb_controller != null:
+		dive_bomb_controller.cancel()
 	var coordinator := get_combat_coordinator()
 	if coordinator != null:
 		coordinator.unregister_intercept_assignment(self)
@@ -172,6 +209,123 @@ func get_fighter_combat_data() -> FighterCombatData:
 	return squadron_data.aircraft_data.fighter_combat_data \
 		if squadron_data != null \
 		and squadron_data.aircraft_data != null else null
+
+
+func set_command_authority(authority: CommandAuthority) -> void:
+	command_authority = authority
+	if authority == CommandAuthority.PLAYER:
+		clear_fighter_targets()
+		for aircraft in aircraft_units:
+			if is_instance_valid(aircraft) \
+					and aircraft.fighter_combat_controller != null:
+				aircraft.fighter_combat_controller.disable_combat()
+
+
+func is_player_commanded() -> bool:
+	return command_authority == CommandAuthority.PLAYER
+
+
+func set_player_selected(selected: bool) -> void:
+	if player_selected == selected:
+		return
+	player_selected = selected
+	if selection_indicator != null:
+		selection_indicator.visible = selected
+		_update_selection_indicator()
+	player_selection_changed.emit(selected)
+
+
+func cancel_current_mission_for_player_command() -> void:
+	if state in [State.RETURNING, State.RECOVERING, State.DESTROYED]:
+		return
+	cancel_pending_weapon_release()
+	clear_fighter_targets()
+	var coordinator := get_combat_coordinator()
+	if coordinator != null:
+		coordinator.unregister_intercept_assignment(self)
+	if mission_controller != null:
+		mission_controller.cancel_current_mission_for_player_command()
+
+
+func issue_player_move_command(
+		world_position: Vector3,
+		attack_target: ShipUnit = null
+) -> bool:
+	if not _can_accept_player_command():
+		return false
+	cancel_current_mission_for_player_command()
+	if dive_bomb_controller != null:
+		dive_bomb_controller.cancel()
+	set_command_authority(CommandAuthority.PLAYER)
+	manual_dive_state = ManualDiveCommandState.READY \
+		if get_aircraft_role() == AircraftData.AircraftRole.DIVE_BOMBER \
+		else ManualDiveCommandState.NONE
+	_manual_attack_target_ref = weakref(attack_target) \
+		if _is_valid_manual_attack_target(attack_target) else null
+	var carrier := get_owner_carrier()
+	var data := squadron_data.aircraft_data
+	_manual_move_target = world_position
+	_manual_move_target.y = carrier.global_position.y \
+		+ data.operating_altitude_m
+	_manual_move_target = _clamp_destination_to_combat_radius(
+		_manual_move_target
+	)
+	_has_manual_move_target = true
+	set_mission_destination(_manual_move_target)
+	return true
+
+
+func begin_manual_dive() -> bool:
+	if not _can_accept_player_command() \
+			or not is_player_commanded() \
+			or get_aircraft_role() \
+				!= AircraftData.AircraftRole.DIVE_BOMBER \
+			or manual_dive_state != ManualDiveCommandState.READY \
+			or dive_bomb_controller == null \
+			or not has_any_ammunition():
+		return false
+	cancel_current_mission_for_player_command()
+	var target_ship := get_manual_attack_target()
+	var target := target_ship.global_position \
+		if target_ship != null else (
+			_manual_move_target if _has_manual_move_target \
+			else formation_center \
+				+ get_formation_forward() * 600.0
+		)
+	target.y = target_ship.global_position.y \
+		if target_ship != null else 0.0
+	var target_velocity := target_ship.velocity \
+		if target_ship is CharacterBody3D else Vector3.ZERO
+	if not dive_bomb_controller.begin_dive(target, target_velocity):
+		return false
+	manual_dive_state = ManualDiveCommandState.DIVING
+	return true
+
+
+func request_manual_bomb_release() -> bool:
+	if not is_player_commanded() \
+			or manual_dive_state != ManualDiveCommandState.DIVING \
+			or dive_bomb_controller == null:
+		return false
+	var released_count := dive_bomb_controller.release_bombs()
+	if released_count <= 0:
+		return false
+	manual_dive_state = ManualDiveCommandState.PULLING_OUT
+	return true
+
+
+func get_manual_release_block_reason() -> int:
+	if dive_bomb_controller == null:
+		return int(DiveBombAttackController.ReleaseBlockReason.NOT_DIVING)
+	dive_bomb_controller.can_release_bombs()
+	return int(dive_bomb_controller.release_block_reason)
+
+
+func get_manual_attack_target() -> ShipUnit:
+	if _manual_attack_target_ref == null:
+		return null
+	var target := _manual_attack_target_ref.get_ref() as ShipUnit
+	return target if _is_valid_manual_attack_target(target) else null
 
 
 func assign_fighter_targets(
@@ -257,6 +411,32 @@ func request_weapon_release(
 	return _release_queue.size()
 
 
+func cancel_pending_weapon_release() -> void:
+	_release_queue.clear()
+	_release_interval_left = 0.0
+	for aircraft in get_alive_aircraft():
+		if aircraft.weapon_controller != null:
+			aircraft.weapon_controller.cancel_pending_release()
+
+
+func can_release_payload() -> bool:
+	if is_weapon_release_in_progress():
+		return false
+	for aircraft in get_alive_aircraft():
+		if aircraft.weapon_controller != null \
+				and aircraft.weapon_controller.can_release():
+			return true
+	return false
+
+
+func get_total_remaining_ammunition() -> int:
+	var result := 0
+	for aircraft in get_alive_aircraft():
+		if aircraft.weapon_controller != null:
+			result += aircraft.weapon_controller.get_remaining_ammunition()
+	return result
+
+
 func has_any_ammunition() -> bool:
 	for aircraft in get_alive_aircraft():
 		if aircraft.weapon_controller != null \
@@ -327,8 +507,16 @@ func set_mission_destination(world_position: Vector3) -> void:
 func handle_carrier_unavailable(cleanup_grace_sec: float = 2.0) -> void:
 	_owner_carrier_ref = null
 	_release_queue.clear()
+	set_player_selected(false)
+	manual_dive_state = ManualDiveCommandState.NONE
+	_has_manual_move_target = false
+	_manual_attack_target_ref = null
+	if dive_bomb_controller != null:
+		dive_bomb_controller.cancel()
 	clear_fighter_targets()
-	for aircraft in get_alive_aircraft():
+	for aircraft in aircraft_units:
+		if not is_instance_valid(aircraft):
+			continue
 		if aircraft.weapon_controller != null:
 			aircraft.weapon_controller.disable_weapon_release()
 		if aircraft.fighter_combat_controller != null:
@@ -380,8 +568,31 @@ func _physics_process(delta: float) -> void:
 			return
 	_update_launch_sequence(delta)
 	_update_weapon_release_sequence(delta)
-	if mission_controller != null:
+	if mission_controller != null \
+			and not is_player_commanded() \
+			and state not in [
+				State.RETURNING,
+				State.RECOVERING,
+				State.DESTROYED,
+			]:
 		mission_controller.update_mission(delta)
+	if dive_bomb_controller != null and dive_bomb_controller.is_active():
+		dive_bomb_controller.update_dive(delta)
+		if dive_bomb_controller.state \
+				== DiveBombAttackController.State.PULLING_OUT:
+			manual_dive_state = ManualDiveCommandState.PULLING_OUT
+		_update_aircraft_formation_targets()
+		_update_selection_indicator()
+		return
+	if manual_dive_state == ManualDiveCommandState.PULLING_OUT \
+			and dive_bomb_controller != null \
+			and dive_bomb_controller.state \
+				== DiveBombAttackController.State.COMPLETED:
+		manual_dive_state = ManualDiveCommandState.READY \
+			if has_any_ammunition() else ManualDiveCommandState.NONE
+		if manual_return_after_release:
+			request_return()
+			return
 	match state:
 		State.EN_ROUTE:
 			_advance_formation_center(destination, delta)
@@ -406,6 +617,7 @@ func _physics_process(delta: float) -> void:
 		State.RECOVERING, State.DESTROYED:
 			return
 	_update_aircraft_formation_targets()
+	_update_selection_indicator()
 
 
 func _update_weapon_release_sequence(delta: float) -> void:
@@ -515,6 +727,26 @@ func _advance_formation_center(target: Vector3, delta: float) -> void:
 	)
 
 
+func apply_direct_flight(
+		direction: Vector3,
+		speed_mps: float,
+		delta: float,
+		minimum_world_y: float
+) -> void:
+	if direction.length_squared() <= EPSILON:
+		return
+	_formation_forward = direction.normalized()
+	formation_center += _formation_forward \
+		* maxf(speed_mps, 0.0) * maxf(delta, 0.0)
+	formation_center.y = maxf(formation_center.y, minimum_world_y)
+
+
+func finish_direct_flight_holding(world_altitude: float) -> void:
+	formation_center.y = world_altitude
+	destination = formation_center
+	state = State.HOLDING
+
+
 func _update_aircraft_formation_targets() -> void:
 	var right := _formation_forward.cross(Vector3.UP).normalized()
 	if right.length_squared() <= EPSILON:
@@ -528,6 +760,13 @@ func _update_aircraft_formation_targets() -> void:
 			+ Vector3.UP * offset.y \
 			+ _formation_forward * offset.z
 		aircraft.set_formation_target(formation_center + world_offset)
+
+
+func _update_selection_indicator() -> void:
+	if selection_indicator == null:
+		return
+	selection_indicator.global_position = formation_center \
+		+ Vector3.DOWN * 8.0
 
 
 func _has_formation_arrived(target: Vector3) -> bool:
@@ -590,6 +829,43 @@ func _clamp_destination_horizontal(world_position: Vector3) -> Vector3:
 	return result
 
 
+func get_command_debug_snapshot() -> Dictionary:
+	var attack_target := get_manual_attack_target()
+	return {
+		"command_authority": CommandAuthority.keys()[int(command_authority)],
+		"manual_move_target": _manual_move_target,
+		"has_manual_move_target": _has_manual_move_target,
+		"manual_attack_target":
+			attack_target.name if attack_target != null else "",
+		"manual_dive_state":
+			ManualDiveCommandState.keys()[int(manual_dive_state)],
+	}
+
+
+func _can_accept_player_command() -> bool:
+	var carrier := get_owner_carrier()
+	return carrier != null \
+		and is_instance_valid(carrier) \
+		and carrier.player_controlled \
+		and get_team() == FactionRelations.PLAYER \
+		and get_alive_aircraft_count() > 0 \
+		and state not in [
+			State.RETURNING,
+			State.RECOVERING,
+			State.DESTROYED,
+		]
+
+
+func _is_valid_manual_attack_target(target: ShipUnit) -> bool:
+	var carrier := get_owner_carrier()
+	return target != null \
+		and is_instance_valid(target) \
+		and not target.is_queued_for_deletion() \
+		and target.is_alive() \
+		and carrier != null \
+		and carrier.is_hostile_to(target)
+
+
 func _get_carrier_launch_position() -> Vector3:
 	var carrier := get_owner_carrier()
 	var air_group := carrier.carrier_air_group
@@ -611,6 +887,7 @@ func _complete_recovery() -> void:
 	if _completion_emitted:
 		return
 	_completion_emitted = true
+	set_player_selected(false)
 	var coordinator := get_combat_coordinator()
 	if coordinator != null:
 		coordinator.unregister_squadron(self)
@@ -626,6 +903,7 @@ func _mark_destroyed() -> void:
 	if _completion_emitted:
 		return
 	_completion_emitted = true
+	set_player_selected(false)
 	var coordinator := get_combat_coordinator()
 	if coordinator != null:
 		coordinator.unregister_squadron(self)

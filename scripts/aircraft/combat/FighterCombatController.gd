@@ -24,18 +24,7 @@ func setup(next_owner_aircraft: AircraftUnit) -> void:
 		if weapon_data != null \
 		and weapon_data.weapon_type \
 			== AircraftWeaponData.WeaponType.AIR_TO_AIR_GUN else null
-	if owner_aircraft.aircraft_data.role \
-			!= AircraftData.AircraftRole.FIGHTER \
-			or fighter_data == null \
-			or gun_data == null:
-		return
-	for error in fighter_data.validate():
-		push_warning(
-			"Fighter combat configuration '%s': %s"
-			% [owner_aircraft.aircraft_data.id, error]
-		)
-	_combat_enabled = fighter_data.validate().is_empty() \
-		and gun_data.is_valid_configuration()
+	_combat_enabled = _validate_configuration(true)
 
 
 func set_target(target: AircraftUnit) -> void:
@@ -69,6 +58,7 @@ func update_combat(
 		rng: RandomNumberGenerator
 ) -> FighterShotResult:
 	_last_result = FighterShotResult.new()
+	_set_result_attacker(_last_result)
 	if not _combat_enabled or rng == null:
 		return _last_result
 	var target := get_target()
@@ -83,6 +73,7 @@ func update_combat(
 		fighter_data,
 		gun_data
 	)
+	_set_result_attacker(preview)
 	if not preview.valid:
 		_lock_time_left = 0.0
 		_last_result = preview
@@ -105,6 +96,7 @@ func update_combat(
 		rounds,
 		rng
 	)
+	_set_result_attacker(_last_result)
 	_lock_time_left = 0.0
 	owner_aircraft.weapon_controller.begin_gun_burst_cooldown()
 	if _last_result.total_damage > 0.0:
@@ -155,9 +147,7 @@ func is_target_in_range() -> bool:
 func reset_for_sortie() -> void:
 	clear_target()
 	_last_result = FighterShotResult.new()
-	_combat_enabled = fighter_data != null \
-		and gun_data != null \
-		and gun_data.is_valid_configuration()
+	_combat_enabled = _validate_configuration(false)
 
 
 func disable_combat() -> void:
@@ -202,3 +192,31 @@ func _is_valid_hostile_target(target: AircraftUnit) -> bool:
 			owner_aircraft.get_team(),
 			target.get_team()
 		)
+
+
+func _validate_configuration(emit_warnings: bool) -> bool:
+	if owner_aircraft == null \
+			or not is_instance_valid(owner_aircraft) \
+			or owner_aircraft.aircraft_data == null \
+			or owner_aircraft.aircraft_data.role \
+				!= AircraftData.AircraftRole.FIGHTER \
+			or fighter_data == null \
+			or gun_data == null:
+		return false
+	var errors := fighter_data.validate()
+	if not gun_data.is_valid_configuration():
+		errors.append("AircraftGunData configuration is invalid.")
+	if emit_warnings:
+		for error in errors:
+			push_warning(
+				"Fighter combat configuration '%s': %s"
+				% [owner_aircraft.aircraft_data.id, error]
+			)
+	return errors.is_empty()
+
+
+func _set_result_attacker(result: FighterShotResult) -> void:
+	if result != null \
+			and owner_aircraft != null \
+			and is_instance_valid(owner_aircraft):
+		result.attacker_instance_id = owner_aircraft.get_instance_id()

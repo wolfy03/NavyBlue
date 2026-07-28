@@ -26,9 +26,8 @@ func unregister_squadron(squadron: AircraftSquadron) -> void:
 	var removed_id := squadron.get_instance_id() \
 		if is_instance_valid(squadron) else 0
 	for attacker_id in _intercept_assignments.keys().duplicate():
-		var target_ref := _intercept_assignments[attacker_id] as WeakRef
-		var target := target_ref.get_ref() as AircraftSquadron \
-			if target_ref != null else null
+		var assignment := _intercept_assignments[attacker_id] as Dictionary
+		var target := _get_assignment_squadron(assignment, &"target")
 		if target == null \
 				or not is_instance_valid(target) \
 				or target.get_instance_id() == removed_id:
@@ -110,7 +109,10 @@ func register_intercept_assignment(
 			or not is_instance_valid(attacker) \
 			or not is_instance_valid(target):
 		return
-	_intercept_assignments[attacker.get_instance_id()] = weakref(target)
+	_intercept_assignments[attacker.get_instance_id()] = {
+		"attacker": weakref(attacker),
+		"target": weakref(target),
+	}
 
 
 func unregister_intercept_assignment(
@@ -127,9 +129,9 @@ func get_interceptor_count_for(
 		return 0
 	_prune_assignments()
 	var count := 0
-	for target_ref_value in _intercept_assignments.values():
-		var target_ref := target_ref_value as WeakRef
-		if target_ref != null and target_ref.get_ref() == target:
+	for assignment_value in _intercept_assignments.values():
+		var assignment := assignment_value as Dictionary
+		if _get_assignment_squadron(assignment, &"target") == target:
 			count += 1
 	return count
 
@@ -143,9 +145,8 @@ func get_debug_snapshot() -> Dictionary:
 		team_counts[key] = int(team_counts.get(key, 0)) + 1
 	var assignments: Dictionary = {}
 	for attacker_id in _intercept_assignments:
-		var target_ref := _intercept_assignments[attacker_id] as WeakRef
-		var target := target_ref.get_ref() as AircraftSquadron \
-			if target_ref != null else null
+		var assignment := _intercept_assignments[attacker_id] as Dictionary
+		var target := _get_assignment_squadron(assignment, &"target")
 		assignments[str(attacker_id)] = target.name \
 			if target != null and is_instance_valid(target) else ""
 	return {
@@ -217,9 +218,33 @@ func _prune_invalid_squadrons() -> void:
 
 func _prune_assignments() -> void:
 	for attacker_id in _intercept_assignments.keys().duplicate():
-		var target_ref := _intercept_assignments[attacker_id] as WeakRef
-		var target := target_ref.get_ref() as AircraftSquadron \
-			if target_ref != null else null
-		if target == null or not is_instance_valid(target) \
-				or target.is_queued_for_deletion():
+		var assignment := _intercept_assignments[attacker_id] as Dictionary
+		var attacker := _get_assignment_squadron(
+			assignment,
+			&"attacker"
+		)
+		var target := _get_assignment_squadron(assignment, &"target")
+		if not _is_valid_assignment_member(attacker) \
+				or not _is_valid_assignment_member(target):
 			_intercept_assignments.erase(attacker_id)
+
+
+func _get_assignment_squadron(
+		assignment: Dictionary,
+		key: StringName
+) -> AircraftSquadron:
+	var ref := assignment.get(key) as WeakRef
+	return ref.get_ref() as AircraftSquadron if ref != null else null
+
+
+func _is_valid_assignment_member(
+		squadron: AircraftSquadron
+) -> bool:
+	return squadron != null \
+		and is_instance_valid(squadron) \
+		and not squadron.is_queued_for_deletion() \
+		and squadron.state not in [
+			AircraftSquadron.State.RETURNING,
+			AircraftSquadron.State.RECOVERING,
+			AircraftSquadron.State.DESTROYED,
+		]

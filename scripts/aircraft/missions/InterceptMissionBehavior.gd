@@ -14,6 +14,8 @@ enum State {
 
 const EPSILON := 0.0001
 const MAXIMUM_PREDICTION_SECONDS := 8.0
+const MINIMUM_FIRING_WINDOW_SECONDS := 0.9
+const REQUIRED_FIRED_RATIO := 0.6
 
 var owner_squadron: AircraftSquadron
 var mission_data: AirMissionData
@@ -25,6 +27,8 @@ var _target_squadron_ref: WeakRef
 var _combat_rng := RandomNumberGenerator.new()
 var _separation_destination := Vector3.ZERO
 var _finished := true
+var _firing_time_left := 0.0
+var _aircraft_fired_this_pass: Dictionary = {}
 
 
 func setup(
@@ -49,6 +53,8 @@ func setup(
 	attack_pass = 0
 	successful = false
 	_finished = false
+	_firing_time_left = 0.0
+	_aircraft_fired_this_pass.clear()
 	owner_squadron.set_combat_formation_enabled(true)
 	var coordinator := owner_squadron.get_combat_coordinator()
 	if coordinator != null:
@@ -77,7 +83,7 @@ func update(delta: float) -> void:
 		_finish_and_return(false)
 		return
 	if not owner_squadron.has_any_ammunition():
-		_finish_and_return(true)
+		_finish_and_return(false)
 		return
 	match state:
 		State.INTERCEPTING:
@@ -186,6 +192,7 @@ func _update_aligning(target: AircraftSquadron) -> void:
 	)
 	if distance <= fighter_data.preferred_engagement_range_m * 1.5:
 		owner_squadron.assign_fighter_targets(target)
+		_begin_firing_window()
 		state = State.FIRING
 
 
@@ -193,6 +200,7 @@ func _update_firing(
 		target: AircraftSquadron,
 		delta: float
 ) -> void:
+	_firing_time_left = maxf(0.0, _firing_time_left - maxf(delta, 0.0))
 	owner_squadron.set_mission_destination(
 		target.formation_center + target.get_formation_velocity() * 0.5
 	)
@@ -203,8 +211,28 @@ func _update_firing(
 	)
 	for result in results:
 		if result.valid and result.rounds_fired > 0:
-			_begin_separation()
-			return
+			_aircraft_fired_this_pass[result.attacker_instance_id] = true
+	var alive_count := owner_squadron.get_alive_aircraft_count()
+	var required_count := maxi(
+		1,
+		ceili(float(alive_count) * REQUIRED_FIRED_RATIO)
+	)
+	var target_offset := target.formation_center \
+		- owner_squadron.formation_center
+	var target_passed := target_offset.length_squared() > EPSILON \
+		and owner_squadron.get_formation_forward().dot(
+			target_offset.normalized()
+		) < -0.2
+	var too_close := target_offset.length() \
+		< owner_squadron.get_fighter_combat_data() \
+			.preferred_engagement_range_m * 0.35
+	if _firing_time_left <= 0.0 \
+			or _aircraft_fired_this_pass.size() >= required_count \
+			or target_passed \
+			or too_close \
+			or not owner_squadron.has_any_ammunition():
+		_begin_separation()
+		return
 	if owner_squadron.formation_center.distance_to(
 		target.formation_center
 	) > owner_squadron.get_fighter_combat_data().disengage_range_m:
@@ -234,13 +262,29 @@ func _update_separating() -> void:
 	)
 	if attack_pass >= maximum_passes \
 			or not owner_squadron.has_any_ammunition():
-		_finish_and_return(true)
+		_finish_and_return(false)
 		return
 	state = State.REACQUIRING
 
 
 func _begin_intercepting() -> void:
 	state = State.INTERCEPTING
+
+
+func _begin_firing_window() -> void:
+	var gun_data: AircraftGunData
+	var weapon_data := owner_squadron.get_aircraft_weapon_data()
+	if weapon_data != null:
+		gun_data = weapon_data.gun_data
+	var burst_duration := gun_data.get_burst_duration_sec() \
+		if gun_data != null else 0.0
+	_firing_time_left = maxf(
+		MINIMUM_FIRING_WINDOW_SECONDS,
+		burst_duration + (
+			gun_data.burst_cooldown_sec if gun_data != null else 0.0
+		)
+	)
+	_aircraft_fired_this_pass.clear()
 
 
 func _finish_and_return(was_successful: bool) -> void:

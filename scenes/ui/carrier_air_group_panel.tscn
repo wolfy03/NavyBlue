@@ -6,8 +6,8 @@
 visible = false
 offset_left = 18.0
 offset_top = 220.0
-offset_right = 398.0
-offset_bottom = 462.0
+offset_right = 428.0
+offset_bottom = 500.0
 script = ExtResource("1_panel")
 
 [node name="Margin" type="MarginContainer" parent="."]
@@ -33,7 +33,7 @@ layout_mode = 2
 
 [node name="StatusLabel" type="Label" parent="Margin/Content"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(350, 92)
+custom_minimum_size = Vector2(380, 112)
 layout_mode = 2
 text = "No squadron data"
 
@@ -44,14 +44,25 @@ layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.82, 0.28, 1)
 text = "Select an enemy ship"
 
-[node name="Commands" type="HBoxContainer" parent="Margin/Content"]
+[node name="Commands" type="GridContainer" parent="Margin/Content"]
 layout_mode = 2
 theme_override_constants/separation = 6
+columns = 3
+
+[node name="ManualLaunchButton" type="Button" parent="Margin/Content/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Manual Launch"
 
 [node name="StrikeButton" type="Button" parent="Margin/Content/Commands"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Strike"
+text = "Auto Strike"
+
+[node name="SelectActiveButton" type="Button" parent="Margin/Content/Commands"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Select Active"
 
 [node name="ReturnButton" type="Button" parent="Margin/Content/Commands"]
 unique_name_in_owner = true

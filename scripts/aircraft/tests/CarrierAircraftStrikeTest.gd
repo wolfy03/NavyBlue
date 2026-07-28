@@ -198,10 +198,30 @@ func _test_strike_lifecycle(
 				== BOMB_WEAPON.ammunition_per_sortie,
 			"each aircraft starts the sortie with full ammunition"
 		)
-	var released := await _wait_until(
-		func() -> bool:
-			return _released_count >= squadron.aircraft_units.size(),
-		900
+	var released := false
+	var entered_dive := false
+	var release_before_dive := false
+	for _frame in 900:
+		if not is_instance_valid(squadron):
+			break
+		var behavior := squadron.mission_controller.dive_bomb_behavior \
+			as DiveBombMissionBehavior
+		if behavior != null and behavior.state in [
+			DiveBombMissionBehavior.State.DIVING,
+			DiveBombMissionBehavior.State.RELEASING,
+			DiveBombMissionBehavior.State.PULLING_OUT,
+		]:
+			entered_dive = true
+		if _released_count > 0 and not entered_dive:
+			release_before_dive = true
+		if _released_count >= squadron.aircraft_units.size():
+			released = true
+			break
+		await physics_frame
+	_check(entered_dive, "AI strike enters a physical dive state")
+	_check(
+		not release_before_dive,
+		"AI strike does not release bombs before diving"
 	)
 	_check(released, "strike releases bombs from surviving aircraft")
 	_check(

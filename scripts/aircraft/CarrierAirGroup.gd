@@ -154,6 +154,33 @@ func launch_squadron(
 	return squadron
 
 
+func launch_manual_squadron(
+		squadron_id: String
+) -> AircraftSquadron:
+	if owner_ship == null or not is_instance_valid(owner_ship) \
+			or not owner_ship.player_controlled \
+			or not can_launch_squadron(squadron_id):
+		return null
+	var template := get_squadron_data(squadron_id)
+	if template == null or template.aircraft_data == null:
+		return null
+	var forward := -owner_ship.global_transform.basis.z
+	forward.y = 0.0
+	forward = forward.normalized() \
+		if forward.length_squared() > 0.0001 else Vector3.FORWARD
+	var rally_position := owner_ship.global_position + forward * 550.0
+	rally_position.y = owner_ship.global_position.y \
+		+ template.aircraft_data.operating_altitude_m
+	var squadron := launch_squadron(squadron_id, rally_position)
+	if squadron == null:
+		return null
+	squadron.set_command_authority(
+		AircraftSquadron.CommandAuthority.PLAYER
+	)
+	squadron.issue_player_move_command(rally_position)
+	return squadron
+
+
 func launch_strike_squadron(
 		squadron_id: String,
 		target_ship: Node3D,
@@ -289,6 +316,12 @@ func request_all_squadrons_return() -> void:
 func get_active_squadrons() -> Array[AircraftSquadron]:
 	_prune_active_squadrons()
 	return active_squadrons.duplicate()
+
+
+func get_active_squadron_by_id(
+		squadron_id: String
+) -> AircraftSquadron:
+	return _find_active_squadron(squadron_id)
 
 
 func get_active_squadron_count() -> int:
@@ -541,6 +574,14 @@ func get_squadron_status_snapshot(squadron_id: String) -> Dictionary:
 	var active_squadron := _find_active_squadron(squadron_id)
 	var target := active_squadron.get_current_target() \
 		if active_squadron != null else null
+	var ammunition_per_aircraft := 0
+	if template.aircraft_data != null \
+			and template.aircraft_data.weapon_data != null:
+		ammunition_per_aircraft = template.aircraft_data \
+			.weapon_data.ammunition_per_sortie
+	var active_ammunition := active_squadron \
+		.get_total_remaining_ammunition() \
+		if active_squadron != null else 0
 	return {
 		"state": state.to_dictionary(),
 		"display_name": template.display_name,
@@ -554,6 +595,8 @@ func get_squadron_status_snapshot(squadron_id: String) -> Dictionary:
 		"mission_state": active_squadron.get_current_mission_state() \
 			if active_squadron != null else -1,
 		"target_name": target.name if target != null else "",
+		"ammunition_per_aircraft": ammunition_per_aircraft,
+		"active_ammunition": active_ammunition,
 	}
 
 
@@ -932,6 +975,24 @@ func _is_valid_template(template: SquadronData) -> bool:
 				"fighter_config_%s" % template.id,
 				"Fighter squadron '%s' has invalid combat data: %s"
 				% [template.id, "; ".join(fighter_errors)]
+			)
+			return false
+	if template.aircraft_data.role \
+			== AircraftData.AircraftRole.DIVE_BOMBER:
+		if template.aircraft_data.dive_bomber_combat_data == null:
+			_warn_validation_once(
+				"dive_bomber_%s" % template.id,
+				"Dive bomber squadron '%s' has no DiveBomberCombatData."
+				% template.id
+			)
+			return false
+		var dive_errors := template.aircraft_data \
+			.dive_bomber_combat_data.validate()
+		if not dive_errors.is_empty():
+			_warn_validation_once(
+				"dive_bomber_config_%s" % template.id,
+				"Dive bomber squadron '%s' has invalid combat data: %s"
+				% [template.id, "; ".join(dive_errors)]
 			)
 			return false
 	if template.aircraft_count <= 0:

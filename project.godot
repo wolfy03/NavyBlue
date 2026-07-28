@@ -87,6 +87,10 @@ command_cancel={
 "deadzone": 0.2,
 "events": []
 }
+aircraft_special_action={
+"deadzone": 0.2,
+"events": []
+}
 ship_throttle_forward={
 "deadzone": 0.2,
 "events": []

@@ -3,6 +3,7 @@ class_name CarrierCommandController
 
 var camera: Camera3D
 var panel: CarrierAirGroupPanel
+var aircraft_selection_controller: AircraftSelectionController
 var _selected_carrier_ref: WeakRef
 var _selected_squadron_id := ""
 var _targeting := false
@@ -10,15 +11,35 @@ var _targeting := false
 
 func setup(
 		next_camera: Camera3D,
-		next_panel: CarrierAirGroupPanel
+		next_panel: CarrierAirGroupPanel,
+		next_aircraft_selection_controller: AircraftSelectionController = null
 ) -> void:
 	camera = next_camera
 	panel = next_panel
+	aircraft_selection_controller = next_aircraft_selection_controller
+	if aircraft_selection_controller != null \
+			and not aircraft_selection_controller.selection_changed \
+				.is_connected(_on_aircraft_selection_changed):
+		aircraft_selection_controller.selection_changed.connect(
+			_on_aircraft_selection_changed
+		)
 	if panel != null \
 			and not panel.strike_targeting_requested.is_connected(
 				begin_strike_targeting
 			):
 		panel.strike_targeting_requested.connect(begin_strike_targeting)
+	if panel != null \
+			and not panel.manual_launch_requested.is_connected(
+				_on_manual_launch_requested
+			):
+		panel.manual_launch_requested.connect(_on_manual_launch_requested)
+	if panel != null \
+			and not panel.active_squadron_selection_requested.is_connected(
+				_on_active_squadron_selection_requested
+			):
+		panel.active_squadron_selection_requested.connect(
+			_on_active_squadron_selection_requested
+		)
 
 
 func set_selected_carrier(carrier: ShipUnit) -> void:
@@ -106,3 +127,28 @@ static func _is_carrier(candidate: ShipUnit) -> bool:
 		and candidate.ship_data != null \
 		and candidate.ship_data.carrier_air_group_data != null \
 		and candidate.carrier_air_group != null
+
+
+func _on_manual_launch_requested(squadron_id: String) -> void:
+	var carrier := get_selected_carrier()
+	if carrier == null or carrier.carrier_air_group == null:
+		return
+	var squadron := carrier.carrier_air_group.launch_manual_squadron(
+		squadron_id
+	)
+	if squadron != null and aircraft_selection_controller != null:
+		aircraft_selection_controller.select_squadron(squadron)
+
+
+func _on_active_squadron_selection_requested(
+		squadron: AircraftSquadron
+) -> void:
+	if aircraft_selection_controller != null:
+		aircraft_selection_controller.select_squadron(squadron)
+
+
+func _on_aircraft_selection_changed(
+		squadrons: Array[AircraftSquadron]
+) -> void:
+	if panel != null:
+		panel.set_world_selected_squadrons(squadrons)

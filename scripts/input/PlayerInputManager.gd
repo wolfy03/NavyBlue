@@ -17,6 +17,7 @@ var battlefield_bounds: BattlefieldBounds
 var selected_ships: Array = []
 var _movement_marker: Node3D
 var carrier_command_controller: CarrierCommandController
+var aircraft_selection_controller: AircraftSelectionController
 
 func setup(ship, view_camera: Camera3D, water_y: float = 0.0, bounds: BattlefieldBounds = null) -> void:
 	controlled_ship = ship
@@ -35,6 +36,13 @@ func set_carrier_command_controller(
 ) -> void:
 	carrier_command_controller = controller
 	_sync_carrier_selection()
+
+
+func set_aircraft_selection_controller(
+		controller: AircraftSelectionController
+) -> void:
+	aircraft_selection_controller = controller
+
 
 func _physics_process(_delta: float) -> void:
 	_prune_selection()
@@ -60,20 +68,73 @@ func _physics_process(_delta: float) -> void:
 				and carrier_command_controller.is_targeting():
 			carrier_command_controller.cancel_targeting()
 			return
+		if aircraft_selection_controller != null \
+				and aircraft_selection_controller.has_selection():
+			aircraft_selection_controller.clear_selection()
+			return
 		cancel_selected_commands()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not event is InputEventMouseButton or not event.pressed or _is_pointer_over_ui():
+	if event.is_action_pressed(&"aircraft_special_action") \
+			and not event.is_echo():
+		if not _is_pointer_over_ui() \
+				and aircraft_selection_controller != null \
+				and aircraft_selection_controller.execute_special_action():
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseMotion:
+		if aircraft_selection_controller != null:
+			aircraft_selection_controller.update_drag(
+				(event as InputEventMouseMotion).position
+			)
+		return
+	if not event is InputEventMouseButton:
 		return
 	var mouse_event := event as InputEventMouseButton
 	match mouse_event.button_index:
 		MOUSE_BUTTON_LEFT:
-			_handle_primary_click(mouse_event.position)
+			if mouse_event.pressed:
+				if _is_pointer_over_ui():
+					return
+				if carrier_command_controller != null \
+						and carrier_command_controller.is_targeting():
+					_handle_primary_click(mouse_event.position)
+					get_viewport().set_input_as_handled()
+					return
+				if aircraft_selection_controller != null:
+					aircraft_selection_controller.begin_drag(
+						mouse_event.position
+					)
+			else:
+				var drag_consumed := aircraft_selection_controller \
+					.finish_drag(
+						mouse_event.position,
+						Input.is_action_pressed(&"selection_additive")
+					) if aircraft_selection_controller != null else false
+				if drag_consumed:
+					get_viewport().set_input_as_handled()
+					return
+				if not _is_pointer_over_ui():
+					_handle_primary_click(mouse_event.position)
 		MOUSE_BUTTON_RIGHT:
+			if not mouse_event.pressed or _is_pointer_over_ui():
+				return
 			if carrier_command_controller != null \
 					and carrier_command_controller.is_targeting():
 				carrier_command_controller.cancel_targeting()
+				get_viewport().set_input_as_handled()
 				return
+			if aircraft_selection_controller != null \
+					and aircraft_selection_controller.has_selection():
+				var attack_target := _pick_ship(
+					mouse_event.position
+				) as ShipUnit
+				if aircraft_selection_controller.issue_move_from_screen(
+					mouse_event.position,
+					attack_target
+				):
+					get_viewport().set_input_as_handled()
+					return
 			_issue_move_command_from_screen(mouse_event.position)
 
 func get_selected_ships() -> Array:
@@ -99,6 +160,9 @@ func _handle_primary_click(screen_position: Vector2) -> void:
 		)
 		return
 	if clicked_ship != null and clicked_ship.get(&"team") != &"enemy":
+		if aircraft_selection_controller != null \
+				and not Input.is_action_pressed(&"selection_additive"):
+			aircraft_selection_controller.clear_selection()
 		if Input.is_action_pressed(&"selection_additive"):
 			_toggle_selection(clicked_ship)
 		else:
@@ -107,6 +171,9 @@ func _handle_primary_click(screen_position: Vector2) -> void:
 
 	var aim_point: Variant = _screen_to_water(screen_position)
 	if aim_point != null:
+		if aircraft_selection_controller != null \
+				and not Input.is_action_pressed(&"selection_additive"):
+			aircraft_selection_controller.clear_selection()
 		for ship in selected_ships:
 			if is_instance_valid(ship) and ship.has_method(&"set_aim_point"):
 				ship.call(&"set_aim_point", aim_point)

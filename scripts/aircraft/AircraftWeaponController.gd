@@ -125,7 +125,8 @@ func begin_gun_burst_cooldown() -> void:
 	if weapon_data == null or weapon_data.gun_data == null:
 		return
 	gun_burst_cooldown_left = maxf(
-		weapon_data.gun_data.burst_cooldown_sec,
+		weapon_data.gun_data.get_burst_duration_sec()
+			+ weapon_data.gun_data.burst_cooldown_sec,
 		0.0
 	)
 
@@ -169,6 +170,13 @@ func disable_weapon_release() -> void:
 	_pending_release_count = 0
 	_pending_target_position = Vector3.ZERO
 	_pending_target_velocity = Vector3.ZERO
+
+
+func cancel_pending_release() -> void:
+	_pending_release_count = 0
+	_pending_target_position = Vector3.ZERO
+	_pending_target_velocity = Vector3.ZERO
+	release_cooldown_left = 0.0
 
 
 func release(

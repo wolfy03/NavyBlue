@@ -58,6 +58,18 @@ layout_mode = 2
 text = "Start a fresh roguelike run. Existing run save will be replaced."
 autowrap_mode = 2
 
+[node name="StartingShip" type="HBoxContainer" parent="Root/Panel/VBox/Tabs/NewGame/NewGameContent"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="StartingShipLabel" type="Label" parent="Root/Panel/VBox/Tabs/NewGame/NewGameContent/StartingShip"]
+layout_mode = 2
+text = "Starting Ship"
+
+[node name="StartingShipSelector" type="OptionButton" parent="Root/Panel/VBox/Tabs/NewGame/NewGameContent/StartingShip"]
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="StartNewGameButton" type="Button" parent="Root/Panel/VBox/Tabs/NewGame/NewGameContent"]
 layout_mode = 2
 text = "Start New Game"
