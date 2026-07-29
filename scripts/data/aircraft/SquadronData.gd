@@ -10,6 +10,11 @@ class_name SquadronData
 @export var rearm_duration_sec: float = 15.0
 @export var default_mission_data: AirMissionData
 
+@export_category("Loiter")
+@export var loiter_radius_m: float = 180.0
+@export var loiter_angular_speed_deg_sec: float = 20.0
+@export var loiter_clockwise: bool = true
+
 
 func validate() -> PackedStringArray:
 	var errors := PackedStringArray()
@@ -20,6 +25,10 @@ func validate() -> PackedStringArray:
 		return errors
 	if aircraft_count <= 0:
 		errors.append("aircraft_count must be positive.")
+	if loiter_radius_m <= 0.0:
+		errors.append("loiter_radius_m must be positive.")
+	if loiter_angular_speed_deg_sec <= 0.0:
+		errors.append("loiter_angular_speed_deg_sec must be positive.")
 	if aircraft_data.aircraft_scene == null:
 		errors.append("aircraft_data.aircraft_scene must be assigned.")
 	if aircraft_data.weapon_data == null:

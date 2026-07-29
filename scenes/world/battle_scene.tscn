@@ -168,10 +168,46 @@ theme_override_colors/font_color = Color(0.92, 0.97, 1, 1)
 theme_override_font_sizes/font_size = 16
 text = "Initializing..."
 
+[node name="CommandModeIndicator" type="PanelContainer" parent="HUD"]
+offset_left = 18.0
+offset_top = 76.0
+offset_right = 500.0
+offset_bottom = 152.0
+mouse_filter = 2
+
+[node name="Content" type="VBoxContainer" parent="HUD/CommandModeIndicator"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="ModeLabel" type="Label" parent="HUD/CommandModeIndicator/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.2, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "SHIP COMMAND"
+
+[node name="ModeHintLabel" type="Label" parent="HUD/CommandModeIndicator/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.78, 0.86, 0.92, 1)
+theme_override_font_sizes/font_size = 13
+text = "Left-click select | Right-click move | TAB aircraft"
+
+[node name="AircraftFeedbackLabel" type="Label" parent="HUD"]
+unique_name_in_owner = true
+visible = false
+offset_left = 18.0
+offset_top = 160.0
+offset_right = 520.0
+offset_bottom = 190.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.86, 0.3, 1)
+theme_override_font_sizes/font_size = 15
+
 [node name="DebugLabel" type="Label" parent="HUD"]
 visible = false
 offset_left = 18.0
-offset_top = 82.0
+offset_top = 200.0
 offset_right = 420.0
 offset_bottom = 200.0
 mouse_filter = 2

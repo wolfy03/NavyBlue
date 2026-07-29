@@ -15,18 +15,13 @@ enum State {
 enum ReleaseBlockReason {
 	NONE,
 	TOO_EARLY,
-	ALTITUDE_TOO_HIGH,
-	ALTITUDE_TOO_LOW,
+	NO_AIRCRAFT_IN_RELEASE_ALTITUDE,
 	NO_AMMUNITION,
 	NOT_DIVING,
 	WEAPON_DISABLED,
-	FORMATION_NOT_ALIGNED,
-	TARGET_OUTSIDE_RELEASE_WINDOW,
 }
 
 const EPSILON := 0.0001
-
-@export var maximum_release_formation_error_m := 30.0
 
 var owner_squadron: AircraftSquadron
 var dive_data: DiveBomberCombatData
@@ -37,6 +32,8 @@ var dive_elapsed_seconds := 0.0
 var release_block_reason: ReleaseBlockReason = ReleaseBlockReason.NOT_DIVING
 
 var _pull_out_forward := Vector3.FORWARD
+var _any_bomb_released := false
+var _last_release_count := 0
 
 
 func setup(squadron: AircraftSquadron) -> void:
@@ -56,6 +53,8 @@ func reset() -> void:
 	dive_elapsed_seconds = 0.0
 	release_block_reason = ReleaseBlockReason.NOT_DIVING
 	_pull_out_forward = Vector3.FORWARD
+	_any_bomb_released = false
+	_last_release_count = 0
 
 
 func begin_dive(
@@ -91,10 +90,8 @@ func update_dive(delta: float) -> void:
 	match state:
 		State.DIVE_ENTRY:
 			state = State.DIVING
-		State.DIVING, State.RELEASE_READY:
+		State.DIVING, State.RELEASE_READY, State.BOMB_RELEASED:
 			_update_diving(delta)
-		State.BOMB_RELEASED:
-			begin_pull_out()
 		State.PULLING_OUT:
 			_update_pull_out(delta)
 		State.IDLE, State.COMPLETED, State.FAILED:
@@ -106,7 +103,7 @@ func can_release_bombs() -> bool:
 	return release_block_reason == ReleaseBlockReason.NONE
 
 
-func release_bombs() -> int:
+func release_ready_bombs() -> int:
 	if not can_release_bombs():
 		return 0
 	var released_count := owner_squadron \
@@ -117,11 +114,33 @@ func release_bombs() -> int:
 		dive_data.maximum_release_altitude_m
 	)
 	if released_count <= 0:
-		release_block_reason = ReleaseBlockReason.WEAPON_DISABLED
+		release_block_reason = (
+			ReleaseBlockReason.WEAPON_DISABLED
+			if owner_squadron.is_weapon_release_in_progress()
+			else ReleaseBlockReason.NO_AIRCRAFT_IN_RELEASE_ALTITUDE
+		)
 		return 0
+	_any_bomb_released = true
+	_last_release_count = released_count
 	state = State.BOMB_RELEASED
-	begin_pull_out()
 	return released_count
+
+
+func release_bombs() -> int:
+	# Compatibility wrapper for existing callers.
+	return release_ready_bombs()
+
+
+func should_force_pull_out() -> bool:
+	if owner_squadron == null or not is_instance_valid(owner_squadron):
+		return true
+	return not owner_squadron.has_any_ammunition() \
+		or get_lowest_alive_aircraft_altitude() \
+			<= maxf(dive_data.automatic_pull_out_altitude_m, 0.0)
+
+
+func get_last_release_count() -> int:
+	return _last_release_count
 
 
 func begin_pull_out() -> void:
@@ -159,19 +178,14 @@ func is_active() -> bool:
 	]
 
 
-func is_formation_ready_for_dive() -> bool:
-	return owner_squadron != null \
-		and is_instance_valid(owner_squadron) \
-		and owner_squadron.is_formation_aligned(
-			maximum_release_formation_error_m
-		)
-
-
 func get_debug_snapshot() -> Dictionary:
 	return {
 		"state": State.keys()[int(state)],
 		"target_position": target_position,
 		"current_altitude": _get_current_altitude(),
+		"lowest_aircraft_altitude": get_lowest_alive_aircraft_altitude(),
+		"highest_aircraft_altitude": get_highest_alive_aircraft_altitude(),
+		"release_ready_aircraft_count": _get_release_ready_aircraft_count(),
 		"dive_elapsed_time": dive_elapsed_seconds,
 		"release_allowed": can_release_bombs(),
 		"release_block_reason":
@@ -180,6 +194,8 @@ func get_debug_snapshot() -> Dictionary:
 			owner_squadron.get_total_remaining_ammunition() \
 			if owner_squadron != null \
 			and is_instance_valid(owner_squadron) else 0,
+		"any_bomb_released": _any_bomb_released,
+		"last_release_count": _last_release_count,
 	}
 
 
@@ -212,13 +228,16 @@ func _update_diving(delta: float) -> void:
 			0.0
 		)
 	)
-	if _get_current_altitude() <= dive_data.automatic_pull_out_altitude_m:
+	if should_force_pull_out():
 		begin_pull_out()
 		return
 	release_block_reason = _get_release_block_reason()
-	state = State.RELEASE_READY \
-		if release_block_reason == ReleaseBlockReason.NONE \
-		else State.DIVING
+	if release_block_reason == ReleaseBlockReason.NONE:
+		state = State.RELEASE_READY
+	elif _any_bomb_released:
+		state = State.BOMB_RELEASED
+	else:
+		state = State.DIVING
 
 
 func _update_pull_out(delta: float) -> void:
@@ -249,22 +268,21 @@ func _update_pull_out(delta: float) -> void:
 
 
 func _get_release_block_reason() -> ReleaseBlockReason:
-	if state not in [State.DIVING, State.RELEASE_READY]:
+	if state not in [
+		State.DIVING,
+		State.RELEASE_READY,
+		State.BOMB_RELEASED,
+	]:
 		return ReleaseBlockReason.NOT_DIVING
 	if dive_elapsed_seconds \
 			< maxf(dive_data.minimum_dive_time_before_release_sec, 0.0):
 		return ReleaseBlockReason.TOO_EARLY
 	if not owner_squadron.has_any_ammunition():
 		return ReleaseBlockReason.NO_AMMUNITION
-	var altitude := _get_current_altitude()
-	if altitude > dive_data.maximum_release_altitude_m:
-		return ReleaseBlockReason.ALTITUDE_TOO_HIGH
-	if altitude < dive_data.minimum_release_altitude_m:
-		return ReleaseBlockReason.ALTITUDE_TOO_LOW
 	if not owner_squadron.can_release_payload():
 		return ReleaseBlockReason.WEAPON_DISABLED
-	if not is_formation_ready_for_dive():
-		return ReleaseBlockReason.FORMATION_NOT_ALIGNED
+	if _get_release_ready_aircraft_count() <= 0:
+		return ReleaseBlockReason.NO_AIRCRAFT_IN_RELEASE_ALTITUDE
 	return ReleaseBlockReason.NONE
 
 
@@ -273,6 +291,37 @@ func _get_current_altitude() -> float:
 		- target_position.y \
 		if owner_squadron != null \
 		and is_instance_valid(owner_squadron) else 0.0
+
+
+func get_lowest_alive_aircraft_altitude() -> float:
+	if owner_squadron == null or not is_instance_valid(owner_squadron):
+		return 0.0
+	var lowest := INF
+	for aircraft in owner_squadron.get_alive_aircraft():
+		lowest = minf(lowest, aircraft.global_position.y - target_position.y)
+	return lowest if lowest != INF else 0.0
+
+
+func get_highest_alive_aircraft_altitude() -> float:
+	if owner_squadron == null or not is_instance_valid(owner_squadron):
+		return 0.0
+	var highest := -INF
+	for aircraft in owner_squadron.get_alive_aircraft():
+		highest = maxf(
+			highest,
+			aircraft.global_position.y - target_position.y
+		)
+	return highest if highest != -INF else 0.0
+
+
+func _get_release_ready_aircraft_count() -> int:
+	if owner_squadron == null or not is_instance_valid(owner_squadron):
+		return 0
+	return owner_squadron.get_release_ready_aircraft_count(
+		target_position.y,
+		dive_data.minimum_release_altitude_m,
+		dive_data.maximum_release_altitude_m
+	)
 
 
 func _is_valid_dive_squadron() -> bool:

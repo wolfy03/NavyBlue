@@ -13,6 +13,7 @@ const KEY_ACTIONS := {
 	&"camera_reset": [KEY_HOME],
 	&"selection_additive": [KEY_SHIFT],
 	&"command_cancel": [KEY_ESCAPE],
+	&"toggle_command_mode": [KEY_TAB],
 	&"ship_throttle_forward": [KEY_I],
 	&"ship_throttle_reverse": [KEY_K],
 	&"ship_rudder_left": [KEY_J],
@@ -51,6 +52,13 @@ static func ensure_defaults() -> void:
 			).is_empty():
 		push_warning(
 			"aircraft_special_action has no bound input event."
+		)
+	if not InputMap.has_action(&"toggle_command_mode") \
+			or InputMap.action_get_events(
+				&"toggle_command_mode"
+			).is_empty():
+		push_warning(
+			"toggle_command_mode has no bound input event."
 		)
 
 static func _ensure_action(action: StringName) -> void:

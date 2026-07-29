@@ -56,14 +56,17 @@ $tests = @(
 	"res://scripts/aircraft/tests/CarrierFighterAITest.gd",
 	"res://scripts/aircraft/tests/FighterLossIntegrationTest.gd",
 	"res://scripts/aircraft/tests/DiveBombAttackControllerTest.gd",
+	"res://scripts/aircraft/tests/DiveBombPartialSquadronReleaseTest.gd",
 	"res://scripts/aircraft/tests/PlayerMissionCancellationTest.gd",
 	"res://scripts/aircraft/tests/CarrierAirGroupPanelRoleTest.gd",
 	"res://scripts/aircraft/tests/CarrierAirGroupTemplateValidationTest.gd",
 	"res://scripts/aircraft/tests/DiveAircraftDirectFlightTest.gd",
-	"res://scripts/aircraft/tests/DiveBombFormationAlignmentTest.gd",
+	"res://scripts/aircraft/tests/DiveBombNoFormationRequirementTest.gd",
+	"res://scripts/aircraft/tests/AircraftLoiterTest.gd",
 	"res://scripts/input/tests/AircraftSelectionControllerTest.gd",
 	"res://scripts/input/tests/AircraftDragSelectionIntegrationTest.gd",
-	"res://scripts/input/tests/AircraftSelectionCandidateReasonTest.gd"
+	"res://scripts/input/tests/AircraftSelectionCandidateReasonTest.gd",
+	"res://scripts/input/tests/CommandModeToggleTest.gd"
 )
 
 try {

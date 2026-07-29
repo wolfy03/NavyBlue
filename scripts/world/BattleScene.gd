@@ -435,6 +435,20 @@ func _setup_camera_and_ui() -> void:
 		push_warning("PlayerInputManager is missing or does not support setup().")
 	if hud != null and hud.has_method("setup"):
 		hud.setup(player_ship, camera)
+		if input_manager != null:
+			if not input_manager.command_mode_changed.is_connected(
+				hud.set_command_mode
+			):
+				input_manager.command_mode_changed.connect(
+					hud.set_command_mode
+				)
+			hud.set_command_mode(input_manager.get_command_mode())
+		if aircraft_selection_controller != null \
+				and not aircraft_selection_controller.command_feedback \
+					.is_connected(hud.show_aircraft_command_feedback):
+			aircraft_selection_controller.command_feedback.connect(
+				hud.show_aircraft_command_feedback
+			)
 	else:
 		push_warning("HUD is missing or does not support setup().")
 

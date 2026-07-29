@@ -2,6 +2,7 @@ extends Node
 class_name AircraftSelectionController
 
 signal selection_changed(squadrons: Array[AircraftSquadron])
+signal command_feedback(message: String)
 
 enum SelectionBlockReason {
 	NONE,
@@ -62,6 +63,17 @@ func setup(
 	if _selection_rect != null:
 		_selection_rect.visible = false
 	set_process(true)
+
+
+func set_input_enabled(enabled: bool) -> void:
+	_input_enabled = enabled
+	if not enabled:
+		cancel_drag()
+		clear_selection()
+
+
+func is_input_enabled() -> bool:
+	return _input_enabled
 
 
 func _process(_delta: float) -> void:
@@ -213,21 +225,58 @@ func execute_special_action() -> bool:
 	if not _input_enabled:
 		return false
 	var handled := false
+	var attempted := false
 	for squadron in get_selected_squadrons():
 		if squadron.get_aircraft_role() \
 				!= AircraftData.AircraftRole.DIVE_BOMBER:
 			continue
+		attempted = true
 		match squadron.manual_dive_state:
 			AircraftSquadron.ManualDiveCommandState.READY:
-				handled = squadron.begin_manual_dive() or handled
-			AircraftSquadron.ManualDiveCommandState.DIVING:
-				handled = squadron.request_manual_bomb_release() \
-					or handled
+				if squadron.begin_manual_dive():
+					command_feedback.emit("Dive started")
+					handled = true
+			AircraftSquadron.ManualDiveCommandState.DIVING, \
+					AircraftSquadron.ManualDiveCommandState.RELEASED:
+				if squadron.request_manual_bomb_release():
+					var count := squadron.dive_bomb_controller \
+						.get_last_release_count()
+					command_feedback.emit(
+						"Bombs released by %d aircraft" % count
+					)
+					handled = true
+				else:
+					command_feedback.emit(
+						_release_block_reason_text(
+							squadron.get_manual_release_block_reason()
+						)
+					)
 			_:
 				pass
 	if handled:
 		_last_input_consumer = "aircraft_special_action"
-	return handled
+	elif attempted:
+		_last_input_consumer = "aircraft_special_action_blocked"
+	return handled or attempted
+
+
+func _release_block_reason_text(reason: int) -> String:
+	if reason < 0 \
+			or reason >= DiveBombAttackController.ReleaseBlockReason.size():
+		return "Bomb release unavailable"
+	match reason:
+		DiveBombAttackController.ReleaseBlockReason.TOO_EARLY:
+			return "Bomb release: dive is too early"
+		DiveBombAttackController.ReleaseBlockReason \
+				.NO_AIRCRAFT_IN_RELEASE_ALTITUDE:
+			return "Bomb release: no aircraft is in release altitude"
+		DiveBombAttackController.ReleaseBlockReason.NO_AMMUNITION:
+			return "Bomb release: no ammunition"
+		DiveBombAttackController.ReleaseBlockReason.WEAPON_DISABLED:
+			return "Bomb release: weapon unavailable"
+		DiveBombAttackController.ReleaseBlockReason.NOT_DIVING:
+			return "Bomb release: squadron is not diving"
+	return "Bomb release ready"
 
 
 func get_debug_snapshot() -> Dictionary:

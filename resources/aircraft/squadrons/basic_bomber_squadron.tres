@@ -14,3 +14,6 @@ formation_spacing_m = 24.0
 launch_interval_sec = 0.25
 rearm_duration_sec = 15.0
 default_mission_data = ExtResource("3_mission")
+loiter_radius_m = 180.0
+loiter_angular_speed_deg_sec = 20.0
+loiter_clockwise = true

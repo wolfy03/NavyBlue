@@ -6,11 +6,15 @@ const SHIP_STATUS_INDICATOR_SCENE: PackedScene = preload("res://scenes/ui/ship_s
 
 @onready var status_label: Label = $StatusLabel
 @onready var ship_status_overlay_root: Control = $ShipStatusOverlayRoot
+@onready var mode_label: Label = %ModeLabel
+@onready var mode_hint_label: Label = %ModeHintLabel
+@onready var aircraft_feedback_label: Label = %AircraftFeedbackLabel
 
 var target_ship: Node3D
 var battle_camera: Camera3D
 var ship_database: RefCounted = SHIP_DATABASE_SCRIPT.new()
 var _ship_indicators: Dictionary[int, ShipStatusIndicator] = {}
+var _feedback_time_left := 0.0
 
 
 func _ready() -> void:
@@ -27,7 +31,15 @@ func setup(ship: Node3D, camera: Camera3D = null) -> void:
 	battle_camera = camera
 	_sync_ship_indicators()
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _feedback_time_left > 0.0:
+		_feedback_time_left = maxf(
+			0.0,
+			_feedback_time_left - maxf(delta, 0.0)
+		)
+		if _feedback_time_left <= 0.0 \
+				and aircraft_feedback_label != null:
+			aircraft_feedback_label.visible = false
 	if status_label == null or not is_instance_valid(target_ship):
 		return
 	var data = target_ship.ship_data
@@ -49,6 +61,30 @@ func _process(_delta: float) -> void:
 		target_ship.get_speed_knots_style(),
 		turret_pitch,
 	]
+
+
+func set_command_mode(mode: int) -> void:
+	if mode_label == null or mode_hint_label == null:
+		return
+	if mode == PlayerInputManager.CommandMode.AIRCRAFT:
+		mode_label.text = "AIRCRAFT COMMAND"
+		mode_hint_label.text = \
+			"Drag select | Right-click move | . dive/release | TAB ship"
+	else:
+		mode_label.text = "SHIP COMMAND"
+		mode_hint_label.text = \
+			"Left-click select | Right-click move | TAB aircraft"
+
+
+func show_aircraft_command_feedback(
+		message: String,
+		duration_seconds: float = 1.6
+) -> void:
+	if aircraft_feedback_label == null:
+		return
+	aircraft_feedback_label.text = message
+	aircraft_feedback_label.visible = not message.is_empty()
+	_feedback_time_left = maxf(duration_seconds, 0.0)
 
 
 func _sync_ship_indicators() -> void:

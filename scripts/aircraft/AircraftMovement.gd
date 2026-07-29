@@ -3,6 +3,9 @@ class_name AircraftMovement
 
 const EPSILON := 0.0001
 
+@export_range(0.0, 1.0, 0.05)
+var minimum_flight_speed_ratio := 0.35
+
 enum FlightMode {
 	FORMATION,
 	DIRECT_FLIGHT,
@@ -67,18 +70,23 @@ func _update_formation_movement(delta: float) -> void:
 	var to_target := target_position - owner_aircraft.global_position
 	var horizontal_offset := Vector3(to_target.x, 0.0, to_target.z)
 	var arrival_distance := maxf(aircraft_data.arrival_distance_m, 1.0)
-	if horizontal_offset.length() <= arrival_distance \
-			and absf(to_target.y) <= arrival_distance:
-		owner_aircraft.velocity = Vector3.ZERO
-		_arrived = true
-		return
-
 	var current_forward := -owner_aircraft.global_transform.basis.z
 	current_forward.y = 0.0
 	if current_forward.length_squared() <= EPSILON:
 		current_forward = Vector3.FORWARD
 	else:
 		current_forward = current_forward.normalized()
+	if horizontal_offset.length() <= arrival_distance \
+			and absf(to_target.y) <= arrival_distance:
+		var minimum_speed := minf(
+			maxf(aircraft_data.cruise_speed_mps, 0.0),
+			maxf(aircraft_data.maximum_speed_mps, 0.0)
+		) * clampf(minimum_flight_speed_ratio, 0.0, 1.0)
+		owner_aircraft.velocity = current_forward * minimum_speed
+		owner_aircraft.move_and_slide()
+		_arrived = true
+		return
+
 	var desired_forward := current_forward
 	if horizontal_offset.length_squared() > EPSILON:
 		desired_forward = horizontal_offset.normalized()

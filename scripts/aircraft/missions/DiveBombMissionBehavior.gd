@@ -117,7 +117,7 @@ func _update_dive_entry(target: Node3D) -> void:
 	if owner_squadron.state != AircraftSquadron.State.HOLDING:
 		return
 	var controller := owner_squadron.dive_bomb_controller
-	if controller == null or not controller.is_formation_ready_for_dive():
+	if controller == null:
 		return
 	var predicted_position := _calculate_predicted_target_position(target)
 	if not controller.begin_dive(
@@ -142,14 +142,13 @@ func _update_diving(target: Node3D) -> void:
 	if controller.state == DiveBombAttackController.State.PULLING_OUT:
 		state = State.PULLING_OUT
 		return
-	if not controller.can_release_bombs() \
-			or not _is_target_inside_release_window(predicted_position):
-		return
-	var released_count := controller.release_bombs()
-	if released_count <= 0:
-		return
-	_bombs_released = true
-	state = State.RELEASING
+	if _is_target_inside_release_window(predicted_position):
+		var released_count := controller.release_ready_bombs()
+		if released_count > 0:
+			_bombs_released = true
+	if controller.should_force_pull_out():
+		controller.begin_pull_out()
+		state = State.PULLING_OUT
 
 
 func _update_pulling_out(target: Node3D) -> void:

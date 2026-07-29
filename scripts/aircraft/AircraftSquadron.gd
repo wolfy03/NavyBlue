@@ -70,6 +70,9 @@ var _fighter_target_squadron_ref: WeakRef
 var _manual_move_target := Vector3.ZERO
 var _has_manual_move_target := false
 var _manual_attack_target_ref: WeakRef
+var _loiter_center := Vector3.ZERO
+var _loiter_angle_rad := 0.0
+var _loiter_initialized := false
 
 
 func setup(
@@ -110,6 +113,7 @@ func launch_to(world_position: Vector3) -> void:
 	if state == State.DESTROYED or squadron_data == null:
 		return
 	destination = _clamp_destination_to_combat_radius(world_position)
+	_loiter_initialized = false
 	state = State.EN_ROUTE
 	_launch_elapsed_sec = 0.0
 	_next_aircraft_to_activate = 0
@@ -125,6 +129,7 @@ func request_return() -> void:
 		return
 	clear_fighter_targets()
 	cancel_pending_weapon_release()
+	_loiter_initialized = false
 	set_combat_formation_enabled(false)
 	set_player_selected(false)
 	manual_dive_state = ManualDiveCommandState.NONE
@@ -304,13 +309,16 @@ func begin_manual_dive() -> bool:
 
 func request_manual_bomb_release() -> bool:
 	if not is_player_commanded() \
-			or manual_dive_state != ManualDiveCommandState.DIVING \
+			or manual_dive_state not in [
+				ManualDiveCommandState.DIVING,
+				ManualDiveCommandState.RELEASED,
+			] \
 			or dive_bomb_controller == null:
 		return false
-	var released_count := dive_bomb_controller.release_bombs()
+	var released_count := dive_bomb_controller.release_ready_bombs()
 	if released_count <= 0:
 		return false
-	manual_dive_state = ManualDiveCommandState.PULLING_OUT
+	manual_dive_state = ManualDiveCommandState.RELEASED
 	return true
 
 
@@ -423,10 +431,31 @@ func request_weapon_release_for_ready_aircraft(
 		if aircraft.weapon_controller != null \
 				and aircraft.weapon_controller.can_release():
 			_release_queue.append(aircraft)
+	if _release_queue.is_empty():
+		return 0
 	_release_target_position = target_position
 	_release_target_velocity = target_velocity
 	_release_interval_left = 0.0
 	return _release_queue.size()
+
+
+func get_release_ready_aircraft_count(
+		target_world_y: float,
+		minimum_altitude_m: float,
+		maximum_altitude_m: float
+) -> int:
+	if is_weapon_release_in_progress():
+		return 0
+	var count := 0
+	for aircraft in get_alive_aircraft():
+		var altitude := aircraft.global_position.y - target_world_y
+		if altitude < minimum_altitude_m \
+				or altitude > maximum_altitude_m:
+			continue
+		if aircraft.weapon_controller != null \
+				and aircraft.weapon_controller.can_release():
+			count += 1
+	return count
 
 
 func cancel_pending_weapon_release() -> void:
@@ -517,6 +546,7 @@ func set_mission_destination(world_position: Vector3) -> void:
 			or state == State.RECOVERING \
 			or state == State.DESTROYED:
 		return
+	_loiter_initialized = false
 	destination = _clamp_destination_horizontal(world_position)
 	state = State.EN_ROUTE
 	set_physics_process(true)
@@ -614,13 +644,9 @@ func _physics_process(delta: float) -> void:
 		State.EN_ROUTE:
 			_advance_formation_center(destination, delta)
 			if _has_formation_arrived(destination):
-				state = State.HOLDING
+				_begin_loiter()
 		State.HOLDING:
-			formation_center.y = move_toward(
-				formation_center.y,
-				destination.y,
-				_get_aircraft_speed() * 0.35 * delta
-			)
+			_update_loiter(delta)
 		State.RETURNING:
 			var carrier := get_owner_carrier()
 			if carrier == null:
@@ -752,6 +778,7 @@ func apply_direct_flight(
 ) -> void:
 	if direction.length_squared() <= EPSILON:
 		return
+	_loiter_initialized = false
 	_formation_forward = direction.normalized()
 	formation_center += _formation_forward \
 		* maxf(speed_mps, 0.0) * maxf(delta, 0.0)
@@ -763,7 +790,7 @@ func apply_direct_flight(
 func finish_direct_flight_holding(world_altitude: float) -> void:
 	formation_center.y = world_altitude
 	destination = formation_center
-	state = State.HOLDING
+	_begin_loiter()
 	for aircraft in get_alive_aircraft():
 		aircraft.set_formation_flight()
 	_update_aircraft_formation_targets()
@@ -773,6 +800,45 @@ func restore_formation_flight() -> void:
 	for aircraft in get_alive_aircraft():
 		aircraft.set_formation_flight()
 	_update_aircraft_formation_targets()
+
+
+func _begin_loiter() -> void:
+	_loiter_center = destination
+	var offset := formation_center - _loiter_center
+	offset.y = 0.0
+	if offset.length_squared() <= EPSILON:
+		offset = -_formation_forward * maxf(
+			squadron_data.loiter_radius_m,
+			1.0
+		)
+	_loiter_angle_rad = atan2(offset.z, offset.x)
+	_loiter_initialized = true
+	state = State.HOLDING
+
+
+func _update_loiter(delta: float) -> void:
+	if not _loiter_initialized:
+		_begin_loiter()
+	var radius := maxf(squadron_data.loiter_radius_m, 1.0)
+	var angular_speed := deg_to_rad(maxf(
+		squadron_data.loiter_angular_speed_deg_sec,
+		0.0
+	))
+	var direction_sign := -1.0 \
+		if squadron_data.loiter_clockwise else 1.0
+	_loiter_angle_rad = wrapf(
+		_loiter_angle_rad
+			+ angular_speed * direction_sign * maxf(delta, 0.0),
+		-PI,
+		PI
+	)
+	var loiter_target := _loiter_center + Vector3(
+		cos(_loiter_angle_rad),
+		0.0,
+		sin(_loiter_angle_rad)
+	) * radius
+	loiter_target.y = destination.y
+	_advance_formation_center(loiter_target, delta)
 
 
 func get_average_alive_aircraft_position() -> Vector3:

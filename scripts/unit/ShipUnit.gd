@@ -116,6 +116,17 @@ func set_player_commands(
 	_player_cannon_fire_pressed = cannon_fire_pressed
 	_player_torpedo_fire_pressed = torpedo_fire_pressed
 
+
+func suspend_player_combat_input(
+		preserve_throttle: bool = true
+) -> void:
+	if not preserve_throttle:
+		_player_throttle_axis = 0.0
+	_player_rudder_axis = 0.0
+	_player_cannon_fire_pressed = false
+	_player_torpedo_fire_pressed = false
+
+
 func set_aim_point(world_point: Vector3) -> void:
 	combat.set_aim_point(world_point)
 

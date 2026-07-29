@@ -22,6 +22,9 @@ func _run() -> void:
 	)
 	_check(squadron != null, "manual fighter launches")
 	if squadron != null:
+		battle.input_manager.set_command_mode(
+			PlayerInputManager.CommandMode.AIRCRAFT
+		)
 		squadron.set_physics_process(false)
 		squadron.formation_center = Vector3(0.0, 220.0, 0.0)
 		var aircraft := squadron.aircraft_units[0]

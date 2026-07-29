@@ -34,24 +34,24 @@ func _run() -> void:
 		not controller.can_release_bombs() \
 			and controller.release_block_reason \
 			== DiveBombAttackController.ReleaseBlockReason \
-				.ALTITUDE_TOO_HIGH,
-		"high real aircraft altitude blocks release"
+				.NO_AIRCRAFT_IN_RELEASE_ALTITUDE,
+		"release is blocked when no aircraft is inside its altitude window"
 	)
-	for aircraft in squadron.get_alive_aircraft():
-		aircraft.global_position = squadron.formation_center \
-			+ aircraft.formation_offset
+	var alive := squadron.get_alive_aircraft()
+	alive[0].global_position = Vector3(100.0, 100.0, 0.0)
+	for index in range(1, alive.size()):
+		alive[index].global_position = Vector3(
+			float(index) * 100.0,
+			200.0,
+			0.0
+		)
 	_check(
 		controller.can_release_bombs(),
-		"aligned aircraft inside the altitude window can release"
+		"one aircraft inside the altitude window enables partial release"
 	)
-	for aircraft in squadron.get_alive_aircraft():
-		aircraft.global_position += Vector3(100.0, 0.0, 0.0)
 	_check(
-		not controller.can_release_bombs() \
-			and controller.release_block_reason \
-			== DiveBombAttackController.ReleaseBlockReason \
-				.FORMATION_NOT_ALIGNED,
-		"formation/aircraft position divergence blocks release"
+		controller.release_ready_bombs() == 1,
+		"formation divergence does not block the release-ready aircraft"
 	)
 	await _finish(battle)
 
@@ -60,9 +60,9 @@ func _finish(battle: BattleScene) -> void:
 	battle.queue_free()
 	await process_frame
 	for failure in _failures:
-		push_error("DIVE BOMB FORMATION ALIGNMENT TEST: %s" % failure)
+		push_error("DIVE BOMB NO FORMATION REQUIREMENT TEST: %s" % failure)
 	print(
-		"DIVE_BOMB_FORMATION_ALIGNMENT_TEST %s"
+		"DIVE_BOMB_NO_FORMATION_REQUIREMENT_TEST %s"
 		% ("PASS" if _failures.is_empty() else "FAIL")
 	)
 	quit(0 if _failures.is_empty() else 1)

@@ -18,6 +18,9 @@ func _run() -> void:
 	root.add_child(battle)
 	var carrier := battle.player_ship as ShipUnit
 	var controller := battle.aircraft_selection_controller
+	battle.input_manager.set_command_mode(
+		PlayerInputManager.CommandMode.AIRCRAFT
+	)
 	var fighter := carrier.carrier_air_group.launch_manual_squadron(
 		"basic_fighter_squadron"
 	)

@@ -3,6 +3,12 @@ class_name PlayerInputManager
 
 signal selection_changed(selected_ships: Array)
 signal move_command_issued(target: Vector3, ships: Array)
+signal command_mode_changed(mode: CommandMode)
+
+enum CommandMode {
+	SHIP,
+	AIRCRAFT,
+}
 
 @export var water_height_m := 0.0
 @export var pitch_step_degrees := 1.5
@@ -19,6 +25,7 @@ var _movement_marker: Node3D
 var carrier_command_controller: CarrierCommandController
 var aircraft_selection_controller: AircraftSelectionController
 var _input_enabled := true
+var command_mode: CommandMode = CommandMode.SHIP
 
 func setup(ship, view_camera: Camera3D, water_y: float = 0.0, bounds: BattlefieldBounds = null) -> void:
 	controlled_ship = ship
@@ -30,12 +37,22 @@ func setup(ship, view_camera: Camera3D, water_y: float = 0.0, bounds: Battlefiel
 		_select_only(controlled_ship)
 	if camera != null:
 		camera.set_selection_provider(self)
+	_apply_command_mode()
 
 
 func set_carrier_command_controller(
 		controller: CarrierCommandController
 ) -> void:
 	carrier_command_controller = controller
+	if carrier_command_controller != null \
+			and carrier_command_controller.panel != null \
+			and not carrier_command_controller.panel \
+				.aircraft_command_requested.is_connected(
+					_on_aircraft_command_requested
+				):
+		carrier_command_controller.panel.aircraft_command_requested.connect(
+			_on_aircraft_command_requested
+		)
 	_sync_carrier_selection()
 
 
@@ -43,11 +60,23 @@ func set_aircraft_selection_controller(
 		controller: AircraftSelectionController
 ) -> void:
 	aircraft_selection_controller = controller
+	_apply_command_mode()
 
 
 func _physics_process(_delta: float) -> void:
 	_prune_selection()
 	if not is_instance_valid(controlled_ship):
+		return
+	if command_mode == CommandMode.AIRCRAFT:
+		controlled_ship.suspend_player_combat_input(true)
+		if Input.is_action_just_pressed(&"command_cancel"):
+			if carrier_command_controller != null \
+					and carrier_command_controller.is_targeting():
+				carrier_command_controller.cancel_targeting()
+				return
+			if aircraft_selection_controller != null \
+					and aircraft_selection_controller.has_selection():
+				aircraft_selection_controller.clear_selection()
 		return
 	var throttle_axis := Input.get_axis(&"ship_throttle_reverse", &"ship_throttle_forward")
 	var rudder_axis := Input.get_axis(&"ship_rudder_right", &"ship_rudder_left")
@@ -78,6 +107,11 @@ func _physics_process(_delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if not _input_enabled:
 		return
+	if event.is_action_pressed(&"toggle_command_mode") \
+			and not event.is_echo():
+		toggle_command_mode()
+		get_viewport().set_input_as_handled()
+		return
 	if _handle_aircraft_special_action(event):
 		get_viewport().set_input_as_handled()
 		return
@@ -88,7 +122,8 @@ func _input(event: InputEvent) -> void:
 func _handle_aircraft_special_action(event: InputEvent) -> bool:
 	if event.is_action_pressed(&"aircraft_special_action") \
 			and not event.is_echo():
-		return not _is_pointer_over_interactive_ui() \
+		return command_mode == CommandMode.AIRCRAFT \
+				and not _is_text_input_focused() \
 				and aircraft_selection_controller != null \
 				and aircraft_selection_controller.execute_special_action()
 	return false
@@ -96,7 +131,8 @@ func _handle_aircraft_special_action(event: InputEvent) -> bool:
 
 func _handle_pointer_input(event: InputEvent) -> bool:
 	if event is InputEventMouseMotion:
-		if aircraft_selection_controller != null:
+		if command_mode == CommandMode.AIRCRAFT \
+				and aircraft_selection_controller != null:
 			aircraft_selection_controller.update_drag(
 				(event as InputEventMouseMotion).position
 			)
@@ -112,6 +148,10 @@ func _handle_pointer_input(event: InputEvent) -> bool:
 		return false
 	match mouse_event.button_index:
 		MOUSE_BUTTON_LEFT:
+			if command_mode == CommandMode.SHIP:
+				if not mouse_event.pressed:
+					_handle_primary_click(mouse_event.position)
+				return true
 			if mouse_event.pressed:
 				if carrier_command_controller != null \
 						and carrier_command_controller.is_targeting():
@@ -122,14 +162,12 @@ func _handle_pointer_input(event: InputEvent) -> bool:
 						mouse_event.position
 					)
 			else:
-				var drag_consumed := aircraft_selection_controller \
-					.finish_drag(
+				if aircraft_selection_controller != null:
+					aircraft_selection_controller.finish_drag(
 						mouse_event.position,
 						Input.is_action_pressed(&"selection_additive")
-					) if aircraft_selection_controller != null else false
-				if drag_consumed:
+					)
 					return true
-				_handle_primary_click(mouse_event.position)
 				return true
 		MOUSE_BUTTON_RIGHT:
 			if not mouse_event.pressed:
@@ -138,16 +176,17 @@ func _handle_pointer_input(event: InputEvent) -> bool:
 					and carrier_command_controller.is_targeting():
 				carrier_command_controller.cancel_targeting()
 				return true
-			if aircraft_selection_controller != null \
+			if command_mode == CommandMode.AIRCRAFT:
+				if aircraft_selection_controller != null \
 					and aircraft_selection_controller.has_selection():
-				var attack_target := _pick_ship(
-					mouse_event.position
-				) as ShipUnit
-				if aircraft_selection_controller.issue_move_from_screen(
-					mouse_event.position,
-					attack_target
-				):
-					return true
+					var attack_target := _pick_ship(
+						mouse_event.position
+					) as ShipUnit
+					aircraft_selection_controller.issue_move_from_screen(
+						mouse_event.position,
+						attack_target
+					)
+				return true
 			_issue_move_command_from_screen(mouse_event.position)
 			return true
 	return false
@@ -158,6 +197,27 @@ func get_selected_ships() -> Array:
 
 func get_controlled_ship():
 	return controlled_ship
+
+
+func set_command_mode(mode: CommandMode) -> void:
+	if command_mode == mode:
+		_apply_command_mode()
+		return
+	command_mode = mode
+	_apply_command_mode()
+	command_mode_changed.emit(command_mode)
+
+
+func toggle_command_mode() -> void:
+	set_command_mode(
+		CommandMode.AIRCRAFT
+		if command_mode == CommandMode.SHIP
+		else CommandMode.SHIP
+	)
+
+
+func get_command_mode() -> CommandMode:
+	return command_mode
 
 func cancel_selected_commands() -> void:
 	for ship in selected_ships:
@@ -292,6 +352,13 @@ func _is_pointer_over_interactive_ui() -> bool:
 		hovered = hovered.get_parent() as Control
 	return false
 
+
+func _is_text_input_focused() -> bool:
+	var focused := get_viewport().gui_get_focus_owner()
+	return focused is LineEdit \
+		or focused is TextEdit \
+		or focused is SpinBox
+
 func _adjust_selected_turret_pitch(delta_degrees: float) -> void:
 	for ship in selected_ships:
 		if is_instance_valid(ship) and ship.has_method(&"adjust_turret_pitch"):
@@ -311,3 +378,21 @@ func _sync_carrier_selection() -> void:
 			carrier = candidate
 			break
 	carrier_command_controller.set_selected_carrier(carrier)
+
+
+func _apply_command_mode() -> void:
+	if aircraft_selection_controller != null:
+		aircraft_selection_controller.set_input_enabled(
+			command_mode == CommandMode.AIRCRAFT
+		)
+	if command_mode == CommandMode.SHIP:
+		if carrier_command_controller != null \
+				and carrier_command_controller.is_targeting():
+			carrier_command_controller.cancel_targeting()
+	else:
+		if is_instance_valid(controlled_ship):
+			controlled_ship.suspend_player_combat_input(true)
+
+
+func _on_aircraft_command_requested() -> void:
+	set_command_mode(CommandMode.AIRCRAFT)

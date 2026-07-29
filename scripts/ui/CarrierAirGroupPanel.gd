@@ -4,6 +4,7 @@ class_name CarrierAirGroupPanel
 signal strike_targeting_requested(squadron_id: String)
 signal manual_launch_requested(squadron_id: String)
 signal active_squadron_selection_requested(squadron: AircraftSquadron)
+signal aircraft_command_requested
 
 @export var debug_air_group_data := false
 
@@ -279,15 +280,18 @@ func _on_squadron_selected(index: int) -> void:
 
 func _on_strike_pressed() -> void:
 	if not _selected_squadron_id.is_empty():
+		aircraft_command_requested.emit()
 		strike_targeting_requested.emit(_selected_squadron_id)
 
 
 func _on_manual_launch_pressed() -> void:
 	if not _selected_squadron_id.is_empty():
+		aircraft_command_requested.emit()
 		manual_launch_requested.emit(_selected_squadron_id)
 
 
 func _on_select_active_pressed() -> void:
+	aircraft_command_requested.emit()
 	_emit_active_squadron_selection()
 
 
