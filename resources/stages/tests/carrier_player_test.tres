@@ -8,13 +8,12 @@ id = "carrier_player_test"
 display_name = "Player Carrier Test"
 sea_id = "test_sea"
 difficulty = 1.0
-player_ship_id = "cv_seabastion"
+test_player_ship_override = "cv_seabastion"
 player_spawn = {
 "is_player": true,
 "name": "PlayerCarrier",
 "position": Vector3(0, 0, 1800),
 "rotation_y": 0.0,
-"ship_id": "cv_seabastion",
 "team": "player"
 }
 ally_spawns = [{

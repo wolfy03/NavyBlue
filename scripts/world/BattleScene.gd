@@ -72,12 +72,11 @@ func _resolve_stage_data() -> StageData:
 	if has_node("/root/RunManager"):
 		var run_manager = get_node("/root/RunManager")
 		if not run_manager.is_run_active:
-			run_manager.start_new_run({
-				"sea_id": "test_sea",
-				"stage_id": stage_id,
-				"stage_index": 0,
-				"difficulty": 1.0,
-			})
+			var config := NewRunConfig.new()
+			config.starting_ship_id = GameConfig.DEFAULT_PLAYER_SHIP_ID
+			config.starting_stage_id = stage_id
+			config.starting_sea_id = GameConfig.DEFAULT_STARTING_SEA_ID
+			run_manager.start_new_run(config)
 		stage_id = run_manager.current_stage_id if not str(run_manager.current_stage_id).is_empty() else stage_id
 	var stage_data: StageData = stage_database.get_stage(stage_id)
 	_sync_stage_to_run(stage_data)

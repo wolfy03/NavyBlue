@@ -20,9 +20,13 @@ enum ReleaseBlockReason {
 	NO_AMMUNITION,
 	NOT_DIVING,
 	WEAPON_DISABLED,
+	FORMATION_NOT_ALIGNED,
+	TARGET_OUTSIDE_RELEASE_WINDOW,
 }
 
 const EPSILON := 0.0001
+
+@export var maximum_release_formation_error_m := 30.0
 
 var owner_squadron: AircraftSquadron
 var dive_data: DiveBomberCombatData
@@ -105,9 +109,12 @@ func can_release_bombs() -> bool:
 func release_bombs() -> int:
 	if not can_release_bombs():
 		return 0
-	var released_count := owner_squadron.request_weapon_release(
+	var released_count := owner_squadron \
+		.request_weapon_release_for_ready_aircraft(
 		target_position,
-		target_velocity
+		target_velocity,
+		dive_data.minimum_release_altitude_m,
+		dive_data.maximum_release_altitude_m
 	)
 	if released_count <= 0:
 		release_block_reason = ReleaseBlockReason.WEAPON_DISABLED
@@ -134,6 +141,8 @@ func cancel() -> void:
 		return
 	state = State.FAILED
 	release_block_reason = ReleaseBlockReason.NOT_DIVING
+	if owner_squadron != null and is_instance_valid(owner_squadron):
+		owner_squadron.restore_formation_flight()
 
 
 func get_state() -> int:
@@ -148,6 +157,14 @@ func is_active() -> bool:
 		State.BOMB_RELEASED,
 		State.PULLING_OUT,
 	]
+
+
+func is_formation_ready_for_dive() -> bool:
+	return owner_squadron != null \
+		and is_instance_valid(owner_squadron) \
+		and owner_squadron.is_formation_aligned(
+			maximum_release_formation_error_m
+		)
 
 
 func get_debug_snapshot() -> Dictionary:
@@ -246,11 +263,14 @@ func _get_release_block_reason() -> ReleaseBlockReason:
 		return ReleaseBlockReason.ALTITUDE_TOO_LOW
 	if not owner_squadron.can_release_payload():
 		return ReleaseBlockReason.WEAPON_DISABLED
+	if not is_formation_ready_for_dive():
+		return ReleaseBlockReason.FORMATION_NOT_ALIGNED
 	return ReleaseBlockReason.NONE
 
 
 func _get_current_altitude() -> float:
-	return owner_squadron.formation_center.y - target_position.y \
+	return owner_squadron.get_average_alive_aircraft_altitude() \
+		- target_position.y \
 		if owner_squadron != null \
 		and is_instance_valid(owner_squadron) else 0.0
 

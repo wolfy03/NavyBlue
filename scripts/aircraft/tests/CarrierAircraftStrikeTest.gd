@@ -219,10 +219,38 @@ func _test_strike_lifecycle(
 			break
 		await physics_frame
 	_check(entered_dive, "AI strike enters a physical dive state")
+	if not entered_dive and is_instance_valid(squadron):
+		print(
+			(
+				"Strike dive diagnostic state=%s squadron_state=%s center=%s "
+				+ "alignment_errors=%s"
+			)
+			% [
+				DiveBombMissionBehavior.State.keys()[int(
+					squadron.mission_controller.dive_bomb_behavior.state
+				)],
+				AircraftSquadron.State.keys()[int(squadron.state)],
+				squadron.formation_center,
+				squadron.get_formation_alignment_errors(),
+			]
+		)
 	_check(
 		not release_before_dive,
 		"AI strike does not release bombs before diving"
 	)
+	if not released and is_instance_valid(squadron):
+		print(
+			(
+				"Strike release diagnostic released=%d alive=%d ammo=%d "
+				+ "controller=%s"
+			)
+			% [
+				_released_count,
+				squadron.get_alive_aircraft_count(),
+				squadron.get_total_remaining_ammunition(),
+				squadron.dive_bomb_controller.get_debug_snapshot(),
+			]
+		)
 	_check(released, "strike releases bombs from surviving aircraft")
 	_check(
 		_mission_started_count == 1,
@@ -310,6 +338,19 @@ func _make_fast_air_group(
 	aircraft.turn_rate_deg_sec = 180.0
 	aircraft.operating_altitude_m = 80.0
 	aircraft.arrival_distance_m = 24.0
+	var dive_data := aircraft.dive_bomber_combat_data.duplicate(
+		true
+	) as DiveBomberCombatData
+	dive_data.dive_entry_altitude_m = 150.0
+	dive_data.approach_distance_m = 300.0
+	dive_data.dive_entry_horizontal_distance_m = 100.0
+	dive_data.dive_speed_mps = 240.0
+	dive_data.minimum_dive_time_before_release_sec = 0.1
+	dive_data.minimum_release_altitude_m = 50.0
+	dive_data.maximum_release_altitude_m = 130.0
+	dive_data.automatic_pull_out_altitude_m = 30.0
+	dive_data.automatic_release_distance_m = 180.0
+	aircraft.dive_bomber_combat_data = dive_data
 	template.aircraft_data = aircraft
 	return result
 

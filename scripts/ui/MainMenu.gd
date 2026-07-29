@@ -5,12 +5,6 @@ const DEFAULT_PLAYER_SHIP_ID := GameConfig.DEFAULT_PLAYER_SHIP_ID
 const SHIP_DATABASE_SCRIPT := preload(
 	"res://scripts/data/ShipDatabase.gd"
 )
-const STARTING_SHIP_ORDER := [
-	"dd_bluewind",
-	"cl_tidebreaker",
-	"bb_ironwake",
-	"cv_seabastion",
-]
 
 @onready var tabs: TabContainer = $Root/Panel/VBox/Tabs
 @onready var new_game_button: Button = $Root/Panel/VBox/Tabs/NewGame/NewGameContent/StartNewGameButton
@@ -50,23 +44,19 @@ func _on_start_new_game_pressed() -> void:
 	var save_manager = get_node("/root/SaveManager")
 	var run_manager = get_node("/root/RunManager")
 	var game_manager = get_node("/root/GameManager")
-	var selected_ship_id := _get_selected_ship_id()
+	var config := NewRunConfig.new()
+	config.starting_ship_id = _get_selected_ship_id()
+	config.starting_sea_id = GameConfig.DEFAULT_STARTING_SEA_ID
+	config.starting_stage_id = GameConfig.DEFAULT_STARTING_STAGE_ID
+	config.difficulty = 1.0
+	var errors := config.validate()
+	if not errors.is_empty():
+		new_game_status.text = errors[0]
+		return
 
 	_increment_runs_started(save_manager)
 	save_manager.delete_run()
-	run_manager.start_new_run({
-		"sea_id": "test_sea",
-		"stage_id": "test_level",
-		"stage_index": 0,
-		"difficulty": 1.0,
-		"currency": {
-			"gold": 0,
-			"scrap": 0,
-		},
-		"player_ship_state": {
-			"ship_id": selected_ship_id,
-		},
-	})
+	run_manager.start_new_run(config)
 
 	var save_error: Error = run_manager.save_current_run()
 	if save_error != OK:
@@ -166,7 +156,7 @@ func _increment_runs_started(save_manager) -> void:
 func _populate_starting_ship_selector() -> void:
 	starting_ship_selector.clear()
 	var default_index := 0
-	for ship_id in STARTING_SHIP_ORDER:
+	for ship_id in GameConfig.STARTING_SHIP_IDS:
 		var data := _ship_database.get_ship(ship_id)
 		if data == null:
 			continue

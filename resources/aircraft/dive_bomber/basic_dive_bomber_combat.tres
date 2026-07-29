@@ -4,9 +4,11 @@
 
 [resource]
 script = ExtResource("1_dive")
-dive_entry_altitude_m = 180.0
-dive_angle_degrees = 65.0
+dive_entry_altitude_m = 350.0
+dive_angle_degrees = 55.0
 dive_speed_mps = 210.0
+approach_distance_m = 900.0
+dive_entry_horizontal_distance_m = 250.0
 minimum_dive_time_before_release_sec = 0.5
 minimum_release_altitude_m = 70.0
 maximum_release_altitude_m = 160.0

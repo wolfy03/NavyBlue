@@ -23,6 +23,7 @@ func _run() -> void:
 	var ids: Array[String] = []
 	for index in selector.item_count:
 		ids.append(str(selector.get_item_metadata(index)))
+	_check(selector.item_count == 2, "carrier panel has two squadron rows")
 	_check(
 		ids.has("basic_bomber_squadron"),
 		"carrier panel lists the dive bomber squadron"
@@ -31,6 +32,24 @@ func _run() -> void:
 		ids.has("basic_fighter_squadron"),
 		"carrier panel lists the fighter squadron"
 	)
+	var fighter_index := ids.find("basic_fighter_squadron")
+	if fighter_index >= 0:
+		panel.squadron_selector.select(fighter_index)
+		panel._on_squadron_selected(fighter_index)
+		_check(
+			"Fighter" in panel.squadron_selector.get_item_text(
+				fighter_index
+			),
+			"fighter row displays its role"
+		)
+		_check(
+			not panel.strike_button.visible,
+			"fighter selection hides Auto Strike"
+		)
+		_check(
+			not panel.manual_launch_button.disabled,
+			"fighter selection enables Manual Launch"
+		)
 	var fighter := carrier.carrier_air_group.launch_manual_squadron(
 		"basic_fighter_squadron"
 	)
@@ -43,6 +62,12 @@ func _run() -> void:
 			and fighter.mission_controller.mission_data == null,
 		"manual fighter launch has no automatic intercept mission"
 	)
+	if fighter != null:
+		panel._refresh_status()
+		_check(
+			not panel.select_active_button.disabled,
+			"active fighter can be selected from the panel"
+		)
 	await _finish(battle)
 
 

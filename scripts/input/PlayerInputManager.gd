@@ -18,6 +18,7 @@ var selected_ships: Array = []
 var _movement_marker: Node3D
 var carrier_command_controller: CarrierCommandController
 var aircraft_selection_controller: AircraftSelectionController
+var _input_enabled := true
 
 func setup(ship, view_camera: Camera3D, water_y: float = 0.0, bounds: BattlefieldBounds = null) -> void:
 	controlled_ship = ship
@@ -74,35 +75,50 @@ func _physics_process(_delta: float) -> void:
 			return
 		cancel_selected_commands()
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
+	if not _input_enabled:
+		return
+	if _handle_aircraft_special_action(event):
+		get_viewport().set_input_as_handled()
+		return
+	if _handle_pointer_input(event):
+		get_viewport().set_input_as_handled()
+
+
+func _handle_aircraft_special_action(event: InputEvent) -> bool:
 	if event.is_action_pressed(&"aircraft_special_action") \
 			and not event.is_echo():
-		if not _is_pointer_over_ui() \
+		return not _is_pointer_over_interactive_ui() \
 				and aircraft_selection_controller != null \
-				and aircraft_selection_controller.execute_special_action():
-			get_viewport().set_input_as_handled()
-		return
+				and aircraft_selection_controller.execute_special_action()
+	return false
+
+
+func _handle_pointer_input(event: InputEvent) -> bool:
 	if event is InputEventMouseMotion:
 		if aircraft_selection_controller != null:
 			aircraft_selection_controller.update_drag(
 				(event as InputEventMouseMotion).position
 			)
-		return
+		return false
 	if not event is InputEventMouseButton:
-		return
+		return false
 	var mouse_event := event as InputEventMouseButton
+	if _is_pointer_over_interactive_ui():
+		if mouse_event.button_index == MOUSE_BUTTON_LEFT \
+				and not mouse_event.pressed \
+				and aircraft_selection_controller != null:
+			aircraft_selection_controller.cancel_drag()
+		return false
 	match mouse_event.button_index:
 		MOUSE_BUTTON_LEFT:
 			if mouse_event.pressed:
-				if _is_pointer_over_ui():
-					return
 				if carrier_command_controller != null \
 						and carrier_command_controller.is_targeting():
 					_handle_primary_click(mouse_event.position)
-					get_viewport().set_input_as_handled()
-					return
+					return true
 				if aircraft_selection_controller != null:
-					aircraft_selection_controller.begin_drag(
+					return aircraft_selection_controller.begin_drag(
 						mouse_event.position
 					)
 			else:
@@ -112,18 +128,16 @@ func _unhandled_input(event: InputEvent) -> void:
 						Input.is_action_pressed(&"selection_additive")
 					) if aircraft_selection_controller != null else false
 				if drag_consumed:
-					get_viewport().set_input_as_handled()
-					return
-				if not _is_pointer_over_ui():
-					_handle_primary_click(mouse_event.position)
+					return true
+				_handle_primary_click(mouse_event.position)
+				return true
 		MOUSE_BUTTON_RIGHT:
-			if not mouse_event.pressed or _is_pointer_over_ui():
-				return
+			if not mouse_event.pressed:
+				return false
 			if carrier_command_controller != null \
 					and carrier_command_controller.is_targeting():
 				carrier_command_controller.cancel_targeting()
-				get_viewport().set_input_as_handled()
-				return
+				return true
 			if aircraft_selection_controller != null \
 					and aircraft_selection_controller.has_selection():
 				var attack_target := _pick_ship(
@@ -133,9 +147,10 @@ func _unhandled_input(event: InputEvent) -> void:
 					mouse_event.position,
 					attack_target
 				):
-					get_viewport().set_input_as_handled()
-					return
+					return true
 			_issue_move_command_from_screen(mouse_event.position)
+			return true
+	return false
 
 func get_selected_ships() -> Array:
 	_prune_selection()
@@ -262,9 +277,20 @@ func _prune_selection() -> void:
 		selection_changed.emit(selected_ships.duplicate())
 		_sync_carrier_selection()
 
-func _is_pointer_over_ui() -> bool:
+func _is_pointer_over_interactive_ui() -> bool:
 	var hovered := get_viewport().gui_get_hovered_control()
-	return hovered != null and hovered.mouse_filter != Control.MOUSE_FILTER_IGNORE
+	while hovered != null:
+		if hovered.mouse_filter != Control.MOUSE_FILTER_IGNORE and (
+				hovered is Button \
+				or hovered is Slider \
+				or hovered is LineEdit \
+				or hovered is ItemList \
+				or hovered is ScrollContainer \
+				or hovered.has_meta(&"blocks_world_input")
+		):
+			return true
+		hovered = hovered.get_parent() as Control
+	return false
 
 func _adjust_selected_turret_pitch(delta_degrees: float) -> void:
 	for ship in selected_ships:

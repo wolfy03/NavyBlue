@@ -3,10 +3,18 @@ class_name AircraftMovement
 
 const EPSILON := 0.0001
 
+enum FlightMode {
+	FORMATION,
+	DIRECT_FLIGHT,
+}
+
 var owner_aircraft: CharacterBody3D
 var aircraft_data: AircraftData
 var target_position: Vector3
 var has_target := false
+var flight_mode: FlightMode = FlightMode.FORMATION
+var direct_flight_direction := Vector3.ZERO
+var direct_flight_speed_mps := 0.0
 var _arrived := false
 
 
@@ -14,6 +22,7 @@ func setup(next_owner_aircraft: Node3D, data: AircraftData) -> void:
 	owner_aircraft = next_owner_aircraft as CharacterBody3D
 	aircraft_data = data
 	has_target = false
+	set_formation_mode()
 	_arrived = false
 
 
@@ -24,6 +33,32 @@ func set_target_position(position: Vector3) -> void:
 
 
 func update_movement(delta: float) -> void:
+	match flight_mode:
+		FlightMode.FORMATION:
+			_update_formation_movement(delta)
+		FlightMode.DIRECT_FLIGHT:
+			_update_direct_flight(delta)
+
+
+func set_formation_mode() -> void:
+	flight_mode = FlightMode.FORMATION
+	direct_flight_direction = Vector3.ZERO
+	direct_flight_speed_mps = 0.0
+
+
+func set_direct_flight(
+		direction: Vector3,
+		speed_mps: float
+) -> void:
+	if direction.length_squared() <= EPSILON:
+		return
+	flight_mode = FlightMode.DIRECT_FLIGHT
+	direct_flight_direction = direction.normalized()
+	direct_flight_speed_mps = maxf(speed_mps, 0.0)
+	_arrived = false
+
+
+func _update_formation_movement(delta: float) -> void:
 	if owner_aircraft == null \
 			or not is_instance_valid(owner_aircraft) \
 			or aircraft_data == null \
@@ -81,6 +116,23 @@ func update_movement(delta: float) -> void:
 			flight_direction,
 			Vector3.UP
 		)
+	_arrived = false
+
+
+func _update_direct_flight(delta: float) -> void:
+	if owner_aircraft == null \
+			or not is_instance_valid(owner_aircraft):
+		return
+	if direct_flight_direction.length_squared() <= EPSILON:
+		owner_aircraft.velocity = Vector3.ZERO
+		return
+	var direction := direct_flight_direction.normalized()
+	owner_aircraft.velocity = direction * direct_flight_speed_mps
+	owner_aircraft.move_and_slide()
+	owner_aircraft.global_transform.basis = Basis.looking_at(
+		direction,
+		Vector3.UP
+	)
 	_arrived = false
 
 

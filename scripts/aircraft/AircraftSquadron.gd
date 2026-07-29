@@ -398,10 +398,28 @@ func request_weapon_release(
 		target_position: Vector3,
 		target_velocity: Vector3
 ) -> int:
+	return request_weapon_release_for_ready_aircraft(
+		target_position,
+		target_velocity,
+		-INF,
+		INF
+	)
+
+
+func request_weapon_release_for_ready_aircraft(
+		target_position: Vector3,
+		target_velocity: Vector3,
+		minimum_altitude_m: float,
+		maximum_altitude_m: float
+) -> int:
 	if is_weapon_release_in_progress():
 		return 0
 	_release_queue.clear()
 	for aircraft in get_alive_aircraft():
+		var altitude := aircraft.global_position.y - target_position.y
+		if altitude < minimum_altitude_m \
+				or altitude > maximum_altitude_m:
+			continue
 		if aircraft.weapon_controller != null \
 				and aircraft.weapon_controller.can_release():
 			_release_queue.append(aircraft)
@@ -581,7 +599,6 @@ func _physics_process(delta: float) -> void:
 		if dive_bomb_controller.state \
 				== DiveBombAttackController.State.PULLING_OUT:
 			manual_dive_state = ManualDiveCommandState.PULLING_OUT
-		_update_aircraft_formation_targets()
 		_update_selection_indicator()
 		return
 	if manual_dive_state == ManualDiveCommandState.PULLING_OUT \
@@ -739,12 +756,69 @@ func apply_direct_flight(
 	formation_center += _formation_forward \
 		* maxf(speed_mps, 0.0) * maxf(delta, 0.0)
 	formation_center.y = maxf(formation_center.y, minimum_world_y)
+	for aircraft in get_alive_aircraft():
+		aircraft.set_direct_flight(_formation_forward, speed_mps)
 
 
 func finish_direct_flight_holding(world_altitude: float) -> void:
 	formation_center.y = world_altitude
 	destination = formation_center
 	state = State.HOLDING
+	for aircraft in get_alive_aircraft():
+		aircraft.set_formation_flight()
+	_update_aircraft_formation_targets()
+
+
+func restore_formation_flight() -> void:
+	for aircraft in get_alive_aircraft():
+		aircraft.set_formation_flight()
+	_update_aircraft_formation_targets()
+
+
+func get_average_alive_aircraft_position() -> Vector3:
+	var aircraft := get_alive_aircraft()
+	if aircraft.is_empty():
+		return formation_center
+	var total := Vector3.ZERO
+	for unit in aircraft:
+		total += unit.global_position
+	return total / float(aircraft.size())
+
+
+func get_average_alive_aircraft_altitude() -> float:
+	return get_average_alive_aircraft_position().y
+
+
+func is_formation_aligned(
+		maximum_error_m: float
+) -> bool:
+	var errors := get_formation_alignment_errors()
+	if errors.is_empty():
+		return false
+	var allowed_error := maxf(maximum_error_m, 0.0)
+	for error in errors:
+		if error > allowed_error:
+			return false
+	return true
+
+
+func get_formation_alignment_errors() -> PackedFloat32Array:
+	var alive_aircraft := get_alive_aircraft()
+	var result := PackedFloat32Array()
+	if alive_aircraft.is_empty():
+		return result
+	var right := _formation_forward.cross(Vector3.UP).normalized()
+	if right.length_squared() <= EPSILON:
+		right = Vector3.RIGHT
+	var offset_multiplier := 0.8 if _combat_formation_enabled else 1.0
+	for aircraft in alive_aircraft:
+		var offset := aircraft.formation_offset * offset_multiplier
+		var expected_position := formation_center \
+			+ right * offset.x \
+			+ Vector3.UP * offset.y \
+			+ _formation_forward * offset.z
+		result.append(aircraft.global_position.distance_to(expected_position))
+	return result
 
 
 func _update_aircraft_formation_targets() -> void:
@@ -942,6 +1016,8 @@ func _prune_aircraft() -> void:
 
 
 func _exit_tree() -> void:
+	if is_in_group(&"aircraft_squadrons"):
+		remove_from_group(&"aircraft_squadrons")
 	var coordinator := get_combat_coordinator()
 	if coordinator != null:
 		coordinator.unregister_squadron(self)

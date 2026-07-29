@@ -38,13 +38,15 @@ func _run() -> void:
 	menu.queue_free()
 	await process_frame
 	var run_manager := root.get_node_or_null("RunManager")
-	run_manager.start_new_run({
-		"sea_id": STAGE.sea_id,
-		"stage_id": STAGE.id,
-		"player_ship_state": {
-			"ship_id": "cv_seabastion",
-		},
-	})
+	var config := NewRunConfig.new()
+	config.starting_ship_id = "cv_seabastion"
+	config.starting_sea_id = STAGE.sea_id
+	config.starting_stage_id = STAGE.id
+	run_manager.start_new_run(config)
+	_check(
+		run_manager.get_selected_player_ship_id() == "cv_seabastion",
+		"RunManager stores the selected carrier authoritatively"
+	)
 	var battle := BATTLE_SCENE.instantiate() as BattleScene
 	battle.stage_override = STAGE
 	root.add_child(battle)

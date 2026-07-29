@@ -68,6 +68,19 @@ func set_formation_target(world_position: Vector3) -> void:
 		movement.set_target_position(world_position)
 
 
+func set_direct_flight(
+		direction: Vector3,
+		speed_mps: float
+) -> void:
+	if movement != null:
+		movement.set_direct_flight(direction, speed_mps)
+
+
+func set_formation_flight() -> void:
+	if movement != null:
+		movement.set_formation_mode()
+
+
 func activate() -> void:
 	active = true
 	visible = true

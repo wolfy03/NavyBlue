@@ -1,7 +1,7 @@
 extends Node
 
-const DEFAULT_SEA_ID := "test_sea"
-const DEFAULT_STAGE_ID := "test_level"
+const DEFAULT_SEA_ID := GameConfig.DEFAULT_STARTING_SEA_ID
+const DEFAULT_STAGE_ID := GameConfig.DEFAULT_STARTING_STAGE_ID
 const SAVE_VERSION := 2
 const PLAYER_CARRIER_KEY := "player_carrier"
 
@@ -17,11 +17,47 @@ var currency: Dictionary = {
 	"scrap": 0,
 }
 var player_ship_state: Dictionary = {}
+var selected_player_ship_id: String = GameConfig.DEFAULT_PLAYER_SHIP_ID
 var carrier_air_group_states: Dictionary = {}
 var world_state: Dictionary = {}
 var started_at_msec := 0
 
-func start_new_run(config: Dictionary = {}) -> void:
+func start_new_run(config_or_data: Variant = {}) -> void:
+	if config_or_data is NewRunConfig:
+		_start_new_run_from_config(config_or_data as NewRunConfig)
+	elif config_or_data is Dictionary:
+		_start_new_run_from_legacy_dictionary(
+			config_or_data as Dictionary
+		)
+	else:
+		push_warning("RunManager received an unsupported new-run config.")
+		_start_new_run_from_config(NewRunConfig.new())
+
+
+func _start_new_run_from_config(config: NewRunConfig) -> void:
+	var errors := config.validate()
+	if not errors.is_empty():
+		push_warning(errors[0])
+		config = NewRunConfig.new()
+	selected_player_ship_id = _validated_ship_id(
+		config.starting_ship_id
+	)
+	_start_new_run_from_legacy_dictionary({
+		"sea_id": config.starting_sea_id,
+		"stage_id": config.starting_stage_id,
+		"stage_index": 0,
+		"difficulty": config.difficulty,
+		"currency": {
+			"gold": config.starting_gold,
+			"scrap": config.starting_scrap,
+		},
+		"player_ship_state": {
+			"ship_id": selected_player_ship_id,
+		},
+	})
+
+
+func _start_new_run_from_legacy_dictionary(config: Dictionary) -> void:
 	is_run_active = true
 	current_sea_id = config.get("sea_id", DEFAULT_SEA_ID)
 	current_stage_id = config.get("stage_id", DEFAULT_STAGE_ID)
@@ -31,6 +67,13 @@ func start_new_run(config: Dictionary = {}) -> void:
 	difficulty = float(config.get("difficulty", 1.0))
 	currency = config.get("currency", {"gold": 0, "scrap": 0})
 	player_ship_state = config.get("player_ship_state", {})
+	selected_player_ship_id = _validated_ship_id(str(
+		player_ship_state.get(
+			"ship_id",
+			config.get("selected_player_ship_id", selected_player_ship_id)
+		)
+	))
+	player_ship_state["ship_id"] = selected_player_ship_id
 	var configured_carrier_states: Variant = config.get(
 		"carrier_air_group_states",
 		{}
@@ -57,6 +100,7 @@ func reset_run() -> void:
 		"scrap": 0,
 	}
 	player_ship_state.clear()
+	selected_player_ship_id = GameConfig.DEFAULT_PLAYER_SHIP_ID
 	carrier_air_group_states.clear()
 	world_state.clear()
 	started_at_msec = 0
@@ -98,6 +142,10 @@ func add_currency(currency_id: String, amount: int) -> void:
 
 func update_player_ship_state(state: Dictionary) -> void:
 	player_ship_state = state.duplicate(true)
+	var ship_id := str(player_ship_state.get("ship_id", ""))
+	if not ship_id.is_empty():
+		selected_player_ship_id = _validated_ship_id(ship_id)
+	player_ship_state["ship_id"] = selected_player_ship_id
 	_emit_updated()
 
 func update_world_state(state: Dictionary) -> void:
@@ -127,6 +175,9 @@ func capture_player_ship(ship) -> void:
 			"damage_status": ship.damage_status.to_save_data() \
 				if ship is ShipUnit and ship.damage_status != null else {},
 		}
+		selected_player_ship_id = _validated_ship_id(
+			str(player_ship_state.get("ship_id", ""))
+		)
 		var ship_unit := ship as ShipUnit
 		if ship_unit != null \
 				and ship_unit.ship_data != null \
@@ -211,6 +262,7 @@ func to_save_data() -> Dictionary:
 		"difficulty": difficulty,
 		"currency": currency.duplicate(true),
 		"player_ship_state": player_ship_state.duplicate(true),
+		"selected_player_ship_id": selected_player_ship_id,
 		"carrier_air_group_states":
 			carrier_air_group_states.duplicate(true),
 		"world_state": world_state.duplicate(true),
@@ -231,6 +283,16 @@ func restore_from_save_data(data: Dictionary) -> void:
 		(player_state_value as Dictionary).duplicate(true)
 		if player_state_value is Dictionary else {}
 	)
+	selected_player_ship_id = _validated_ship_id(str(
+		data.get(
+			"selected_player_ship_id",
+			player_ship_state.get(
+				"ship_id",
+				GameConfig.DEFAULT_PLAYER_SHIP_ID
+			)
+		)
+	))
+	player_ship_state["ship_id"] = selected_player_ship_id
 	var carrier_states_value: Variant = data.get(
 		"carrier_air_group_states",
 		{}
@@ -301,6 +363,21 @@ func _get_carrier_key(carrier: ShipUnit) -> String:
 		String(carrier.fleet_id),
 		carrier.name,
 	]
+
+
+func get_selected_player_ship_id() -> String:
+	return selected_player_ship_id
+
+
+func _validated_ship_id(ship_id: String) -> String:
+	if ShipDatabase.SHIP_PATHS.has(ship_id):
+		return ship_id
+	if not ship_id.is_empty():
+		push_warning(
+			"Unsupported player ship id '%s'; using '%s'."
+			% [ship_id, GameConfig.DEFAULT_PLAYER_SHIP_ID]
+		)
+	return GameConfig.DEFAULT_PLAYER_SHIP_ID
 
 func _emit_started() -> void:
 	if has_node("/root/EventBus"):

@@ -23,6 +23,8 @@ $tests = @(
 	"res://scripts/world/tests/StageDataDefaultsTest.gd",
 	"res://scripts/world/tests/StageTestIsolationTest.gd",
 	"res://scripts/world/tests/MainMenuCarrierFlowTest.gd",
+	"res://scripts/world/tests/PlayerShipResolutionTest.gd",
+	"res://scripts/world/tests/StageDataNoPlayerShipTypeTest.gd",
 	"res://scripts/combat/tests/CombatDamageTest.gd",
 	"res://scripts/combat/tests/ProjectileCollisionTest.gd",
 	"res://scripts/world/tests/BattleSceneSmokeTest.gd",
@@ -56,7 +58,12 @@ $tests = @(
 	"res://scripts/aircraft/tests/DiveBombAttackControllerTest.gd",
 	"res://scripts/aircraft/tests/PlayerMissionCancellationTest.gd",
 	"res://scripts/aircraft/tests/CarrierAirGroupPanelRoleTest.gd",
-	"res://scripts/input/tests/AircraftSelectionControllerTest.gd"
+	"res://scripts/aircraft/tests/CarrierAirGroupTemplateValidationTest.gd",
+	"res://scripts/aircraft/tests/DiveAircraftDirectFlightTest.gd",
+	"res://scripts/aircraft/tests/DiveBombFormationAlignmentTest.gd",
+	"res://scripts/input/tests/AircraftSelectionControllerTest.gd",
+	"res://scripts/input/tests/AircraftDragSelectionIntegrationTest.gd",
+	"res://scripts/input/tests/AircraftSelectionCandidateReasonTest.gd"
 )
 
 try {

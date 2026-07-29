@@ -67,6 +67,17 @@ func _run() -> void:
 			group.get_squadron_state("removed_squadron") == null,
 			"unknown saved squadron is ignored"
 		)
+		var fighter_state := group.get_squadron_state(
+			"basic_fighter_squadron"
+		)
+		_check(
+			fighter_state != null \
+				and fighter_state.availability_state \
+				== SquadronRuntimeState.AvailabilityState.READY \
+				and fighter_state.available_aircraft \
+				== fighter_state.total_aircraft,
+			"resource-defined fighter remains READY after bomber-only save"
+		)
 		var before_mismatch := group.to_save_data()
 		if run_manager != null:
 			run_manager.carrier_air_group_states[

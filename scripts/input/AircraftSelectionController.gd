@@ -3,9 +3,24 @@ class_name AircraftSelectionController
 
 signal selection_changed(squadrons: Array[AircraftSquadron])
 
+enum SelectionBlockReason {
+	NONE,
+	INVALID,
+	QUEUED_FOR_DELETION,
+	RETURNING,
+	RECOVERING,
+	DESTROYED,
+	NO_AIRCRAFT,
+	NO_CARRIER,
+	CARRIER_NOT_PLAYER_CONTROLLED,
+	WRONG_TEAM,
+}
+
 @export var minimum_drag_distance_pixels := 8.0
+@export var click_selection_radius_pixels := 18.0
 @export var squadron_command_spacing_m := 150.0
 @export var battlefield_boundary_margin_m := 250.0
+@export var debug_selection := false
 
 var selected_squadrons: Array[AircraftSquadron] = []
 var _drag_start := Vector2.ZERO
@@ -19,6 +34,7 @@ var _water_height_m := 0.0
 var _last_right_click_position := Vector3.ZERO
 var _last_input_consumer := ""
 var _input_enabled := true
+var _last_candidate_count := 0
 
 
 func _ready() -> void:
@@ -116,7 +132,7 @@ func finish_drag(
 		_selection_rect.visible = false
 	if _drag_start.distance_to(_drag_current) \
 			< minimum_drag_distance_pixels:
-		return false
+		return _finish_click_selection(_drag_current, additive)
 	var selection_bounds := Rect2(
 		_drag_start,
 		_drag_current - _drag_start
@@ -124,12 +140,7 @@ func finish_drag(
 	if not additive:
 		clear_selection()
 	for squadron in _get_selection_candidates():
-		if _camera.is_position_behind(squadron.formation_center):
-			continue
-		var screen_position_value := _camera.unproject_position(
-			squadron.formation_center
-		)
-		if selection_bounds.has_point(screen_position_value) \
+		if _is_squadron_inside_selection(squadron, selection_bounds) \
 				and not selected_squadrons.has(squadron):
 			selected_squadrons.append(squadron)
 			squadron.set_player_selected(true)
@@ -229,6 +240,7 @@ func get_debug_snapshot() -> Dictionary:
 		"dragging": _dragging,
 		"last_right_click_position": _last_right_click_position,
 		"last_input_consumer": _last_input_consumer,
+		"selection_candidate_count": _last_candidate_count,
 	}
 
 
@@ -240,26 +252,106 @@ func _get_selection_candidates() -> Array[AircraftSquadron]:
 		var squadron := value as AircraftSquadron
 		if _is_selectable_squadron(squadron):
 			result.append(squadron)
+		elif debug_selection and squadron != null:
+			print_debug(
+				"Aircraft selection blocked: squadron=%s reason=%s"
+				% [
+					squadron.name,
+					SelectionBlockReason.keys()[
+						int(get_selection_block_reason(squadron))
+					],
+				]
+			)
+	_last_candidate_count = result.size()
 	return result
 
 
 func _is_selectable_squadron(
 		squadron: AircraftSquadron
 ) -> bool:
-	if squadron == null or not is_instance_valid(squadron) \
-			or squadron.is_queued_for_deletion() \
-			or squadron.state in [
-				AircraftSquadron.State.RETURNING,
-				AircraftSquadron.State.RECOVERING,
-				AircraftSquadron.State.DESTROYED,
-			] \
-			or squadron.get_alive_aircraft_count() <= 0:
-		return false
+	return get_selection_block_reason(squadron) \
+		== SelectionBlockReason.NONE
+
+
+func get_selection_block_reason(
+		squadron: AircraftSquadron
+) -> SelectionBlockReason:
+	if squadron == null or not is_instance_valid(squadron):
+		return SelectionBlockReason.INVALID
+	if squadron.is_queued_for_deletion():
+		return SelectionBlockReason.QUEUED_FOR_DELETION
+	match squadron.state:
+		AircraftSquadron.State.RETURNING:
+			return SelectionBlockReason.RETURNING
+		AircraftSquadron.State.RECOVERING:
+			return SelectionBlockReason.RECOVERING
+		AircraftSquadron.State.DESTROYED:
+			return SelectionBlockReason.DESTROYED
+	if squadron.get_alive_aircraft_count() <= 0:
+		return SelectionBlockReason.NO_AIRCRAFT
 	var carrier := squadron.get_owner_carrier()
-	return carrier != null \
-		and is_instance_valid(carrier) \
-		and carrier.player_controlled \
-		and squadron.get_team() == FactionRelations.PLAYER
+	if carrier == null or not is_instance_valid(carrier):
+		return SelectionBlockReason.NO_CARRIER
+	if not carrier.player_controlled:
+		return SelectionBlockReason.CARRIER_NOT_PLAYER_CONTROLLED
+	if squadron.get_team() != FactionRelations.PLAYER:
+		return SelectionBlockReason.WRONG_TEAM
+	return SelectionBlockReason.NONE
+
+
+func _is_squadron_inside_selection(
+		squadron: AircraftSquadron,
+		selection_bounds: Rect2
+) -> bool:
+	if _is_world_point_inside_selection(
+		squadron.formation_center,
+		selection_bounds
+	):
+		return true
+	for aircraft in squadron.get_alive_aircraft():
+		if _is_world_point_inside_selection(
+			aircraft.global_position,
+			selection_bounds
+		):
+			return true
+	return false
+
+
+func _is_world_point_inside_selection(
+		world_position: Vector3,
+		selection_bounds: Rect2
+) -> bool:
+	if _camera == null or _camera.is_position_behind(world_position):
+		return false
+	return selection_bounds.has_point(
+		_camera.unproject_position(world_position)
+	)
+
+
+func _finish_click_selection(
+		screen_position: Vector2,
+		additive: bool
+) -> bool:
+	var closest: AircraftSquadron
+	var closest_distance := click_selection_radius_pixels
+	for squadron in _get_selection_candidates():
+		var points: Array[Vector3] = [squadron.formation_center]
+		for aircraft in squadron.get_alive_aircraft():
+			points.append(aircraft.global_position)
+		for world_position in points:
+			if _camera.is_position_behind(world_position):
+				continue
+			var distance := screen_position.distance_to(
+				_camera.unproject_position(world_position)
+			)
+			if distance <= closest_distance:
+				closest = squadron
+				closest_distance = distance
+	if closest == null:
+		return false
+	select_squadron(closest, additive)
+	_last_input_consumer = "aircraft_click_selection"
+	return true
 
 
 func _prune_selection() -> void:

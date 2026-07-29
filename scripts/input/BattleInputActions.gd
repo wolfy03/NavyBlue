@@ -13,7 +13,6 @@ const KEY_ACTIONS := {
 	&"camera_reset": [KEY_HOME],
 	&"selection_additive": [KEY_SHIFT],
 	&"command_cancel": [KEY_ESCAPE],
-	&"aircraft_special_action": [KEY_PERIOD],
 	&"ship_throttle_forward": [KEY_I],
 	&"ship_throttle_reverse": [KEY_K],
 	&"ship_rudder_left": [KEY_J],
@@ -46,6 +45,13 @@ static func ensure_defaults() -> void:
 			var event := InputEventMouseButton.new()
 			event.button_index = MOUSE_ACTIONS[action]
 			InputMap.action_add_event(action, event)
+	if not InputMap.has_action(&"aircraft_special_action") \
+			or InputMap.action_get_events(
+				&"aircraft_special_action"
+			).is_empty():
+		push_warning(
+			"aircraft_special_action has no bound input event."
+		)
 
 static func _ensure_action(action: StringName) -> void:
 	if not InputMap.has_action(action):

@@ -8,13 +8,12 @@ id = "fighter_combat_test"
 display_name = "Fighter Combat Test"
 sea_id = "test_sea"
 difficulty = 1.0
-player_ship_id = "cv_seabastion"
+test_player_ship_override = "cv_seabastion"
 player_spawn = {
 "is_player": true,
 "name": "FighterPlayerCarrier",
 "position": Vector3(-1800, 0, 1200),
 "rotation_y": 0.0,
-"ship_id": "cv_seabastion",
 "team": "player"
 }
 ally_spawns = []

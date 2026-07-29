@@ -5,6 +5,8 @@ signal strike_targeting_requested(squadron_id: String)
 signal manual_launch_requested(squadron_id: String)
 signal active_squadron_selection_requested(squadron: AircraftSquadron)
 
+@export var debug_air_group_data := false
+
 @onready var title_label: Label = %TitleLabel
 @onready var squadron_selector: OptionButton = %SquadronSelector
 @onready var status_label: Label = %StatusLabel
@@ -19,6 +21,7 @@ var _carrier_ref: WeakRef
 var _refresh_left := 0.0
 var _selected_squadron_id := ""
 var _targeting := false
+var _missing_data_warnings: Dictionary = {}
 
 
 func _ready() -> void:
@@ -174,8 +177,20 @@ func _rebuild_squadron_selector() -> void:
 		var data := carrier.carrier_air_group.get_squadron_data(
 			state.squadron_id
 		)
+		if data == null:
+			if not _missing_data_warnings.has(state.squadron_id):
+				_missing_data_warnings[state.squadron_id] = true
+				push_warning(
+					"Carrier panel cannot resolve squadron data: %s"
+					% state.squadron_id
+				)
+			continue
+		var role_name := _aircraft_role_name(
+			int(data.aircraft_data.role) \
+			if data.aircraft_data != null else -1
+		)
 		squadron_selector.add_item(
-			data.display_name if data != null else state.squadron_id
+			"%s [%s]" % [data.display_name, role_name]
 		)
 		squadron_selector.set_item_metadata(
 			squadron_selector.item_count - 1,
@@ -194,6 +209,16 @@ func _rebuild_squadron_selector() -> void:
 		)
 	else:
 		_selected_squadron_id = ""
+		if debug_air_group_data:
+			var snapshot := carrier.carrier_air_group \
+				.get_debug_snapshot()
+			status_label.text = (
+				"Air group templates: %d\nRuntime squadrons: %d"
+				% [
+					int(snapshot.get("template_count", 0)),
+					(snapshot.get("runtime_state_ids", []) as Array).size(),
+				]
+			)
 
 
 func _connect_carrier(carrier: ShipUnit) -> void:

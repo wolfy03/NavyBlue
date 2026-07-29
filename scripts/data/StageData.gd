@@ -5,12 +5,13 @@ class_name StageData
 @export var display_name: String = "Test Level"
 @export var sea_id: String = "test_sea"
 @export var difficulty: float = 1.0
-@export var player_ship_id: String = GameConfig.DEFAULT_PLAYER_SHIP_ID
 @export var player_spawn: Dictionary = {}
 @export var ally_spawns: Array = []
 @export var enemy_spawns: Array = []
 @export var reward_table_id: String = "test_rewards"
 @export var next_stage_candidates: Array[String] = []
+@export_category("Testing")
+@export var test_player_ship_override: String = ""
 
 
 func validate() -> PackedStringArray:
@@ -39,10 +40,12 @@ func validate() -> PackedStringArray:
 			errors,
 			spawn_names
 		)
-	if player_ship_id.is_empty():
-		errors.append("player_ship_id must not be empty.")
-	elif not ShipDatabase.SHIP_PATHS.has(player_ship_id):
-		errors.append("Unsupported player_ship_id: %s" % player_ship_id)
+	if not test_player_ship_override.is_empty() \
+			and not ShipDatabase.SHIP_PATHS.has(test_player_ship_override):
+		errors.append(
+			"Unsupported test_player_ship_override: %s"
+			% test_player_ship_override
+		)
 	return errors
 
 
@@ -57,11 +60,15 @@ func _validate_spawn(
 		errors.append("%s must be a Dictionary." % label)
 		return
 	var spawn := value as Dictionary
-	var ship_id := str(spawn.get("ship_id", ""))
-	if ship_id.is_empty():
-		errors.append("%s is missing ship_id." % label)
-	elif not ShipDatabase.SHIP_PATHS.has(ship_id):
-		errors.append("%s has unsupported ship_id '%s'." % [label, ship_id])
+	if not expect_player:
+		var ship_id := str(spawn.get("ship_id", ""))
+		if ship_id.is_empty():
+			errors.append("%s is missing ship_id." % label)
+		elif not ShipDatabase.SHIP_PATHS.has(ship_id):
+			errors.append(
+				"%s has unsupported ship_id '%s'."
+				% [label, ship_id]
+			)
 	var team := str(spawn.get("team", ""))
 	if team.is_empty():
 		errors.append("%s is missing team." % label)

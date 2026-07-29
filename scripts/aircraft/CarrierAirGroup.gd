@@ -49,17 +49,16 @@ func setup(ship: ShipUnit, data: CarrierAirGroupData) -> void:
 			and not owner_ship.health.died.is_connected(_on_owner_ship_died):
 		owner_ship.health.died.connect(_on_owner_ship_died)
 	for template in air_group_data.squadron_templates:
-		if not _is_valid_template(template) \
-				or squadron_states.has(template.id):
+		if not _is_valid_template(template):
 			continue
-		var state := SquadronRuntimeState.new()
-		state.squadron_id = template.id
-		state.total_aircraft = maxi(template.aircraft_count, 0)
-		state.available_aircraft = state.total_aircraft
-		state.availability_state = \
-			SquadronRuntimeState.AvailabilityState.READY
-		state.normalize()
-		squadron_states[template.id] = state
+		if squadron_states.has(template.id):
+			_warn_validation_once(
+				"duplicate_%s" % template.id,
+				"Duplicate squadron template id in carrier air group: %s"
+				% template.id
+			)
+			continue
+		_create_runtime_state(template)
 	_refresh_available_ids()
 	set_process(not squadron_states.is_empty())
 
@@ -601,6 +600,18 @@ func get_squadron_status_snapshot(squadron_id: String) -> Dictionary:
 
 
 func get_debug_snapshot() -> Dictionary:
+	var templates: Array[Dictionary] = []
+	if air_group_data != null:
+		for template in air_group_data.squadron_templates:
+			templates.append({
+				"id": template.id if template != null else "",
+				"valid": _template_validation_errors(template).is_empty(),
+				"role": (
+					int(template.aircraft_data.role)
+					if template != null \
+					and template.aircraft_data != null else -1
+				),
+			})
 	var ready_count := 0
 	var available_count := 0
 	var active_count := 0
@@ -621,6 +632,12 @@ func get_debug_snapshot() -> Dictionary:
 			"target_name": snapshot.get("target_name", ""),
 		}
 	return {
+		"air_group_id": air_group_data.id \
+			if air_group_data != null else "",
+		"template_count": air_group_data.squadron_templates.size() \
+			if air_group_data != null else 0,
+		"templates": templates,
+		"runtime_state_ids": squadron_states.keys(),
 		"active_squadron_count": get_active_squadron_count(),
 		"ready_squadron_count": ready_count,
 		"available_aircraft": available_count,
@@ -929,85 +946,60 @@ func _validate_data_once() -> void:
 			"recovery_cooldown",
 			"Carrier air group recovery cooldown cannot be negative."
 		)
-	var ids: Dictionary = {}
-	for template in air_group_data.squadron_templates:
-		if not _is_valid_template(template):
-			continue
-		if ids.has(template.id):
-			_warn_validation_once(
-				"duplicate_%s" % template.id,
-				"Duplicate carrier squadron id: %s" % template.id
-			)
-		ids[template.id] = true
-
-
 func _is_valid_template(template: SquadronData) -> bool:
-	if template == null or template.id.is_empty():
+	var errors := _template_validation_errors(template)
+	var template_key := "null" \
+		if template == null else str(template.get_instance_id())
+	var template_name := "<null>" \
+		if template == null or template.id.is_empty() else template.id
+	for index in errors.size():
 		_warn_validation_once(
-			"missing_template",
-			"Carrier air group contains a null or unnamed squadron."
+			"template_%s_%d" % [template_key, index],
+			"Invalid squadron template '%s': %s"
+			% [template_name, errors[index]]
 		)
-		return false
+	return errors.is_empty()
+
+
+func _template_validation_errors(
+		template: SquadronData
+) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if template == null:
+		errors.append("template is null.")
+		return errors
+	errors.append_array(template.validate())
 	if template.aircraft_data == null:
-		_warn_validation_once(
-			"aircraft_%s" % template.id,
-			"Squadron '%s' has no AircraftData." % template.id
-		)
-		return false
-	if template.aircraft_data.weapon_data == null:
-		_warn_validation_once(
-			"weapon_%s" % template.id,
-			"Squadron '%s' has no AircraftWeaponData." % template.id
-		)
-		return false
+		return errors
 	if template.aircraft_data.role == AircraftData.AircraftRole.FIGHTER:
 		if template.aircraft_data.fighter_combat_data == null:
-			_warn_validation_once(
-				"fighter_%s" % template.id,
-				"Fighter squadron '%s' has no FighterCombatData."
-				% template.id
-			)
-			return false
-		var fighter_errors := template.aircraft_data \
-			.fighter_combat_data.validate()
-		if not fighter_errors.is_empty():
-			_warn_validation_once(
-				"fighter_config_%s" % template.id,
-				"Fighter squadron '%s' has invalid combat data: %s"
-				% [template.id, "; ".join(fighter_errors)]
-			)
-			return false
+			errors.append("fighter_combat_data must be assigned.")
+		else:
+			for error in template.aircraft_data \
+					.fighter_combat_data.validate():
+				errors.append("fighter combat data: %s" % error)
 	if template.aircraft_data.role \
 			== AircraftData.AircraftRole.DIVE_BOMBER:
 		if template.aircraft_data.dive_bomber_combat_data == null:
-			_warn_validation_once(
-				"dive_bomber_%s" % template.id,
-				"Dive bomber squadron '%s' has no DiveBomberCombatData."
-				% template.id
-			)
-			return false
-		var dive_errors := template.aircraft_data \
-			.dive_bomber_combat_data.validate()
-		if not dive_errors.is_empty():
-			_warn_validation_once(
-				"dive_bomber_config_%s" % template.id,
-				"Dive bomber squadron '%s' has invalid combat data: %s"
-				% [template.id, "; ".join(dive_errors)]
-			)
-			return false
-	if template.aircraft_count <= 0:
-		_warn_validation_once(
-			"count_%s" % template.id,
-			"Squadron '%s' must contain aircraft." % template.id
-		)
-		return false
+			errors.append("dive_bomber_combat_data must be assigned.")
+		else:
+			for error in template.aircraft_data \
+					.dive_bomber_combat_data.validate():
+				errors.append("dive bomber combat data: %s" % error)
 	if template.rearm_duration_sec < 0.0:
-		_warn_validation_once(
-			"rearm_%s" % template.id,
-			"Squadron '%s' has a negative rearm duration." % template.id
-		)
-		return false
-	return true
+		errors.append("rearm_duration_sec cannot be negative.")
+	return errors
+
+
+func _create_runtime_state(template: SquadronData) -> void:
+	var state := SquadronRuntimeState.new()
+	state.squadron_id = template.id
+	state.total_aircraft = maxi(template.aircraft_count, 0)
+	state.available_aircraft = state.total_aircraft
+	state.availability_state = \
+		SquadronRuntimeState.AvailabilityState.READY
+	state.normalize()
+	squadron_states[template.id] = state
 
 
 func _warn_validation_once(key: String, message: String) -> void:

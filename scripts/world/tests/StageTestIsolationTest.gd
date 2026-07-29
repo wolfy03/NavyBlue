@@ -18,12 +18,12 @@ var _failures: Array[String] = []
 
 func _initialize() -> void:
 	_check(
-		WEAPON_STAGE.player_ship_id == "dd_bluewind" \
+		WEAPON_STAGE.test_player_ship_override == "dd_bluewind" \
 			and not _contains_ship(WEAPON_STAGE.ally_spawns, "cv_seabastion"),
 		"weapon stage is carrier-independent"
 	)
 	_check(
-		CARRIER_PLAYER_STAGE.player_ship_id == "cv_seabastion" \
+		CARRIER_PLAYER_STAGE.test_player_ship_override == "cv_seabastion" \
 			and bool(CARRIER_PLAYER_STAGE.player_spawn.get(
 				"is_player",
 				false
@@ -31,7 +31,7 @@ func _initialize() -> void:
 		"carrier player stage owns the player carrier"
 	)
 	_check(
-		CARRIER_AI_STAGE.player_ship_id == "dd_bluewind" \
+		CARRIER_AI_STAGE.test_player_ship_override == "dd_bluewind" \
 			and _contains_ship(
 				CARRIER_AI_STAGE.ally_spawns,
 				"cv_seabastion"
@@ -39,7 +39,7 @@ func _initialize() -> void:
 		"carrier AI stage owns a non-player allied carrier"
 	)
 	_check(
-		BATTLE_LOOP_STAGE.player_ship_id == "dd_bluewind" \
+		BATTLE_LOOP_STAGE.test_player_ship_override == "dd_bluewind" \
 			and BATTLE_LOOP_STAGE.enemy_spawns.size() == 3,
 		"battle loop stage preserves the general battle fixture"
 	)

@@ -116,8 +116,11 @@ func _update_dive_entry(target: Node3D) -> void:
 		_destination_initialized = true
 	if owner_squadron.state != AircraftSquadron.State.HOLDING:
 		return
+	var controller := owner_squadron.dive_bomb_controller
+	if controller == null or not controller.is_formation_ready_for_dive():
+		return
 	var predicted_position := _calculate_predicted_target_position(target)
-	if not owner_squadron.dive_bomb_controller.begin_dive(
+	if not controller.begin_dive(
 		predicted_position,
 		_get_target_velocity(target)
 	):
@@ -215,7 +218,7 @@ func _calculate_approach_position(target: Node3D) -> Vector3:
 	var direction := _get_attack_direction(target)
 	var dive_data := _get_dive_data()
 	var result := target.global_position \
-		- direction * maxf(dive_data.dive_entry_distance_m, 0.0)
+		- direction * maxf(dive_data.approach_distance_m, 0.0)
 	result.y = target.global_position.y \
 		+ maxf(dive_data.dive_entry_altitude_m, 1.0)
 	return result
@@ -229,7 +232,11 @@ func _calculate_dive_entry_position(target: Node3D) -> Vector3:
 		1.0,
 		89.0
 	)))
-	var horizontal_distance := height / maxf(tangent, 0.01)
+	var horizontal_distance := (
+		dive_data.dive_entry_horizontal_distance_m
+		if dive_data.dive_entry_horizontal_distance_m > 0.0 \
+		else height / maxf(tangent, 0.01)
+	)
 	var predicted := _calculate_predicted_target_position(target)
 	var result := predicted \
 		- _get_attack_direction(target) * horizontal_distance

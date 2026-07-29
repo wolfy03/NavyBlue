@@ -7,6 +7,7 @@ const DEFAULT_PLAYER_SHIP_ID := GameConfig.DEFAULT_PLAYER_SHIP_ID
 @export var ship_scene: PackedScene = preload("res://scenes/unit/ship.tscn")
 @export var spawn_points_path: NodePath = NodePath("../SpawnPoints")
 @export var debug_carrier_spawns := false
+@export var debug_player_ship_resolution := false
 
 var ship_database := SHIP_DATABASE_SCRIPT.new()
 var spawned_units: Array = []
@@ -23,14 +24,20 @@ func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 		return _empty_spawn_result()
 
 	var player_info := stage_data.player_spawn.duplicate(true)
-	var player_ship_id := _resolve_player_ship_id(
-		stage_data,
-		player_info
-	)
+	var player_ship_id := _resolve_player_ship_id(stage_data)
 	player_info["ship_id"] = player_ship_id
 	player_info["name"] = str(player_info.get("name", "Player"))
-	player_info["team"] = str(player_info.get("team", "player"))
+	player_info["team"] = String(FactionRelations.PLAYER)
 	player_info["is_player"] = true
+	if debug_player_ship_resolution:
+		print_debug(
+			"Player ship resolved: id=%s source=%s stage=%s"
+			% [
+				player_ship_id,
+				_get_player_ship_source(stage_data),
+				stage_data.id,
+			]
+		)
 	var player_ship := spawn_player_ship(
 		player_ship_id,
 		player_info,
@@ -46,22 +53,43 @@ func spawn_stage(stage_data: StageData, parent: Node) -> Dictionary:
 
 
 func _resolve_player_ship_id(
-		stage_data: StageData,
-		spawn_info: Dictionary
+		stage_data: StageData
 ) -> String:
+	if stage_data != null \
+			and not stage_data.test_player_ship_override.is_empty():
+		return _validate_or_default_ship_id(
+			stage_data.test_player_ship_override
+		)
 	if has_node("/root/RunManager"):
 		var run_manager := get_node("/root/RunManager")
 		var run_ship_id := str(
-			run_manager.player_ship_state.get("ship_id", "")
+			run_manager.get_selected_player_ship_id()
 		)
 		if not run_ship_id.is_empty():
-			return run_ship_id
-	var spawn_ship_id := str(spawn_info.get("ship_id", ""))
-	if not spawn_ship_id.is_empty():
-		return spawn_ship_id
-	if stage_data != null and not stage_data.player_ship_id.is_empty():
-		return stage_data.player_ship_id
+			return _validate_or_default_ship_id(run_ship_id)
 	return DEFAULT_PLAYER_SHIP_ID
+
+
+func _validate_or_default_ship_id(ship_id: String) -> String:
+	if ShipDatabase.SHIP_PATHS.has(ship_id):
+		return ship_id
+	if not _warned_invalid_ship_ids.has(ship_id):
+		_warned_invalid_ship_ids[ship_id] = true
+		push_warning(
+			"Invalid player ship id '%s'. Falling back to '%s'."
+			% [ship_id, DEFAULT_PLAYER_SHIP_ID]
+		)
+	return DEFAULT_PLAYER_SHIP_ID
+
+
+func _get_player_ship_source(stage_data: StageData) -> String:
+	if stage_data != null \
+			and not stage_data.test_player_ship_override.is_empty():
+		return "test_stage_override"
+	if has_node("/root/RunManager") \
+			and get_node("/root/RunManager").is_run_active:
+		return "run_config"
+	return "game_default"
 
 func spawn_player_ship(ship_id: String, spawn_info: Dictionary, parent: Node) -> Node:
 	var info := spawn_info.duplicate(true)
