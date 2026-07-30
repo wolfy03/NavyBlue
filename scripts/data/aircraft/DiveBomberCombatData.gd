@@ -21,6 +21,11 @@ var pull_out_aircraft_ratio: float = 0.5
 @export var pull_out_distance_m: float = 500.0
 @export var pull_out_climb_angle_degrees: float = 25.0
 
+@export_category("Target Pass")
+@export var target_pass_margin_m: float = 75.0
+@export var target_pass_check_max_altitude_m: float = 160.0
+@export var require_release_attempt_before_pass_abort := true
+
 @export var maximum_dive_target_angle_degrees: float = 25.0
 # Deprecated compatibility alias for older resources.
 @export var dive_entry_distance_m: float = 900.0
@@ -75,6 +80,12 @@ func validate() -> PackedStringArray:
 	if pull_out_climb_angle_degrees <= 0.0 \
 			or pull_out_climb_angle_degrees >= 90.0:
 		errors.append("pull-out climb angle must be in (0, 90).")
+	if target_pass_margin_m < 0.0:
+		errors.append("target_pass_margin_m must not be negative.")
+	if target_pass_check_max_altitude_m <= 0.0:
+		errors.append(
+			"target_pass_check_max_altitude_m must be greater than zero."
+		)
 	if maximum_dive_target_angle_degrees <= 0.0 \
 			or maximum_dive_target_angle_degrees > 90.0:
 		errors.append("maximum target angle must be in (0, 90].")

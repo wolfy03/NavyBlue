@@ -58,7 +58,7 @@ func _run() -> void:
 		squadron.destination != first_approach,
 		"large target movement repaths the approach"
 	)
-	squadron._mission_destination_reached = true
+	_mark_destination_reached(squadron, behavior)
 	behavior.update(0.0)
 	_check(
 		behavior.state == DiveBombMissionBehavior.State.DIVE_ENTRY,
@@ -81,7 +81,7 @@ func _run() -> void:
 		) == DiveBombAttackController.BeginDiveResult.STARTED,
 		"AI controller can be pre-started"
 	)
-	squadron._mission_destination_reached = true
+	_mark_destination_reached(squadron, behavior)
 	behavior.update(0.0)
 	_check(
 		behavior.state == DiveBombMissionBehavior.State.DIVING,
@@ -89,6 +89,15 @@ func _run() -> void:
 	)
 	controller.cancel()
 	await _finish(battle)
+
+
+func _mark_destination_reached(
+		squadron: AircraftSquadron,
+		behavior: DiveBombMissionBehavior
+) -> void:
+	squadron._mission_destination_reached = true
+	squadron._reached_destination_serial = \
+		behavior._active_destination_serial
 
 
 func _find_hostile_ship(

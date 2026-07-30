@@ -14,9 +14,6 @@ enum State {
 
 const EPSILON := 0.0001
 
-var approach_repath_interval_sec := 0.5
-var approach_repath_threshold_m := 150.0
-
 var owner_squadron: AircraftSquadron
 var mission_data: AirMissionData
 var state: State = State.FAILED
@@ -29,6 +26,7 @@ var _last_approach_position := Vector3.ZERO
 var _last_dive_entry_position := Vector3.ZERO
 var _approach_repath_left := 0.0
 var _current_mission_destination := Vector3.ZERO
+var _active_destination_serial := -1
 
 
 func setup(
@@ -49,6 +47,7 @@ func setup(
 	_last_dive_entry_position = Vector3.ZERO
 	_approach_repath_left = 0.0
 	_current_mission_destination = Vector3.ZERO
+	_active_destination_serial = -1
 	return true
 
 
@@ -121,6 +120,7 @@ func get_debug_snapshot() -> Dictionary:
 		"destination_initialized": _destination_initialized,
 		"approach_position": _last_approach_position,
 		"approach_repath_timer": _approach_repath_left,
+		"active_destination_serial": _active_destination_serial,
 		"dive_entry_position": _last_dive_entry_position,
 		"mission_destination_reached":
 			owner_squadron.has_reached_mission_destination() \
@@ -141,29 +141,36 @@ func _update_approaching(target: Node3D, delta: float) -> void:
 		or (
 			_approach_repath_left <= 0.0
 			and _current_mission_destination.distance_to(next_position) \
-				>= maxf(approach_repath_threshold_m, 0.0)
+				>= _get_approach_repath_threshold()
 		)
 	if should_update:
 		_last_approach_position = next_position
 		_current_mission_destination = next_position
-		owner_squadron.set_mission_destination(next_position)
+		_active_destination_serial = \
+			owner_squadron.set_mission_destination(next_position)
 		_destination_initialized = true
-		_approach_repath_left = maxf(
-			approach_repath_interval_sec,
-			0.0
-		)
-	if not owner_squadron.has_reached_mission_destination():
+		_approach_repath_left = _get_approach_repath_interval()
+	if not owner_squadron.has_reached_mission_destination(
+		_active_destination_serial
+	):
 		return
 	state = State.DIVE_ENTRY
 	_destination_initialized = false
+	_active_destination_serial = -1
 
 
 func _update_dive_entry(target: Node3D) -> void:
 	if not _destination_initialized:
 		_last_dive_entry_position = _calculate_dive_entry_position(target)
-		owner_squadron.set_mission_destination(_last_dive_entry_position)
+		_active_destination_serial = \
+			owner_squadron.set_mission_destination(
+				_last_dive_entry_position,
+				true
+			)
 		_destination_initialized = true
-	if not owner_squadron.has_reached_mission_destination():
+	if not owner_squadron.has_reached_mission_destination(
+		_active_destination_serial
+	):
 		return
 	var controller := owner_squadron.dive_bomb_controller
 	if controller == null:
@@ -191,7 +198,9 @@ func _update_dive_entry(target: Node3D) -> void:
 				DiveBombAttackController.BeginDiveResult \
 					.INVALID_CONFIGURATION, \
 				DiveBombAttackController.BeginDiveResult \
-					.CONTROL_CONFLICT:
+					.CONTROL_CONFLICT, \
+				DiveBombAttackController.BeginDiveResult \
+					.RELEASE_CONFLICT:
 			_finish_and_return(false)
 
 
@@ -256,12 +265,17 @@ func _begin_egress(target: Node3D) -> void:
 	var destination := owner_squadron.formation_center \
 		+ direction * maxf(distance, 0.0)
 	destination.y = _get_operating_world_altitude()
-	owner_squadron.set_mission_destination(destination)
+	_active_destination_serial = owner_squadron.set_mission_destination(
+		destination,
+		true
+	)
 	state = State.EGRESS
 
 
 func _update_egress() -> void:
-	if not owner_squadron.has_reached_mission_destination():
+	if not owner_squadron.has_reached_mission_destination(
+		_active_destination_serial
+	):
 		return
 	successful = true
 	_finished = true
@@ -302,6 +316,22 @@ func _calculate_approach_position(target: Node3D) -> Vector3:
 	result.y = target.global_position.y \
 		+ maxf(dive_data.dive_entry_altitude_m, 1.0)
 	return result
+
+
+func _get_approach_repath_interval() -> float:
+	return maxf(
+		mission_data.approach_repath_interval_sec \
+		if mission_data != null else 0.5,
+		0.0
+	)
+
+
+func _get_approach_repath_threshold() -> float:
+	return maxf(
+		mission_data.approach_repath_threshold_m \
+		if mission_data != null else 150.0,
+		0.0
+	)
 
 
 func _calculate_dive_entry_position(target: Node3D) -> Vector3:
@@ -396,5 +426,6 @@ func _is_valid_setup(target: Node3D) -> bool:
 		and target != null \
 		and is_instance_valid(target) \
 		and mission_data != null \
+		and mission_data.validate().is_empty() \
 		and mission_data.mission_type \
 			== AirMissionData.MissionType.STRIKE_SHIP

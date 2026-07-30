@@ -270,30 +270,37 @@ func _connect_dive_feedback(squadron: AircraftSquadron) -> void:
 	if squadron == null or squadron.dive_bomb_controller == null:
 		return
 	var controller := squadron.dive_bomb_controller
-	var completed_callback := _on_automatic_release_completed.bind(squadron)
-	if not controller.automatic_release_completed.is_connected(
+	var completed_callback := \
+		_on_aircraft_automatic_release_completed.bind(squadron)
+	if not controller.aircraft_automatic_release_completed.is_connected(
 		completed_callback
 	):
-		controller.automatic_release_completed.connect(completed_callback)
-	var pass_callback := _on_dive_release_pass_finished.bind(squadron)
-	if not squadron.dive_release_pass_finished.is_connected(pass_callback):
-		squadron.dive_release_pass_finished.connect(pass_callback)
+		controller.aircraft_automatic_release_completed.connect(
+			completed_callback
+		)
+	var pass_callback := _on_automatic_release_pass_completed.bind(
+		squadron
+	)
+	if not controller.automatic_release_pass_completed.is_connected(
+		pass_callback
+	):
+		controller.automatic_release_pass_completed.connect(pass_callback)
 
 
-func _on_automatic_release_completed(
+func _on_aircraft_automatic_release_completed(
+		_aircraft_id: int,
 		released_count: int,
+		total_count: int,
 		squadron: AircraftSquadron
 ) -> void:
 	if not selected_squadrons.has(squadron):
 		return
-	var total_count := squadron.dive_bomb_controller \
-		.get_release_aircraft_count()
 	command_feedback.emit(
 		"Bomb release: %d/%d" % [released_count, total_count]
 	)
 
 
-func _on_dive_release_pass_finished(
+func _on_automatic_release_pass_completed(
 		released_count: int,
 		failed_count: int,
 		_skipped_count: int,

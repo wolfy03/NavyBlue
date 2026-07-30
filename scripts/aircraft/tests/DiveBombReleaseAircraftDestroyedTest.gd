@@ -6,6 +6,7 @@ const STAGE: StageData = preload(
 )
 
 var _failures: Array[String] = []
+var _pass_completed_count := 0
 
 
 func _initialize() -> void:
@@ -16,69 +17,68 @@ func _run() -> void:
 	var battle := BATTLE_SCENE.instantiate() as BattleScene
 	battle.stage_override = STAGE
 	root.add_child(battle)
-	var squadron := _launch_test_squadron(battle)
+	var squadron := _launch_squadron(battle)
 	if squadron == null:
 		await _finish(battle)
 		return
 	var aircraft := squadron.get_alive_aircraft()
 	for index in range(1, aircraft.size()):
 		aircraft[index].weapon_controller.remaining_ammunition = 0
-		aircraft[index].global_position = Vector3(
-			float(index) * 20.0,
-			120.0,
-			200.0
-		)
-	aircraft[0].weapon_controller.release_cooldown_left = 0.08
-	aircraft[0].global_position = Vector3(0.0, 95.0, 200.0)
+		aircraft[index].global_position.y = 120.0
+	var victim := aircraft[0]
+	var victim_id := victim.get_instance_id()
+	victim.global_position = Vector3(0.0, 95.0, 200.0)
 	var controller := squadron.dive_bomb_controller
-	controller.maximum_additional_release_retries = 3
-	controller.release_retry_interval_sec = 0.05
+	controller.automatic_release_pass_completed.connect(
+		func(
+			_released: int,
+			_failed: int,
+			_skipped: int,
+			_cancelled: bool
+		) -> void:
+			_pass_completed_count += 1
+	)
 	_check(
 		controller.begin_dive_with_source(
 			Vector3.ZERO,
 			Vector3.ZERO,
 			AircraftSquadron.DiveControlSource.PLAYER
 		) == DiveBombAttackController.BeginDiveResult.STARTED,
-		"retry test dive starts"
+		"destroyed-aircraft dive starts"
 	)
 	controller.dive_elapsed_seconds = 1.0
 	controller.update_dive(0.0)
 	controller.update_dive(0.0)
 	_check(
-		controller.get_aircraft_release_state(aircraft[0]) \
-			== DiveBombAttackController.AircraftReleaseState.PENDING,
-		"temporary cooldown keeps release pending"
-	)
-	_check(
-		int(controller.get_debug_snapshot().aircraft_retry_counts.get(
-			aircraft[0].get_instance_id(),
-			0
-		)) == 1,
-		"temporary failure records one retry"
-	)
-	squadron._update_aircraft_weapon_releases(0.1)
-	controller.update_dive(0.1)
-	_check(
-		controller.get_aircraft_release_state(aircraft[0]) \
+		controller.get_aircraft_release_state(victim) \
 			== DiveBombAttackController.AircraftReleaseState.REQUESTED,
-		"release is retried after cooldown expires"
+		"aircraft has an active payload request before destruction"
 	)
-	squadron._update_aircraft_weapon_releases(0.0)
+	victim.destroy_for_cleanup()
 	_check(
-		controller.get_aircraft_release_state(aircraft[0]) \
-			== DiveBombAttackController.AircraftReleaseState.RELEASED,
-		"retried request succeeds after projectile creation"
+		int(controller._aircraft_release_states.get(
+			victim_id,
+			-1
+		)) == DiveBombAttackController.AircraftReleaseState.FAILED,
+		"destroyed aircraft request resolves to FAILED by aircraft id"
+	)
+	_check(
+		squadron.get_release_debug_snapshot().active_request_ids.is_empty(),
+		"destroyed aircraft active request is removed immediately"
 	)
 	controller.update_dive(0.0)
-	var last_result := squadron.get_last_release_result()
 	_check(
-		int(last_result.get("released_count", 0)) == 1,
-		"last release result preserves retry success"
+		controller.state == DiveBombAttackController.State.PULLING_OUT,
+		"controller leaves RELEASING after aircraft destruction"
+	)
+	_check(
+		_pass_completed_count == 1,
+		"release pass completion is emitted once"
 	)
 	await _finish(battle)
 
 
-func _launch_test_squadron(battle: BattleScene) -> AircraftSquadron:
+func _launch_squadron(battle: BattleScene) -> AircraftSquadron:
 	var carrier := battle.player_ship as ShipUnit
 	var squadron := carrier.carrier_air_group.launch_manual_squadron(
 		"basic_bomber_squadron"
@@ -99,9 +99,9 @@ func _finish(battle: BattleScene) -> void:
 	battle.queue_free()
 	await process_frame
 	for failure in _failures:
-		push_error("DIVE BOMB RELEASE RETRY TEST: %s" % failure)
+		push_error("DIVE BOMB AIRCRAFT DESTROYED TEST: %s" % failure)
 	print(
-		"DIVE_BOMB_RELEASE_RETRY_TEST %s"
+		"DIVE_BOMB_RELEASE_AIRCRAFT_DESTROYED_TEST %s"
 		% ("PASS" if _failures.is_empty() else "FAIL")
 	)
 	quit(0 if _failures.is_empty() else 1)
