@@ -31,28 +31,29 @@ func _run() -> void:
 	var aircraft := squadron.get_alive_aircraft()[0]
 	var aircraft_id := aircraft.get_instance_id()
 	squadron.begin_dive_release_pass()
-	_check(
-		squadron.request_aircraft_weapon_release(
-			aircraft,
+	var request_result := squadron.request_aircraft_payload_release(
+		aircraft,
+		AircraftPayloadReleaseContext.create(
 			Vector3.ZERO,
 			Vector3.ZERO
-		) == AircraftSquadron.AircraftReleaseRequestResult.QUEUED,
+		)
+	)
+	_check(
+		request_result.status \
+			== AircraftPayloadReleaseRequestResult.Status.QUEUED,
 		"payload request is queued"
 	)
 	var request_ids: Array = squadron \
 		.get_release_debug_snapshot().active_request_ids
 	_check(request_ids.size() == 1, "one request is active")
-	if request_ids.size() == 1:
-		squadron._finish_aircraft_release_request(
-			null,
-			int(request_ids[0]),
-			false,
-			true,
-			AircraftWeaponController.ReleaseFailureReason.CANCELLED
-		)
-	var result: Dictionary = squadron._last_aircraft_release_results.get(
-		aircraft_id,
-		{}
+	aircraft.queue_free()
+	await process_frame
+	squadron.payload_release_coordinator.cancel_aircraft_requests(
+		aircraft_id
+	)
+	var result := squadron.payload_release_coordinator \
+		.get_last_aircraft_result(
+			aircraft_id
 	)
 	_check(
 		not result.is_empty() and bool(result.get("cancelled", false)),

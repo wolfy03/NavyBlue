@@ -47,6 +47,7 @@ var _fleet_controller_ref: WeakRef
 var _fleet_tactical_context: FleetMemberContext
 var _weapon_database := WEAPON_DATABASE_SCRIPT.new()
 var weapon_runtime_stats_by_slot: Dictionary = {}
+var battle_services: BattleServices
 
 func setup(
 		data: ShipData,
@@ -54,13 +55,15 @@ func setup(
 		is_player: bool,
 		color: Color,
 		loadout: ShipWeaponLoadout = null,
-		runtime_stats_data: Dictionary = {}
+		runtime_stats_data: Dictionary = {},
+		next_battle_services: BattleServices = null
 ) -> void:
 	ship_data = data
 	ship_id = ship_data.id
 	team = team_name
 	player_controlled = is_player
 	team_color = color
+	battle_services = next_battle_services
 	weapon_loadout = loadout.duplicate_loadout() if loadout != null else null
 	set_weapon_runtime_stats_save_data(runtime_stats_data)
 	name = "%s_%s" % [ship_data.id, String(team)]
@@ -484,11 +487,12 @@ func _setup_carrier_components() -> void:
 		if has_air_group:
 			carrier_air_group.setup(
 				self,
-				ship_data.carrier_air_group_data
+				ship_data.carrier_air_group_data,
+				battle_services
 			)
 			carrier_air_group.process_mode = Node.PROCESS_MODE_INHERIT
 		else:
-			carrier_air_group.setup(self, null)
+			carrier_air_group.setup(self, null, battle_services)
 			carrier_air_group.process_mode = Node.PROCESS_MODE_DISABLED
 	var enable_air_group_ai := has_air_group \
 		and not player_controlled \

@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="WorldPointerSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/battle/WorldPointerSettings.gd" id="1_pointer"]
+
+[resource]
+script = ExtResource("1_pointer")
+selection_ray_length_m = 50000.0
+selection_collision_mask = 4294967295

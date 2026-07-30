@@ -1,6 +1,48 @@
-[gd_resource type="Resource" script_class="StageData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="StageData" load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
+[ext_resource type="Script" path="res://scripts/data/spawn/ShipSpawnData.gd" id="2_spawn"]
+
+[sub_resource type="Resource" id="Player"]
+script = ExtResource("2_spawn")
+ship_id = &"dd_bluewind"
+team = &"player"
+display_name = "BattleLoopPlayer"
+is_player = true
+use_explicit_transform = true
+explicit_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1800)
+
+[sub_resource type="Resource" id="Ally"]
+script = ExtResource("2_spawn")
+ship_id = &"cl_tidebreaker"
+team = &"ally"
+display_name = "BattleLoopAlly"
+use_explicit_transform = true
+explicit_transform = Transform3D(0.965926, 0, 0.258819, 0, 1, 0, -0.258819, 0, 0.965926, -450, 0, 2050)
+
+[sub_resource type="Resource" id="EnemyDestroyer"]
+script = ExtResource("2_spawn")
+ship_id = &"dd_bluewind"
+team = &"enemy"
+display_name = "BattleLoopEnemyDestroyer"
+use_explicit_transform = true
+explicit_transform = Transform3D(-0.996195, 0, -0.087156, 0, 1, 0, 0.087156, 0, -0.996195, -650, 0, -3600)
+
+[sub_resource type="Resource" id="EnemyCruiser"]
+script = ExtResource("2_spawn")
+ship_id = &"cl_tidebreaker"
+team = &"enemy"
+display_name = "BattleLoopEnemyCruiser"
+use_explicit_transform = true
+explicit_transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -3900)
+
+[sub_resource type="Resource" id="EnemyBattleship"]
+script = ExtResource("2_spawn")
+ship_id = &"bb_ironwake"
+team = &"enemy"
+display_name = "BattleLoopEnemyBattleship"
+use_explicit_transform = true
+explicit_transform = Transform3D(-0.984808, 0, 0.173648, 0, 1, 0, -0.173648, 0, -0.984808, 800, 0, -4200)
 
 [resource]
 script = ExtResource("1_stage")
@@ -8,43 +50,8 @@ id = "battle_loop_test"
 display_name = "Battle Loop Test"
 sea_id = "test_sea"
 difficulty = 1.0
-test_player_ship_override = "dd_bluewind"
-player_spawn = {
-"is_player": true,
-"name": "BattleLoopPlayer",
-"position": Vector3(0, 0, 1800),
-"rotation_y": 0.0,
-"team": "player"
-}
-ally_spawns = [{
-"is_player": false,
-"name": "BattleLoopAlly",
-"position": Vector3(-450, 0, 2050),
-"rotation_y": -15.0,
-"ship_id": "cl_tidebreaker",
-"team": "ally"
-}]
-enemy_spawns = [{
-"is_player": false,
-"name": "BattleLoopEnemyDestroyer",
-"position": Vector3(-650, 0, -3600),
-"rotation_y": 175.0,
-"ship_id": "dd_bluewind",
-"team": "enemy"
-}, {
-"is_player": false,
-"name": "BattleLoopEnemyCruiser",
-"position": Vector3(0, 0, -3900),
-"rotation_y": 180.0,
-"ship_id": "cl_tidebreaker",
-"team": "enemy"
-}, {
-"is_player": false,
-"name": "BattleLoopEnemyBattleship",
-"position": Vector3(800, 0, -4200),
-"rotation_y": -170.0,
-"ship_id": "bb_ironwake",
-"team": "enemy"
-}]
+player_spawn = SubResource("Player")
+ally_spawns = Array[ShipSpawnData]([SubResource("Ally")])
+enemy_spawns = Array[ShipSpawnData]([SubResource("EnemyDestroyer"), SubResource("EnemyCruiser"), SubResource("EnemyBattleship")])
 reward_table_id = "test_rewards"
 next_stage_candidates = Array[String](["battle_loop_test"])

@@ -48,7 +48,7 @@ func _run() -> void:
 			"torpedo payload is skipped by dive-bomb controller"
 		)
 	_check(
-		squadron.get_release_sequence_queued_count() == 0,
+		squadron.payload_release_coordinator.get_active_requested_count() == 0,
 		"no torpedo payload release is queued"
 	)
 	controller.cancel()

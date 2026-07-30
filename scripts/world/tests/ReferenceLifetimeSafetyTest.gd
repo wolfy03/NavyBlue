@@ -66,7 +66,7 @@ func _test_object_pool_skips_freed_entries() -> void:
 
 func _test_spawn_system_skips_freed_units() -> void:
 	var spawn_system := SpawnSystem.new()
-	var stale_unit := Node.new()
+	var stale_unit := ShipUnit.new()
 	spawn_system.spawned_units.append(stale_unit)
 	stale_unit.free()
 	spawn_system.clear_spawned_units()
@@ -139,7 +139,7 @@ func _test_hud_skips_freed_indicators() -> void:
 
 func _test_selection_and_debug_lists_prune_freed_nodes() -> void:
 	var input_manager := PlayerInputManager.new()
-	var stale_selection := Node3D.new()
+	var stale_selection := ShipUnit.new()
 	input_manager.selected_ships.append(stale_selection)
 	stale_selection.free()
 	input_manager._prune_selection()

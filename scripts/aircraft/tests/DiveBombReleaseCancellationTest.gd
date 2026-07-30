@@ -67,22 +67,22 @@ func _run() -> void:
 		controller.state == DiveBombAttackController.State.FAILED,
 		"cancelled controller cannot remain in RELEASING"
 	)
-	var result_before_update := squadron.get_last_release_result()
+	var result_before_update := squadron.get_last_payload_release_result()
 	_check(
-		bool(result_before_update.get("cancelled", false)),
+		result_before_update.cancelled,
 		"last release result records cancellation"
 	)
 	_check(
-		int(result_before_update.get("released_count", -1)) == 0,
+		result_before_update.released_count == 0,
 		"cancelled request is not counted as projectile success"
 	)
-	squadron._update_aircraft_weapon_releases(1.0)
+	squadron.payload_release_coordinator.update(1.0)
 	_check(
 		_projectile_count == 0,
 		"cancelled request cannot create a later projectile"
 	)
 	_check(
-		squadron.get_last_release_result() == result_before_update,
+		squadron.get_last_payload_release_result() == result_before_update,
 		"last release result survives active state cleanup"
 	)
 	await _finish(battle)

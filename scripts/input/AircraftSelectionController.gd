@@ -20,8 +20,6 @@ enum SelectionBlockReason {
 @export var minimum_drag_distance_pixels := 8.0
 @export var click_selection_radius_pixels := 18.0
 @export var squadron_command_spacing_m := 150.0
-@export var battlefield_boundary_margin_m := 250.0
-@export var debug_selection := false
 
 var selected_squadrons: Array[AircraftSquadron] = []
 var _drag_start := Vector2.ZERO
@@ -30,35 +28,25 @@ var _dragging := false
 
 var _camera: RTSCamera
 var _selection_rect: Control
-var _battlefield_bounds: BattlefieldBounds
-var _water_height_m := 0.0
+var _battle_environment: BattleEnvironment
+var _battle_services: BattleServices
 var _last_right_click_position := Vector3.ZERO
 var _last_input_consumer := ""
 var _input_enabled := true
 var _last_candidate_count := 0
 
 
-func _ready() -> void:
-	if has_node("/root/EventBus"):
-		var event_bus := get_node("/root/EventBus")
-		if not event_bus.battle_cleared.is_connected(_on_battle_ended):
-			event_bus.battle_cleared.connect(_on_battle_ended)
-		if not event_bus.battle_failed.is_connected(_on_battle_ended):
-			event_bus.battle_failed.connect(_on_battle_ended)
-		if not event_bus.battle_started.is_connected(_on_battle_started):
-			event_bus.battle_started.connect(_on_battle_started)
-
-
 func setup(
 		camera: Camera3D,
 		selection_rect: Control,
-		battlefield_bounds: BattlefieldBounds = null,
-		water_height_m: float = 0.0
+		environment: BattleEnvironment,
+		services: BattleServices
 ) -> void:
 	_camera = camera as RTSCamera
 	_selection_rect = selection_rect
-	_battlefield_bounds = battlefield_bounds
-	_water_height_m = water_height_m
+	_battle_environment = environment
+	_battle_services = services
+	_connect_battle_events()
 	_input_enabled = true
 	if _selection_rect != null:
 		_selection_rect.visible = false
@@ -194,10 +182,13 @@ func issue_move_command(
 				* squadron_command_spacing_m
 		)
 		var destination := world_position + offset
-		if _battlefield_bounds != null:
-			destination = _battlefield_bounds.clamp_to_bounds(
+		if _battle_environment != null \
+				and _battle_environment.battlefield_bounds != null:
+			destination = _battle_environment.battlefield_bounds \
+				.clamp_to_bounds(
 				destination,
-				battlefield_boundary_margin_m
+				_battle_environment.rules.aircraft_command_margin_m \
+					if _battle_environment.rules != null else 100.0
 			)
 		issued = squadrons[index].issue_player_move_command(
 			destination,
@@ -219,7 +210,8 @@ func issue_move_from_screen(
 	if point == null:
 		return false
 	var world_position := point as Vector3
-	world_position.y = _water_height_m
+	world_position.y = _battle_environment.sea_level_m \
+		if _battle_environment != null else 0.0
 	return issue_move_command(world_position, attack_target)
 
 
@@ -323,7 +315,11 @@ func _get_selection_candidates() -> Array[AircraftSquadron]:
 		var squadron := value as AircraftSquadron
 		if _is_selectable_squadron(squadron):
 			result.append(squadron)
-		elif debug_selection and squadron != null:
+		elif _battle_environment != null \
+				and _battle_environment.debug_settings != null \
+				and _battle_environment.debug_settings \
+					.log_aircraft_missions \
+				and squadron != null:
 			print_debug(
 				"Aircraft selection blocked: squadron=%s reason=%s"
 				% [
@@ -448,6 +444,23 @@ func _update_selection_rect() -> void:
 	_selection_rect.position = bounds.position
 	_selection_rect.size = bounds.size
 	_selection_rect.visible = true
+
+
+func _connect_battle_events() -> void:
+	var event_bus := _battle_services.event_bus \
+		if _battle_services != null else null
+	if event_bus == null:
+		return
+	var connections := {
+		&"battle_cleared": Callable(self, &"_on_battle_ended"),
+		&"battle_failed": Callable(self, &"_on_battle_ended"),
+		&"battle_started": Callable(self, &"_on_battle_started"),
+	}
+	for signal_name: StringName in connections:
+		var callback: Callable = connections[signal_name]
+		if event_bus.has_signal(signal_name) \
+				and not event_bus.is_connected(signal_name, callback):
+			event_bus.connect(signal_name, callback)
 
 
 func _on_battle_ended(_stage_id: String) -> void:

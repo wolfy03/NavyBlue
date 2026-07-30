@@ -65,12 +65,17 @@ func _run() -> void:
 	controller.cancel()
 
 	var aircraft := squadron.get_alive_aircraft()[0]
+	var release_context := AircraftPayloadReleaseContext.create(
+		Vector3.ZERO,
+		Vector3.ZERO
+	)
+	var request_result := squadron.request_aircraft_payload_release(
+		aircraft,
+		release_context
+	)
 	_check(
-		squadron.request_aircraft_weapon_release(
-			aircraft,
-			Vector3.ZERO,
-			Vector3.ZERO
-		) == AircraftSquadron.AircraftReleaseRequestResult.QUEUED,
+		request_result.status \
+			== AircraftPayloadReleaseRequestResult.Status.QUEUED,
 		"previous payload request is queued"
 	)
 	_check(

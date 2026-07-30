@@ -18,20 +18,17 @@ var _failures: Array[String] = []
 
 func _initialize() -> void:
 	_check(
-		WEAPON_STAGE.test_player_ship_override == "dd_bluewind" \
+		WEAPON_STAGE.player_spawn.ship_id == &"dd_bluewind" \
 			and not _contains_ship(WEAPON_STAGE.ally_spawns, "cv_seabastion"),
 		"weapon stage is carrier-independent"
 	)
 	_check(
-		CARRIER_PLAYER_STAGE.test_player_ship_override == "cv_seabastion" \
-			and bool(CARRIER_PLAYER_STAGE.player_spawn.get(
-				"is_player",
-				false
-			)),
+		CARRIER_PLAYER_STAGE.player_spawn.ship_id == &"cv_seabastion" \
+			and CARRIER_PLAYER_STAGE.player_spawn.is_player,
 		"carrier player stage owns the player carrier"
 	)
 	_check(
-		CARRIER_AI_STAGE.test_player_ship_override == "dd_bluewind" \
+		CARRIER_AI_STAGE.player_spawn.ship_id == &"dd_bluewind" \
 			and _contains_ship(
 				CARRIER_AI_STAGE.ally_spawns,
 				"cv_seabastion"
@@ -39,17 +36,19 @@ func _initialize() -> void:
 		"carrier AI stage owns a non-player allied carrier"
 	)
 	_check(
-		BATTLE_LOOP_STAGE.test_player_ship_override == "dd_bluewind" \
+		BATTLE_LOOP_STAGE.player_spawn.ship_id == &"dd_bluewind" \
 			and BATTLE_LOOP_STAGE.enemy_spawns.size() == 3,
 		"battle loop stage preserves the general battle fixture"
 	)
 	_finish()
 
 
-func _contains_ship(spawns: Array, ship_id: String) -> bool:
+func _contains_ship(
+		spawns: Array[ShipSpawnData],
+		ship_id: String
+) -> bool:
 	for value in spawns:
-		if value is Dictionary \
-				and str(value.get("ship_id", "")) == ship_id:
+		if value != null and String(value.ship_id) == ship_id:
 			return true
 	return false
 

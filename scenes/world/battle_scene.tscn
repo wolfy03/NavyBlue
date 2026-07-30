@@ -16,6 +16,7 @@
 [ext_resource type="PackedScene" path="res://scenes/ui/carrier_air_group_panel.tscn" id="14_carrier_panel"]
 [ext_resource type="Script" path="res://scripts/aircraft/combat/AircraftCombatCoordinator.gd" id="15_air_combat"]
 [ext_resource type="Script" path="res://scripts/input/AircraftSelectionController.gd" id="16_air_selection"]
+[ext_resource type="Script" path="res://scripts/battle/BattleEnvironment.gd" id="17_environment"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -57,6 +58,9 @@ battlefield_settings = ExtResource("10_settings")
 [node name="BattlefieldBounds" type="Node3D" parent="."]
 script = ExtResource("11_bounds")
 settings = ExtResource("10_settings")
+
+[node name="BattleEnvironment" type="Node" parent="."]
+script = ExtResource("17_environment")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1393857481]
 environment = SubResource("Environment_battle")

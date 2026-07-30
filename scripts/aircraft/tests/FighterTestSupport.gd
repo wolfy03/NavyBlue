@@ -17,7 +17,8 @@ static func spawn_aircraft(
 		data: AircraftData,
 		team: StringName,
 		position: Vector3,
-		forward: Vector3 = Vector3.FORWARD
+		forward: Vector3 = Vector3.FORWARD,
+		battle_services: BattleServices = null
 ) -> AircraftUnit:
 	var aircraft := AIRCRAFT_SCENE.instantiate() as AircraftUnit
 	parent.add_child(aircraft)
@@ -28,7 +29,7 @@ static func spawn_aircraft(
 		safe_forward,
 		Vector3.UP
 	)
-	aircraft.setup(data, team, Vector3.ZERO)
+	aircraft.setup(data, team, Vector3.ZERO, battle_services)
 	aircraft.set_physics_process(false)
 	return aircraft
 

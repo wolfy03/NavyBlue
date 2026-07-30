@@ -26,13 +26,21 @@ var _carrier_unavailable := false
 var _battle_resolved := false
 var _carrier_loss_resolved := false
 var _validation_warnings: Dictionary = {}
+var battle_services: BattleServices
 
 
-func setup(ship: ShipUnit, data: CarrierAirGroupData) -> void:
+func setup(
+		ship: ShipUnit,
+		data: CarrierAirGroupData,
+		next_battle_services: BattleServices = null
+) -> void:
 	_disconnect_owner_health()
 	_release_active_squadrons()
 	owner_ship = ship
 	air_group_data = data
+	battle_services = next_battle_services \
+		if next_battle_services != null \
+		else (owner_ship.battle_services if owner_ship != null else null)
 	active_squadrons.clear()
 	squadron_states.clear()
 	available_squadron_ids.clear()
@@ -128,7 +136,8 @@ func launch_squadron(
 		owner_ship,
 		template,
 		aircraft_parent,
-		launch_count
+		launch_count,
+		battle_services
 	)
 	if squadron.state == AircraftSquadron.State.DESTROYED \
 			or squadron.aircraft_units.is_empty():
@@ -148,8 +157,8 @@ func launch_squadron(
 	)
 	squadron.launch_to(world_position)
 	squadron_launched.emit(squadron)
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").squadron_launched.emit(squadron)
+	if battle_services != null:
+		battle_services.publish(&"squadron_launched", [squadron])
 	return squadron
 
 
@@ -757,8 +766,8 @@ func _on_squadron_recovered(squadron: AircraftSquadron) -> void:
 	active_squadrons.erase(squadron)
 	_disconnect_squadron(squadron)
 	squadron_recovered.emit(squadron)
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").squadron_recovered.emit(squadron)
+	if battle_services != null:
+		battle_services.publish(&"squadron_recovered", [squadron])
 	squadron.release_aircraft()
 	squadron.queue_free()
 
@@ -785,8 +794,8 @@ func _on_squadron_destroyed(squadron: AircraftSquadron) -> void:
 	active_squadrons.erase(squadron)
 	_disconnect_squadron(squadron)
 	squadron_destroyed.emit(squadron)
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").squadron_destroyed.emit(squadron)
+	if battle_services != null:
+		battle_services.publish(&"squadron_destroyed", [squadron])
 	squadron.release_aircraft()
 	squadron.queue_free()
 

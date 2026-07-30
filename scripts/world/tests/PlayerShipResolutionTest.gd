@@ -16,9 +16,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var run_manager := root.get_node_or_null("RunManager")
-	var spawn_system := SpawnSystem.new()
-	root.add_child(spawn_system)
-	await process_frame
+	var resolver := PlayerShipResolver.new()
+	resolver.setup(run_manager)
 	var config := NewRunConfig.new()
 	config.starting_ship_id = "cv_seabastion"
 	run_manager.start_new_run(config)
@@ -27,20 +26,19 @@ func _run() -> void:
 		"RunManager owns the selected ship id"
 	)
 	_check(
-		spawn_system._resolve_player_ship_id(TEST_LEVEL) \
-			== "cv_seabastion",
+		resolver.resolve().ship_id == &"cv_seabastion",
 		"production stage resolves the run-selected ship"
 	)
 	config.starting_ship_id = "dd_bluewind"
 	run_manager.start_new_run(config)
+	var test_config := BattleTestConfig.new()
+	test_config.enabled = true
+	test_config.player_ship_override = CARRIER_TEST.player_spawn.ship_id
 	_check(
-		spawn_system._resolve_player_ship_id(CARRIER_TEST) \
-			== "cv_seabastion",
-		"explicit test stage override wins in tests"
+		resolver.resolve(test_config).ship_id == &"cv_seabastion",
+		"BattleTestConfig override wins in tests"
 	)
 	run_manager.reset_run()
-	spawn_system.queue_free()
-	await process_frame
 	_finish()
 
 

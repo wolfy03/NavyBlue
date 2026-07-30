@@ -29,20 +29,25 @@ func _run() -> void:
 		aircraft.activate()
 		aircraft.set_physics_process(false)
 	var aircraft := squadron.get_alive_aircraft()[0]
-	squadron.aircraft_release_request_timeout_sec = 0.01
-	_check(
-		squadron.request_aircraft_weapon_release(
-			aircraft,
+	var release_settings := squadron.payload_release_settings.duplicate(
+		true
+	) as AircraftPayloadReleaseSettings
+	release_settings.request_timeout_sec = 0.01
+	squadron.set_payload_release_settings(release_settings)
+	var request_result := squadron.request_aircraft_payload_release(
+		aircraft,
+		AircraftPayloadReleaseContext.create(
 			Vector3.ZERO,
 			Vector3.ZERO
-		) == AircraftSquadron.AircraftReleaseRequestResult.QUEUED,
+		)
+	)
+	_check(
+		request_result.status \
+			== AircraftPayloadReleaseRequestResult.Status.QUEUED,
 		"payload request is queued"
 	)
-	for request_id in squadron._active_aircraft_release_requests.keys():
-		var data: Dictionary = \
-			squadron._active_aircraft_release_requests[request_id]
-		data["requested_at"] = Time.get_ticks_msec() - 1000
-	squadron._update_release_request_timeouts()
+	aircraft.weapon_controller.release_cooldown_left = 10.0
+	squadron.payload_release_coordinator.update(0.02)
 	_check(
 		squadron.get_release_debug_snapshot().active_request_ids.is_empty(),
 		"timed-out request is removed"
@@ -51,9 +56,9 @@ func _run() -> void:
 		not aircraft.weapon_controller.is_release_in_progress(),
 		"timed-out WeaponController request is cancelled"
 	)
-	var result: Dictionary = squadron._last_aircraft_release_results.get(
-		aircraft.get_instance_id(),
-		{}
+	var result := squadron.payload_release_coordinator \
+		.get_last_aircraft_result(
+			aircraft.get_instance_id()
 	)
 	_check(
 		bool(result.get("cancelled", false)),

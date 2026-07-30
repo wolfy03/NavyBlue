@@ -17,8 +17,8 @@ func _initialize() -> void:
 		"StageData does not own the player ship type"
 	)
 	_check(
-		defaults.test_player_ship_override.is_empty(),
-		"StageData test ship override defaults to empty"
+		not _has_property(defaults, &"test_player_ship_override"),
+		"StageData does not contain a production test override"
 	)
 	for path in TEST_STAGE_PATHS:
 		var stage := load(path) as StageData

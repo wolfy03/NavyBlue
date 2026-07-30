@@ -31,8 +31,12 @@ func _run() -> void:
 	aircraft[0].weapon_controller.release_cooldown_left = 0.08
 	aircraft[0].global_position = Vector3(0.0, 95.0, 200.0)
 	var controller := squadron.dive_bomb_controller
-	controller.maximum_additional_release_retries = 3
-	controller.release_retry_interval_sec = 0.05
+	var release_settings := squadron.payload_release_settings.duplicate(
+		true
+	) as AircraftPayloadReleaseSettings
+	release_settings.maximum_additional_retries = 3
+	release_settings.retry_interval_sec = 0.05
+	squadron.set_payload_release_settings(release_settings)
 	_check(
 		controller.begin_dive_with_source(
 			Vector3.ZERO,
@@ -56,23 +60,23 @@ func _run() -> void:
 		)) == 1,
 		"temporary failure records one retry"
 	)
-	squadron._update_aircraft_weapon_releases(0.1)
+	squadron.payload_release_coordinator.update(0.1)
 	controller.update_dive(0.1)
 	_check(
 		controller.get_aircraft_release_state(aircraft[0]) \
 			== DiveBombAttackController.AircraftReleaseState.REQUESTED,
 		"release is retried after cooldown expires"
 	)
-	squadron._update_aircraft_weapon_releases(0.0)
+	squadron.payload_release_coordinator.update(0.0)
 	_check(
 		controller.get_aircraft_release_state(aircraft[0]) \
 			== DiveBombAttackController.AircraftReleaseState.RELEASED,
 		"retried request succeeds after projectile creation"
 	)
 	controller.update_dive(0.0)
-	var last_result := squadron.get_last_release_result()
+	var last_result := squadron.get_last_payload_release_result()
 	_check(
-		int(last_result.get("released_count", 0)) == 1,
+		last_result.released_count == 1,
 		"last release result preserves retry success"
 	)
 	await _finish(battle)

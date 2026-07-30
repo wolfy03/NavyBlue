@@ -30,8 +30,8 @@ func _run() -> void:
 	for aircraft in squadron.aircraft_units:
 		aircraft.activate()
 		aircraft.set_physics_process(false)
-	squadron.weapon_release_sequence_completed.connect(
-		_on_release_sequence_completed
+	squadron.dive_release_pass_finished.connect(
+		_on_release_pass_finished
 	)
 	var attack_target := _find_hostile_ship(battle, carrier)
 	_check(attack_target != null, "manual dive test finds a hostile target")
@@ -132,7 +132,7 @@ func _advance_dive(
 		squadron: AircraftSquadron,
 		delta: float
 ) -> void:
-	squadron._update_aircraft_weapon_releases(delta)
+	squadron.payload_release_coordinator.update(delta)
 	squadron.dive_bomb_controller.update_dive(delta)
 	for aircraft in squadron.get_alive_aircraft():
 		aircraft.movement.update_movement(delta)
@@ -146,9 +146,11 @@ func _align_aircraft_with_formation(
 			+ aircraft.formation_offset
 
 
-func _on_release_sequence_completed(
-		_queued_count: int,
-		released_count: int
+func _on_release_pass_finished(
+		released_count: int,
+		_failed_count: int,
+		_skipped_count: int,
+		_cancelled: bool
 ) -> void:
 	_sequence_completed_count += 1
 	_sequence_released_count = released_count

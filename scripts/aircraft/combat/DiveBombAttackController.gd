@@ -54,12 +54,10 @@ enum ReleaseBlockReason {
 
 const EPSILON := 0.0001
 
-@export_range(0, 20, 1) var maximum_additional_release_retries := 3
-@export var release_retry_interval_sec := 0.05
-@export var maximum_release_completion_wait_sec := 0.5
-
 var owner_squadron: AircraftSquadron
 var dive_data: DiveBomberCombatData
+var payload_release_settings: AircraftPayloadReleaseSettings
+var release_policy := DiveReleasePolicy.new()
 var state: State = State.IDLE
 var target_position := Vector3.ZERO
 var target_velocity := Vector3.ZERO
@@ -90,6 +88,8 @@ func setup(squadron: AircraftSquadron) -> void:
 		if squadron != null \
 		and squadron.squadron_data != null \
 		and squadron.squadron_data.aircraft_data != null else null
+	payload_release_settings = squadron.payload_release_settings \
+		if squadron != null else null
 	if owner_squadron != null \
 			and not owner_squadron.aircraft_weapon_release_finished \
 				.is_connected(_on_aircraft_weapon_release_finished):
@@ -120,18 +120,6 @@ func reset() -> void:
 	_release_pass_finished = false
 	_release_pass_cancelled = false
 	_release_conflict_warning_emitted = false
-
-
-func begin_dive(
-		next_target_position: Vector3,
-		next_target_velocity: Vector3,
-		source: AircraftSquadron.DiveControlSource
-) -> BeginDiveResult:
-	return begin_dive_with_source(
-		next_target_position,
-		next_target_velocity,
-		source
-	)
 
 
 func begin_dive_with_source(
@@ -222,7 +210,8 @@ func begin_pull_out() -> void:
 	else:
 		_pull_out_forward = _pull_out_forward.normalized()
 	_release_completion_wait_left = maxf(
-		maximum_release_completion_wait_sec,
+		payload_release_settings.completion_wait_sec \
+			if payload_release_settings != null else 0.5,
 		0.0
 	)
 	state = State.PULLING_OUT
@@ -287,46 +276,35 @@ func get_aircraft_release_state(aircraft: AircraftUnit) -> int:
 	))
 
 
-func get_attack_result() -> Dictionary:
-	var squadron_result := {}
+func get_attack_result_data() -> DiveAttackResult:
+	var result := DiveAttackResult.new()
+	var squadron_result: AircraftPayloadReleasePassResult
 	if _release_pass_finished \
 			and owner_squadron != null \
 			and is_instance_valid(owner_squadron):
-		squadron_result = owner_squadron.get_last_release_result()
-	var released_count := int(squadron_result.get(
-		"released_count",
-		_released_aircraft_count
-	))
-	return {
-		"successful": released_count > 0,
-		"release_started": _total_release_request_count > 0,
-		"release_failed":
-			released_count <= 0 \
-			and (_failed_aircraft_count > 0 \
-				or _skipped_aircraft_count > 0),
-		"requested_count": int(squadron_result.get(
-			"requested_count",
-			_total_release_request_count
-		)),
-		"released_count": released_count,
-		"failed_count": int(squadron_result.get(
-			"failed_count",
-			_failed_aircraft_count
-		)),
-		"skipped_count": int(squadron_result.get(
-			"skipped_count",
-			_skipped_aircraft_count
-		)),
-		"cancelled": bool(squadron_result.get(
-			"cancelled",
-			_release_pass_cancelled
-		)),
-		"remaining_ammunition":
-			owner_squadron.get_total_remaining_ammunition() \
-			if owner_squadron != null \
-			and is_instance_valid(owner_squadron) else 0,
-		"final_state": State.keys()[int(state)],
-	}
+		squadron_result = owner_squadron \
+			.get_last_payload_release_result()
+	result.released_count = squadron_result.released_count \
+		if squadron_result != null else _released_aircraft_count
+	result.successful = result.released_count > 0
+	result.release_started = _total_release_request_count > 0
+	result.release_failed = result.released_count <= 0 \
+		and (_failed_aircraft_count > 0 \
+			or _skipped_aircraft_count > 0)
+	result.requested_count = squadron_result.requested_count \
+		if squadron_result != null else _total_release_request_count
+	result.failed_count = squadron_result.failed_count \
+		if squadron_result != null else _failed_aircraft_count
+	result.skipped_count = squadron_result.skipped_count \
+		if squadron_result != null else _skipped_aircraft_count
+	result.cancelled = squadron_result.cancelled \
+		if squadron_result != null else _release_pass_cancelled
+	result.remaining_ammunition = owner_squadron \
+		.get_total_remaining_ammunition() \
+		if owner_squadron != null \
+		and is_instance_valid(owner_squadron) else 0
+	result.final_state = State.keys()[int(state)]
+	return result
 
 
 func get_lowest_alive_aircraft_altitude() -> float:
@@ -371,13 +349,11 @@ func get_debug_snapshot() -> Dictionary:
 				_get_aircraft_altitude(aircraft)
 	var squadron_released_count := 0
 	if owner_squadron != null and is_instance_valid(owner_squadron):
-		squadron_released_count = int(
-			owner_squadron.get_last_release_result().get(
-				"released_count",
-				0
-			)
-		) if _release_pass_finished else \
-			owner_squadron.get_release_sequence_released_count()
+		squadron_released_count = owner_squadron \
+			.get_last_payload_release_result().released_count \
+			if _release_pass_finished else owner_squadron \
+				.payload_release_coordinator \
+				.get_active_completed_count()
 	return {
 		"state": State.keys()[int(state)],
 		"control_source": control_source,
@@ -444,21 +420,30 @@ func _update_individual_aircraft_release() -> void:
 				AircraftReleaseState.FAILED
 			continue
 		var altitude := _get_aircraft_altitude(aircraft)
-		if altitude < dive_data.minimum_release_altitude_m:
-			_aircraft_release_states[aircraft_id] = \
-				AircraftReleaseState.FAILED
-			_previous_aircraft_altitudes[aircraft_id] = altitude
-			continue
-		if dive_elapsed_seconds \
-				< dive_data.minimum_dive_time_before_release_sec \
-				or float(_aircraft_release_retry_left.get(
+		if float(_aircraft_release_retry_left.get(
 					aircraft_id,
 					0.0
-				)) > 0.0 \
-				or not _has_aircraft_crossed_release_altitude(
-					aircraft,
-					altitude
-				):
+				)) > 0.0:
+			_previous_aircraft_altitudes[aircraft_id] = altitude
+			continue
+		var previous_altitude := float(
+			_previous_aircraft_altitudes.get(
+				aircraft_id,
+				altitude
+			)
+		)
+		var decision := release_policy.evaluate(
+			altitude,
+			previous_altitude,
+			dive_elapsed_seconds,
+			dive_data
+		)
+		if decision == DiveReleasePolicy.Decision.WAIT:
+			_previous_aircraft_altitudes[aircraft_id] = altitude
+			continue
+		if decision == DiveReleasePolicy.Decision.MISSED_WINDOW:
+			_aircraft_release_states[aircraft_id] = \
+				AircraftReleaseState.FAILED
 			_previous_aircraft_altitudes[aircraft_id] = altitude
 			continue
 		_attempt_individual_release(aircraft)
@@ -468,52 +453,51 @@ func _update_individual_aircraft_release() -> void:
 
 func _attempt_individual_release(aircraft: AircraftUnit) -> void:
 	var aircraft_id := aircraft.get_instance_id()
-	var result := owner_squadron.request_aircraft_weapon_release(
-		aircraft,
+	var context := AircraftPayloadReleaseContext.create(
 		target_position,
 		target_velocity
 	)
-	match result:
-		AircraftSquadron.AircraftReleaseRequestResult.QUEUED, \
-				AircraftSquadron.AircraftReleaseRequestResult \
-					.ALREADY_PENDING:
-			if result \
-					== AircraftSquadron \
-						.AircraftReleaseRequestResult.QUEUED:
+	var result := owner_squadron.request_aircraft_payload_release(
+		aircraft,
+		context
+	)
+	match result.status:
+		AircraftPayloadReleaseRequestResult.Status.QUEUED, \
+				AircraftPayloadReleaseRequestResult.Status.ALREADY_PENDING:
+			if result.status \
+					== AircraftPayloadReleaseRequestResult.Status.QUEUED:
 				_total_release_request_count += 1
 			_aircraft_release_states[aircraft_id] = \
 				AircraftReleaseState.REQUESTED
 			state = State.RELEASING
-		AircraftSquadron.AircraftReleaseRequestResult.ALREADY_RELEASED:
+		AircraftPayloadReleaseRequestResult.Status.ALREADY_RELEASED:
 			_aircraft_release_states[aircraft_id] = \
 				AircraftReleaseState.RELEASED
-		AircraftSquadron.AircraftReleaseRequestResult.RETRYABLE:
+		AircraftPayloadReleaseRequestResult.Status.RETRYABLE:
 			var retry_count := int(_aircraft_release_attempts.get(
 				aircraft_id,
 				0
 			))
-			if retry_count >= maxi(
-				maximum_additional_release_retries,
-				0
-			):
+			var maximum_retries := payload_release_settings \
+				.maximum_additional_retries \
+				if payload_release_settings != null else 3
+			if retry_count >= maxi(maximum_retries, 0):
 				_aircraft_release_states[aircraft_id] = \
 					AircraftReleaseState.FAILED
 			else:
 				_aircraft_release_attempts[aircraft_id] = \
 					retry_count + 1
 				_aircraft_release_retry_left[aircraft_id] = maxf(
-					release_retry_interval_sec,
+					payload_release_settings.retry_interval_sec \
+						if payload_release_settings != null else 0.05,
 					0.0
 				)
-		AircraftSquadron.AircraftReleaseRequestResult.NO_AMMUNITION:
+		AircraftPayloadReleaseRequestResult.Status.NO_AMMUNITION:
 			_aircraft_release_states[aircraft_id] = \
 				AircraftReleaseState.SKIPPED
-		AircraftSquadron.AircraftReleaseRequestResult \
-				.NO_WEAPON_CONTROLLER, \
-				AircraftSquadron.AircraftReleaseRequestResult \
-					.WEAPON_DISABLED, \
-				AircraftSquadron.AircraftReleaseRequestResult \
-					.INVALID_AIRCRAFT:
+		AircraftPayloadReleaseRequestResult.Status.NO_WEAPON_CONTROLLER, \
+				AircraftPayloadReleaseRequestResult.Status.WEAPON_DISABLED, \
+				AircraftPayloadReleaseRequestResult.Status.INVALID_AIRCRAFT:
 			_aircraft_release_states[aircraft_id] = \
 				AircraftReleaseState.FAILED
 
@@ -550,26 +534,6 @@ func _initialize_aircraft_release_states() -> void:
 		_previous_aircraft_altitudes[aircraft_id] = \
 			_get_aircraft_altitude(aircraft)
 	_update_release_state_counts()
-
-
-func _has_aircraft_crossed_release_altitude(
-		aircraft: AircraftUnit,
-		current_altitude: float
-) -> bool:
-	var previous_altitude := float(_previous_aircraft_altitudes.get(
-		aircraft.get_instance_id(),
-		current_altitude
-	))
-	var trigger := dive_data.automatic_release_altitude_m
-	return current_altitude \
-			<= trigger + maxf(
-				dive_data.release_altitude_tolerance_m,
-				0.0
-			) \
-		or (
-			previous_altitude > trigger
-			and current_altitude < trigger
-		)
 
 
 func _get_aircraft_altitude(aircraft: AircraftUnit) -> float:
@@ -723,28 +687,15 @@ func _finish_release_pass(cancelled: bool) -> void:
 	var controller_released_count := _released_aircraft_count
 	_release_pass_finished = true
 	_release_pass_cancelled = cancelled
-	owner_squadron.finish_dive_release_pass(
+	var actual_result := owner_squadron.finish_dive_release_pass(
 		_failed_aircraft_count,
 		_skipped_aircraft_count,
 		cancelled
 	)
-	var actual_result := owner_squadron.get_last_release_result()
-	_released_aircraft_count = int(actual_result.get(
-		"released_count",
-		0
-	))
-	_failed_aircraft_count = int(actual_result.get(
-		"failed_count",
-		_failed_aircraft_count
-	))
-	_skipped_aircraft_count = int(actual_result.get(
-		"skipped_count",
-		_skipped_aircraft_count
-	))
-	_release_pass_cancelled = bool(actual_result.get(
-		"cancelled",
-		cancelled
-	))
+	_released_aircraft_count = actual_result.released_count
+	_failed_aircraft_count = actual_result.failed_count
+	_skipped_aircraft_count = actual_result.skipped_count
+	_release_pass_cancelled = actual_result.cancelled
 	if _released_aircraft_count != controller_released_count:
 		push_warning(
 			"Dive release result mismatch: squadron=%d controller=%d"

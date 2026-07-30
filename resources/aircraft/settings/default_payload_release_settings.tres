@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="AircraftPayloadReleaseSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/AircraftPayloadReleaseSettings.gd" id="1_settings"]
+
+[resource]
+script = ExtResource("1_settings")
+request_timeout_sec = 2.0
+retry_interval_sec = 0.05
+maximum_additional_retries = 3
+completion_wait_sec = 0.5

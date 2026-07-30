@@ -48,14 +48,17 @@ var _last_spawned_projectile: Node3D
 var _configuration_warning_emitted := false
 var _depletion_emitted := false
 var _release_enabled := true
+var battle_services: BattleServices
 
 
 func setup(
 		next_owner_aircraft: AircraftUnit,
-		data: AircraftWeaponData
+		data: AircraftWeaponData,
+		next_battle_services: BattleServices = null
 ) -> void:
 	owner_aircraft = next_owner_aircraft
 	weapon_data = data
+	battle_services = next_battle_services
 	_configuration_warning_emitted = false
 	if weapon_data != null and not weapon_data.is_valid_configuration():
 		_warn_invalid_configuration_once()
@@ -182,21 +185,20 @@ func emit_gun_burst_result(
 		result.rounds_fired,
 		result.hit_count
 	)
-	if has_node("/root/EventBus"):
-		var event_bus := get_node("/root/EventBus")
-		event_bus.fighter_gun_burst_fired.emit(
+	if battle_services != null:
+		battle_services.publish(&"fighter_gun_burst_fired", [
 			owner_aircraft,
 			target,
 			result.rounds_fired,
 			result.hit_count,
-			result.hit_probability
-		)
+			result.hit_probability,
+		])
 		if result.total_damage > 0.0:
-			event_bus.aircraft_gun_hit.emit(
+			battle_services.publish(&"aircraft_gun_hit", [
 				owner_aircraft,
 				target,
-				result.total_damage
-			)
+				result.total_damage,
+			])
 
 
 func request_release(
@@ -315,8 +317,8 @@ func _spawn_projectile(
 	if projectile_parent == null:
 		return null
 	var projectile: Node
-	if has_node("/root/ObjectPool"):
-		projectile = get_node("/root/ObjectPool").spawn(
+	if battle_services != null:
+		projectile = battle_services.spawn_pooled(
 			weapon_data.projectile_scene,
 			projectile_parent
 		)
@@ -358,10 +360,10 @@ func _spawn_projectile(
 	projectile.call(&"launch_with_context", context)
 	remaining_ammunition = maxi(remaining_ammunition - 1, 0)
 	weapon_released.emit(owner_aircraft, projectile)
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").aircraft_weapon_released.emit(
-			owner_aircraft,
-			projectile
+	if battle_services != null:
+		battle_services.publish(
+			&"aircraft_weapon_released",
+			[owner_aircraft, projectile]
 		)
 	if remaining_ammunition <= 0 and not _depletion_emitted:
 		_depletion_emitted = true

@@ -14,6 +14,14 @@ func _run() -> void:
 	var effects := CombatEffectController.new()
 	arena.add_child(effects)
 	await process_frame
+	var battle_services := BattleServices.new()
+	battle_services.setup(
+		root.get_node_or_null("EventBus"),
+		root.get_node_or_null("ObjectPool"),
+		root.get_node_or_null("RunManager"),
+		root.get_node_or_null("GameManager"),
+		null
+	)
 	var fighter_data := FighterTestSupport.FIGHTER_DATA.duplicate(
 		true
 	) as AircraftData
@@ -27,13 +35,17 @@ func _run() -> void:
 		arena,
 		fighter_data,
 		FactionRelations.PLAYER,
-		Vector3.ZERO
+		Vector3.ZERO,
+		Vector3.FORWARD,
+		battle_services
 	)
 	var target := FighterTestSupport.spawn_aircraft(
 		arena,
 		FighterTestSupport.BOMBER_DATA,
 		FactionRelations.ENEMY,
-		Vector3(0.0, 0.0, -300.0)
+		Vector3(0.0, 0.0, -300.0),
+		Vector3.FORWARD,
+		battle_services
 	)
 	target.destroyed.connect(_on_target_destroyed)
 	var controller := attacker.fighter_combat_controller
@@ -68,7 +80,9 @@ func _run() -> void:
 		arena,
 		FighterTestSupport.BOMBER_DATA,
 		FactionRelations.ENEMY,
-		Vector3(300.0, 0.0, 0.0)
+		Vector3(300.0, 0.0, 0.0),
+		Vector3.FORWARD,
+		battle_services
 	)
 	controller.reset_for_sortie()
 	attacker.weapon_controller.reset_for_sortie()

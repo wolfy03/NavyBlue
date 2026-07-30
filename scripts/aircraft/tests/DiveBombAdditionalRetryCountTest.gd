@@ -28,8 +28,12 @@ func _run() -> void:
 	attacker.global_position = Vector3(0.0, 95.0, 200.0)
 	attacker.weapon_controller.release_cooldown_left = 10.0
 	var controller := squadron.dive_bomb_controller
-	controller.maximum_additional_release_retries = 0
-	controller.release_retry_interval_sec = 0.0
+	var release_settings := squadron.payload_release_settings.duplicate(
+		true
+	) as AircraftPayloadReleaseSettings
+	squadron.set_payload_release_settings(release_settings)
+	release_settings.maximum_additional_retries = 0
+	release_settings.retry_interval_sec = 0.0
 	_start_ready_dive(controller)
 	controller.update_dive(0.0)
 	_check(
@@ -47,7 +51,7 @@ func _run() -> void:
 	controller.cancel()
 
 	attacker.weapon_controller.release_cooldown_left = 10.0
-	controller.maximum_additional_release_retries = 3
+	release_settings.maximum_additional_retries = 3
 	_start_ready_dive(controller)
 	for _index in 4:
 		controller.update_dive(0.0)

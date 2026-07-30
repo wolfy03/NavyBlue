@@ -36,7 +36,9 @@ func _run() -> void:
 		not squadron.has_reached_mission_destination(),
 		"loiter initialization does not imply mission arrival"
 	)
-	squadron._mission_destination_reached = true
+	squadron.destination_tracker.mark_reached(
+		squadron.destination_tracker.command_serial
+	)
 	squadron._loiter_initialized = false
 	_check(
 		squadron.has_reached_mission_destination(),

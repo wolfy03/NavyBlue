@@ -12,6 +12,10 @@ func _run() -> void:
 		_finish()
 		return
 	var scene := packed.instantiate() as BattleScene
+	var test_config := BattleTestConfig.new()
+	test_config.enabled = true
+	test_config.player_ship_override = &"bb_ironwake"
+	scene.test_config = test_config
 	root.add_child(scene)
 	await process_frame
 	await physics_frame
@@ -48,7 +52,12 @@ func _run() -> void:
 			maximum_test_impact.x - player.global_position.x,
 			maximum_test_impact.z - player.global_position.z
 		).length()
-		_check(maximum_impact_range_m >= 11400.0 and maximum_impact_range_m <= 12600.0, "automatic gun pitch matches a 12 km aim point")
+		_check(
+			maximum_impact_range_m >= 11400.0 \
+				and maximum_impact_range_m <= 12600.0,
+			"automatic gun pitch matches a 12 km aim point "
+				+ "(actual=%.2f)" % maximum_impact_range_m
+		)
 	player.global_position = Vector3(10300.0, 0.0, 0.0)
 	player.clear_navigation_target()
 	player.navigation.update_navigation(0.1)

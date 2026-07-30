@@ -37,7 +37,8 @@ var current_move_speed_mps := 0.0
 
 var battlefield_settings: BattlefieldSettings
 var battlefield_bounds: BattlefieldBounds
-var selection_provider: Node
+var battle_environment: BattleEnvironment
+var selection_provider: PlayerInputManager
 
 var _yaw_rad := 0.0
 var _pan_velocity := Vector3.ZERO
@@ -52,11 +53,13 @@ func setup(
 		start_focus,
 		settings: BattlefieldSettings = null,
 		bounds: BattlefieldBounds = null,
-		provider: Node = null
+		provider: PlayerInputManager = null,
+		environment: BattleEnvironment = null
 ) -> void:
 	battlefield_settings = settings
 	battlefield_bounds = bounds
 	selection_provider = provider
+	battle_environment = environment
 	if settings != null:
 		min_height_m = settings.camera_min_height_m
 		max_height_m = settings.camera_max_height_m
@@ -78,7 +81,7 @@ func setup(
 	_clamp_focus_position()
 	_apply_camera_transform()
 
-func set_selection_provider(provider: Node) -> void:
+func set_selection_provider(provider: PlayerInputManager) -> void:
 	selection_provider = provider
 
 func _process(delta: float) -> void:
@@ -157,12 +160,12 @@ func adjust_zoom(step_count: float, screen_position: Vector2 = Vector2.INF) -> v
 	)
 
 func focus_selection() -> void:
-	var selected: Array = []
-	if selection_provider != null and selection_provider.has_method(&"get_selected_ships"):
-		selected = selection_provider.call(&"get_selected_ships")
-	if selected.is_empty() and selection_provider != null and selection_provider.has_method(&"get_controlled_ship"):
-		var controlled = selection_provider.call(&"get_controlled_ship")
-		if is_instance_valid(controlled):
+	var selected: Array[ShipUnit] = []
+	if selection_provider != null:
+		selected = selection_provider.get_selected_ships()
+	if selected.is_empty() and selection_provider != null:
+		var controlled := selection_provider.get_controlled_ship()
+		if controlled != null and is_instance_valid(controlled):
 			selected.append(controlled)
 	focus_on_nodes(selected)
 
@@ -285,7 +288,10 @@ func _clamp_focus_position() -> void:
 	focus_position.y = _get_sea_level_m()
 
 func _get_sea_level_m() -> float:
-	return battlefield_settings.sea_level_m if battlefield_settings != null else 0.0
+	if battle_environment != null:
+		return battle_environment.sea_level_m
+	return battlefield_settings.sea_level_m \
+		if battlefield_settings != null else 0.0
 
 func _smoothing_weight(delta: float, smoothing_sec: float) -> float:
 	if smoothing_sec <= 0.0001:

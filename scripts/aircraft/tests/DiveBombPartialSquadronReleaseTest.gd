@@ -69,7 +69,7 @@ func _run() -> void:
 		_projectile_release_count == 0,
 		"request acceptance is not projectile completion"
 	)
-	squadron._update_aircraft_weapon_releases(0.0)
+	squadron.payload_release_coordinator.update(0.0)
 	_check(
 		controller.get_aircraft_release_state(aircraft[0]) \
 			== DiveBombAttackController.AircraftReleaseState.RELEASED,
@@ -80,7 +80,7 @@ func _run() -> void:
 		"only one projectile is created for the first threshold crossing"
 	)
 	controller.update_dive(0.0)
-	squadron._update_aircraft_weapon_releases(0.0)
+	squadron.payload_release_coordinator.update(0.0)
 	_check(
 		_projectile_release_count == 1,
 		"the same aircraft cannot release twice in one attack pass"
@@ -92,7 +92,7 @@ func _run() -> void:
 			== DiveBombAttackController.AircraftReleaseState.REQUESTED,
 		"second aircraft requests only after reaching its own altitude"
 	)
-	squadron._update_aircraft_weapon_releases(0.0)
+	squadron.payload_release_coordinator.update(0.0)
 	_check(
 		controller.get_aircraft_release_state(aircraft[1]) \
 			== DiveBombAttackController.AircraftReleaseState.RELEASED,

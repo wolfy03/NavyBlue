@@ -25,8 +25,7 @@ func _run() -> void:
 func _test_freed_enemy_reference_safety() -> void:
 	var controller := BattleStateController.new()
 	root.add_child(controller)
-	var freed_enemy := Node.new()
-	root.add_child(freed_enemy)
+	var freed_enemy := ShipUnit.new()
 	controller.enemies = [freed_enemy]
 	freed_enemy.free()
 	_check(

@@ -28,8 +28,7 @@ func _run() -> void:
 	var destination := Vector3(500.0, 180.0, 500.0)
 	var first_serial := squadron.set_mission_destination(destination)
 	_check(first_serial > 0, "new destination receives a command serial")
-	squadron._mission_destination_reached = true
-	squadron._reached_destination_serial = first_serial
+	squadron.destination_tracker.mark_reached(first_serial)
 	squadron.state = AircraftSquadron.State.HOLDING
 	_check(
 		squadron.has_reached_mission_destination(first_serial),

@@ -318,7 +318,12 @@ func _spawn_test_aircraft(
 	if aircraft == null or aircraft_root == null:
 		return null
 	aircraft_root.add_child(aircraft)
-	aircraft.setup(BOMBER_DATA, team, Vector3.ZERO)
+	aircraft.setup(
+		BOMBER_DATA,
+		team,
+		Vector3.ZERO,
+		battle.battle_services
+	)
 	return aircraft
 
 

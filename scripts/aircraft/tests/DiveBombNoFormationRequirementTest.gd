@@ -56,7 +56,8 @@ func _run() -> void:
 			"formation position does not block an aircraft at release altitude"
 		)
 	_check(
-		squadron.get_release_sequence_queued_count() == alive.size(),
+		squadron.payload_release_coordinator.get_active_requested_count() \
+			== alive.size(),
 		"each aircraft has its own tracked release request"
 	)
 	controller.cancel()

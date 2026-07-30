@@ -95,9 +95,9 @@ func _mark_destination_reached(
 		squadron: AircraftSquadron,
 		behavior: DiveBombMissionBehavior
 ) -> void:
-	squadron._mission_destination_reached = true
-	squadron._reached_destination_serial = \
+	squadron.destination_tracker.mark_reached(
 		behavior._active_destination_serial
+	)
 
 
 func _find_hostile_ship(

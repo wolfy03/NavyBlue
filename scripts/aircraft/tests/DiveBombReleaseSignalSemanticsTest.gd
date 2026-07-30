@@ -72,13 +72,13 @@ func _run() -> void:
 		_individual_success_count == 0,
 		"request registration is not reported as a successful release"
 	)
-	squadron._update_aircraft_weapon_releases(0.0)
+	squadron.payload_release_coordinator.update(0.0)
 	_check(
 		_individual_success_count == 1,
 		"actual projectile creation emits one individual success"
 	)
 	controller.update_dive(0.0)
-	var result := squadron.get_last_release_result()
+	var result := squadron.get_last_payload_release_result()
 	_check(
 		_pass_completed_count == 1,
 		"whole release pass completion emits once"
@@ -88,11 +88,11 @@ func _run() -> void:
 		"pass completion reports one actual release"
 	)
 	_check(
-		int(result.get("released_count", 0)) == 1,
+		result.released_count == 1,
 		"Squadron authoritative result records one release"
 	)
 	_check(
-		int(controller.get_attack_result().get("released_count", 0)) == 1,
+		controller.get_attack_result_data().released_count == 1,
 		"Controller result matches Squadron actual release count"
 	)
 	await _finish(battle)

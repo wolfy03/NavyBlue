@@ -3,20 +3,33 @@ class_name BattleScene
 
 const STAGE_DATABASE_SCRIPT := preload("res://scripts/data/StageDatabase.gd")
 const DEFAULT_BATTLEFIELD_SETTINGS := preload("res://resources/settings/default_battlefield_settings.tres")
+const DEFAULT_BATTLEFIELD_RULES: BattlefieldRules = preload(
+	"res://resources/settings/default_battlefield_rules.tres"
+)
+const DEFAULT_DEBUG_SETTINGS: BattleDebugSettings = preload(
+	"res://resources/settings/default_battle_debug_settings.tres"
+)
 
 @export var battlefield_settings: BattlefieldSettings = DEFAULT_BATTLEFIELD_SETTINGS
+@export var battlefield_rules: BattlefieldRules = DEFAULT_BATTLEFIELD_RULES
+@export var debug_settings: BattleDebugSettings = DEFAULT_DEBUG_SETTINGS
 @export var stage_override: StageData
+@export var test_config: BattleTestConfig
 
 @onready var ships_root: Node3D = get_node_or_null("Ships") as Node3D
 @onready var spawn_points: Node3D = get_node_or_null("SpawnPoints") as Node3D
-@onready var spawn_system: Node = get_node_or_null("SpawnSystem")
-@onready var battle_state_controller: Node = get_node_or_null("BattleStateController")
+@onready var spawn_system: SpawnSystem = get_node_or_null("SpawnSystem") as SpawnSystem
+@onready var battle_state_controller: BattleStateController = \
+	get_node_or_null("BattleStateController") as BattleStateController
+@onready var battle_environment: BattleEnvironment = \
+	get_node_or_null("BattleEnvironment") as BattleEnvironment
 @onready var projectiles_root: Node3D = get_node_or_null("Projectiles") as Node3D
 @onready var combat_effect_controller: Node = get_node_or_null(
 	"CombatEffectController"
 )
 @onready var camera: Camera3D = get_node_or_null("RTSCamera") as Camera3D
-@onready var input_manager: Node = get_node_or_null("PlayerInputManager")
+@onready var input_manager: PlayerInputManager = \
+	get_node_or_null("PlayerInputManager") as PlayerInputManager
 @onready var carrier_command_controller: CarrierCommandController = \
 	get_node_or_null("CarrierCommandController") as CarrierCommandController
 @onready var aircraft_selection_controller: AircraftSelectionController = \
@@ -32,9 +45,9 @@ const DEFAULT_BATTLEFIELD_SETTINGS := preload("res://resources/settings/default_
 ) as Control
 @onready var battlefield_bounds: BattlefieldBounds = get_node_or_null("BattlefieldBounds") as BattlefieldBounds
 
-var player_ship
-var allies: Array = []
-var enemies: Array = []
+var player_ship: ShipUnit
+var allies: Array[ShipUnit] = []
+var enemies: Array[ShipUnit] = []
 var gravity := 9.8
 var stage_database := STAGE_DATABASE_SCRIPT.new()
 var _battle_units: Array = []
@@ -42,9 +55,17 @@ var friendly_fleet_ai: FleetAIController
 var enemy_fleet_ai: FleetAIController
 var _fleet_controllers: Dictionary = {}
 var _validated_stage_ids: Dictionary = {}
+var battle_services := BattleServices.new()
 
 func _ready() -> void:
 	BattleInputActions.ensure_defaults()
+	battle_services.setup(
+		get_node_or_null("/root/EventBus"),
+		get_node_or_null("/root/ObjectPool"),
+		get_node_or_null("/root/RunManager"),
+		get_node_or_null("/root/GameManager"),
+		spawn_system.faction_palette if spawn_system != null else null
+	)
 	if combat_effect_controller == null:
 		push_warning(
 			"CombatEffectController is missing. Ship impact effects are disabled."
@@ -52,6 +73,21 @@ func _ready() -> void:
 	gravity = ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)
 	if battlefield_bounds != null:
 		battlefield_bounds.settings = battlefield_settings
+	if battle_environment == null:
+		battle_environment = BattleEnvironment.new()
+		battle_environment.name = "BattleEnvironment"
+		add_child(battle_environment)
+	battle_environment.setup(
+		battlefield_bounds,
+		battlefield_rules,
+		debug_settings,
+		battlefield_settings.sea_level_m
+	)
+	if spawn_system != null:
+		spawn_system.debug_settings = debug_settings
+		spawn_system.setup(battle_services)
+	if battle_state_controller != null:
+		battle_state_controller.setup(battle_services)
 	if has_node("/root/GameManager"):
 		get_node("/root/GameManager").enter_battle()
 	_connect_unit_registry()
@@ -97,21 +133,27 @@ func _initialize_battle(stage_data: StageData) -> void:
 		return
 	if not _validate_stage_data_once(stage_data):
 		return
-	if spawn_system == null or not spawn_system.has_method("spawn_stage"):
+	if spawn_system == null:
 		push_warning("BattleScene cannot initialize battle because SpawnSystem is missing or invalid.")
 		return
 	if ships_root == null:
 		ships_root = _get_or_create_node3d("Ships")
-	var spawn_result: Dictionary = spawn_system.spawn_stage(stage_data, ships_root)
-	player_ship = spawn_result.get("player_ship")
-	allies = spawn_result.get("allies", [])
-	enemies = spawn_result.get("enemies", [])
+	var spawn_result := spawn_system.spawn_stage(
+		stage_data,
+		ships_root,
+		_resolve_battle_test_config(stage_data)
+	)
+	player_ship = spawn_result.player_ship
+	allies = spawn_result.allies
+	enemies = spawn_result.enemies
+	for error in spawn_result.errors:
+		push_warning("Stage spawn: %s" % error)
 	if player_ship == null:
 		push_warning("BattleScene spawn result did not include a player ship. Battle start aborted.")
 		return
 	_apply_active_run_upgrades()
 	_register_initial_battle_units()
-	if battle_state_controller != null and battle_state_controller.has_method("start_battle"):
+	if battle_state_controller != null:
 		battle_state_controller.start_battle(stage_data, player_ship, allies, enemies)
 	else:
 		push_warning("BattleStateController is missing or invalid. Battle result detection is disabled.")
@@ -132,13 +174,6 @@ func _validate_stage_data_once(stage_data: StageData) -> bool:
 			% [validation_key, error]
 		)
 	return valid
-
-func _spawn_test_fleets_legacy() -> Dictionary:
-	if spawn_system == null or not spawn_system.has_method("spawn_stage"):
-		return {}
-	if ships_root == null:
-		ships_root = _get_or_create_node3d("Ships")
-	return spawn_system.spawn_stage(stage_database.get_stage("test_level"), ships_root)
 
 func get_battle_units() -> Array:
 	_prune_battle_units()
@@ -400,24 +435,35 @@ func _update_impact_marker() -> void:
 		return
 	impact_marker.visible = true
 	var marker_position: Vector3 = impact
-	marker_position.y = battlefield_settings.sea_level_m + 0.45
+	marker_position.y = battle_environment.sea_level_m + 0.45
 	impact_marker.global_position = marker_position
 	var pulse := 1.0 + sin(Time.get_ticks_msec() * 0.006) * 0.08
 	impact_marker.scale = Vector3(pulse, 1.0, pulse)
 
 func _setup_camera_and_ui() -> void:
-	if camera != null and camera.has_method("setup"):
-		camera.setup(player_ship, battlefield_settings, battlefield_bounds)
+	if camera != null:
+		(camera as RTSCamera).setup(
+			player_ship,
+			battlefield_settings,
+			battlefield_bounds,
+			input_manager,
+			battle_environment
+		)
 	else:
 		push_warning("BattleScene camera is missing or does not support setup().")
-	if input_manager != null and input_manager.has_method("setup"):
-		input_manager.setup(player_ship, camera, battlefield_settings.sea_level_m, battlefield_bounds)
+	if input_manager != null:
+		input_manager.battlefield_rules = battlefield_rules
+		input_manager.setup(
+			player_ship,
+			camera,
+			battle_environment
+		)
 		if aircraft_selection_controller != null:
 			aircraft_selection_controller.setup(
 				camera,
 				aircraft_selection_rect,
-				battlefield_bounds,
-				battlefield_settings.sea_level_m
+				battle_environment,
+				battle_services
 			)
 			input_manager.set_aircraft_selection_controller(
 				aircraft_selection_controller
@@ -451,6 +497,25 @@ func _setup_camera_and_ui() -> void:
 			)
 	else:
 		push_warning("HUD is missing or does not support setup().")
+
+
+func _resolve_battle_test_config(
+		stage_data: StageData
+) -> BattleTestConfig:
+	if not OS.is_debug_build():
+		return null
+	if test_config != null and test_config.enabled:
+		return test_config
+	if stage_override == null \
+			or stage_data == null \
+			or stage_data.player_spawn == null \
+			or stage_data.player_spawn.ship_id.is_empty():
+		return null
+	var implicit_config := BattleTestConfig.new()
+	implicit_config.enabled = true
+	implicit_config.stage_override = stage_data
+	implicit_config.player_ship_override = stage_data.player_spawn.ship_id
+	return implicit_config
 
 func _get_or_create_node3d(node_name: String) -> Node3D:
 	var existing := get_node_or_null(node_name) as Node3D

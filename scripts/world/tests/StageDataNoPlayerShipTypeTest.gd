@@ -10,18 +10,18 @@ func _initialize() -> void:
 		"StageData has no production player ship field"
 	)
 	_check(
-		stage.test_player_ship_override.is_empty(),
-		"test override is empty by default"
+		not _has_property(stage, &"test_player_ship_override"),
+		"test override is not part of StageData"
 	)
 	var test_level := load(
 		"res://resources/stages/test_level.tres"
 	) as StageData
 	_check(
-		test_level.test_player_ship_override.is_empty(),
-		"normal test_level has no ship override"
+		test_level.player_spawn != null,
+		"normal test_level has typed player spawn data"
 	)
 	_check(
-		not test_level.player_spawn.has("ship_id"),
+		test_level.player_spawn.ship_id.is_empty(),
 		"normal player spawn contains no ship type"
 	)
 	_finish()

@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="FleetFormationData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/battle/FleetFormationData.gd" id="1_formation"]
+
+[resource]
+script = ExtResource("1_formation")
+formation_type = 0
+spacing_m = 320.0

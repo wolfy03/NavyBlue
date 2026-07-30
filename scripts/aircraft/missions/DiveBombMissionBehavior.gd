@@ -112,7 +112,7 @@ func get_debug_snapshot() -> Dictionary:
 		controller_state = DiveBombAttackController.State.keys()[
 			int(controller.state)
 		]
-		controller_result = controller.get_attack_result()
+		controller_result = controller.get_attack_result_data().to_dictionary()
 	var target := _get_target_ship()
 	return {
 		"state": State.keys()[int(state)],
@@ -221,10 +221,7 @@ func _update_diving(target: Node3D) -> void:
 		DiveBombAttackController.State.PULLING_OUT:
 			state = State.PULLING_OUT
 		DiveBombAttackController.State.COMPLETED:
-			if int(controller.get_attack_result().get(
-				"released_count",
-				0
-			)) > 0:
+			if controller.get_attack_result_data().released_count > 0:
 				_begin_egress(target)
 			else:
 				_finish_and_return(false)
@@ -242,10 +239,7 @@ func _update_pulling_out(target: Node3D) -> void:
 		return
 	if controller.state != DiveBombAttackController.State.COMPLETED:
 		return
-	if int(controller.get_attack_result().get(
-		"released_count",
-		0
-	)) <= 0:
+	if controller.get_attack_result_data().released_count <= 0:
 		_finish_and_return(false)
 		return
 	_begin_egress(target)

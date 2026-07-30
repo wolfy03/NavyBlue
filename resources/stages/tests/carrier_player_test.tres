@@ -1,6 +1,32 @@
-[gd_resource type="Resource" script_class="StageData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="StageData" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
+[ext_resource type="Script" path="res://scripts/data/spawn/ShipSpawnData.gd" id="2_spawn"]
+
+[sub_resource type="Resource" id="Player"]
+script = ExtResource("2_spawn")
+ship_id = &"cv_seabastion"
+team = &"player"
+display_name = "PlayerCarrier"
+is_player = true
+use_explicit_transform = true
+explicit_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1800)
+
+[sub_resource type="Resource" id="Ally"]
+script = ExtResource("2_spawn")
+ship_id = &"cl_tidebreaker"
+team = &"ally"
+display_name = "CarrierPlayerEscort"
+use_explicit_transform = true
+explicit_transform = Transform3D(0.965926, 0, 0.258819, 0, 1, 0, -0.258819, 0, 0.965926, -450, 0, 2050)
+
+[sub_resource type="Resource" id="Enemy"]
+script = ExtResource("2_spawn")
+ship_id = &"bb_ironwake"
+team = &"enemy"
+display_name = "CarrierPlayerTarget"
+use_explicit_transform = true
+explicit_transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -3200)
 
 [resource]
 script = ExtResource("1_stage")
@@ -8,29 +34,8 @@ id = "carrier_player_test"
 display_name = "Player Carrier Test"
 sea_id = "test_sea"
 difficulty = 1.0
-test_player_ship_override = "cv_seabastion"
-player_spawn = {
-"is_player": true,
-"name": "PlayerCarrier",
-"position": Vector3(0, 0, 1800),
-"rotation_y": 0.0,
-"team": "player"
-}
-ally_spawns = [{
-"is_player": false,
-"name": "CarrierPlayerEscort",
-"position": Vector3(-450, 0, 2050),
-"rotation_y": -15.0,
-"ship_id": "cl_tidebreaker",
-"team": "ally"
-}]
-enemy_spawns = [{
-"is_player": false,
-"name": "CarrierPlayerTarget",
-"position": Vector3(0, 0, -3200),
-"rotation_y": 180.0,
-"ship_id": "bb_ironwake",
-"team": "enemy"
-}]
+player_spawn = SubResource("Player")
+ally_spawns = Array[ShipSpawnData]([SubResource("Ally")])
+enemy_spawns = Array[ShipSpawnData]([SubResource("Enemy")])
 reward_table_id = "test_rewards"
 next_stage_candidates = Array[String]([])
