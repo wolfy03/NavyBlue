@@ -2,6 +2,20 @@ extends Node
 class_name AircraftWeaponController
 
 signal weapon_released(aircraft: AircraftUnit, projectile: Node)
+signal payload_release_completed(
+	aircraft: AircraftUnit,
+	request_id: int,
+	projectile: Node3D
+)
+signal payload_release_failed(
+	aircraft: AircraftUnit,
+	request_id: int,
+	reason: int
+)
+signal payload_release_cancelled(
+	aircraft: AircraftUnit,
+	request_id: int
+)
 signal ammunition_depleted
 signal gun_burst_fired(
 	aircraft: AircraftUnit,
@@ -10,15 +24,27 @@ signal gun_burst_fired(
 	hits: int
 )
 
+enum ReleaseFailureReason {
+	NONE,
+	SPAWN_FAILED,
+	INVALID_CONFIGURATION,
+	RELEASE_DISABLED,
+	CANCELLED,
+}
+
+static var _next_payload_release_request_id := 1
+
 var owner_aircraft: AircraftUnit
 var weapon_data: AircraftWeaponData
 var remaining_ammunition := 0
 var release_cooldown_left := 0.0
 var gun_burst_cooldown_left := 0.0
 
+var _active_release_request_id := -1
 var _pending_release_count := 0
 var _pending_target_position := Vector3.ZERO
 var _pending_target_velocity := Vector3.ZERO
+var _last_spawned_projectile: Node3D
 var _configuration_warning_emitted := false
 var _depletion_emitted := false
 var _release_enabled := true
@@ -44,9 +70,7 @@ func reset_for_sortie() -> void:
 	)
 	release_cooldown_left = 0.0
 	gun_burst_cooldown_left = 0.0
-	_pending_release_count = 0
-	_pending_target_position = Vector3.ZERO
-	_pending_target_velocity = Vector3.ZERO
+	_clear_active_release_request()
 	_depletion_emitted = false
 
 
@@ -59,16 +83,11 @@ func update_weapon(delta: float) -> void:
 		0.0,
 		gun_burst_cooldown_left - maxf(delta, 0.0)
 	)
-	if _pending_release_count <= 0 or release_cooldown_left > 0.0:
+	if _active_release_request_id < 0 \
+			or _pending_release_count <= 0 \
+			or release_cooldown_left > 0.0:
 		return
-	if not _spawn_projectile(
-		_pending_target_position,
-		_pending_target_velocity
-	):
-		_pending_release_count = 0
-		return
-	_pending_release_count -= 1
-	release_cooldown_left = maxf(weapon_data.release_interval_sec, 0.0)
+	_process_payload_release()
 
 
 func can_release() -> bool:
@@ -85,7 +104,27 @@ func can_release() -> bool:
 		and weapon_data.is_valid_configuration() \
 		and remaining_ammunition > 0 \
 		and release_cooldown_left <= 0.0 \
+		and _active_release_request_id < 0 \
 		and _pending_release_count <= 0
+
+
+func can_retry_payload_release() -> bool:
+	return _release_enabled \
+		and owner_aircraft != null \
+		and is_instance_valid(owner_aircraft) \
+		and owner_aircraft.is_alive() \
+		and weapon_data != null \
+		and weapon_data.weapon_type \
+			in [
+				AircraftWeaponData.WeaponType.BOMB,
+				AircraftWeaponData.WeaponType.TORPEDO,
+			] \
+		and weapon_data.is_valid_configuration() \
+		and remaining_ammunition > 0
+
+
+func is_release_enabled() -> bool:
+	return _release_enabled
 
 
 func has_ammunition() -> bool:
@@ -160,45 +199,100 @@ func emit_gun_burst_result(
 			)
 
 
-func is_release_in_progress() -> bool:
-	return _pending_release_count > 0
-
-
-func disable_weapon_release() -> void:
-	_release_enabled = false
-	gun_burst_cooldown_left = 0.0
-	_pending_release_count = 0
-	_pending_target_position = Vector3.ZERO
-	_pending_target_velocity = Vector3.ZERO
-
-
-func cancel_pending_release() -> void:
-	_pending_release_count = 0
-	_pending_target_position = Vector3.ZERO
-	_pending_target_velocity = Vector3.ZERO
-	release_cooldown_left = 0.0
-
-
-func release(
+func request_release(
 		target_position: Vector3,
 		target_velocity: Vector3 = Vector3.ZERO
-) -> bool:
+) -> int:
 	if not can_release():
-		return false
+		return -1
+	var request_id := _allocate_release_request_id()
+	_active_release_request_id = request_id
 	_pending_target_position = target_position
 	_pending_target_velocity = target_velocity
 	_pending_release_count = mini(
 		_get_projectiles_for_release(),
 		remaining_ammunition
 	)
+	_last_spawned_projectile = null
 	if _pending_release_count <= 0:
+		_emit_release_failed(ReleaseFailureReason.INVALID_CONFIGURATION)
+		return -1
+	return request_id
+
+
+func release(
+		target_position: Vector3,
+		target_velocity: Vector3 = Vector3.ZERO
+) -> bool:
+	var ammunition_before := remaining_ammunition
+	var request_id := request_release(target_position, target_velocity)
+	if request_id < 0:
 		return false
-	if not _spawn_projectile(target_position, target_velocity):
-		_pending_release_count = 0
+	_process_payload_release()
+	return remaining_ammunition < ammunition_before
+
+
+func is_release_in_progress() -> bool:
+	return _active_release_request_id >= 0 \
+		or _pending_release_count > 0
+
+
+func get_active_release_request_id() -> int:
+	return _active_release_request_id
+
+
+func disable_weapon_release() -> void:
+	if _active_release_request_id >= 0:
+		cancel_release_request(_active_release_request_id)
+	_release_enabled = false
+	gun_burst_cooldown_left = 0.0
+
+
+func cancel_pending_release() -> void:
+	if _active_release_request_id >= 0:
+		cancel_release_request(_active_release_request_id)
+	else:
+		_clear_active_release_request()
+	release_cooldown_left = 0.0
+
+
+func cancel_release_request(request_id: int) -> bool:
+	if request_id < 0 or request_id != _active_release_request_id:
 		return false
-	_pending_release_count -= 1
-	release_cooldown_left = maxf(weapon_data.release_interval_sec, 0.0)
+	var cancelled_request_id := _active_release_request_id
+	_clear_active_release_request()
+	payload_release_cancelled.emit(
+		owner_aircraft,
+		cancelled_request_id
+	)
 	return true
+
+
+func _process_payload_release() -> void:
+	if _active_release_request_id < 0 or _pending_release_count <= 0:
+		return
+	var projectile := _spawn_projectile(
+		_pending_target_position,
+		_pending_target_velocity
+	)
+	if projectile == null:
+		_emit_release_failed(ReleaseFailureReason.SPAWN_FAILED)
+		return
+	_last_spawned_projectile = projectile
+	_pending_release_count -= 1
+	release_cooldown_left = maxf(
+		weapon_data.release_interval_sec,
+		0.0
+	)
+	if _pending_release_count <= 0:
+		var completed_request_id := _active_release_request_id
+		var completed_projectile := _last_spawned_projectile
+		_clear_active_release_request()
+		payload_release_completed.emit(
+			owner_aircraft,
+			completed_request_id,
+			completed_projectile
+		)
 
 
 func _get_projectiles_for_release() -> int:
@@ -212,14 +306,14 @@ func _get_projectiles_for_release() -> int:
 func _spawn_projectile(
 		target_position: Vector3,
 		_target_velocity: Vector3
-) -> bool:
+) -> Node3D:
 	if weapon_data == null or weapon_data.projectile_scene == null \
 			or weapon_data.projectile_data == null:
 		_warn_invalid_configuration_once()
-		return false
+		return null
 	var projectile_parent := _resolve_projectile_parent()
 	if projectile_parent == null:
-		return false
+		return null
 	var projectile: Node
 	if has_node("/root/ObjectPool"):
 		projectile = get_node("/root/ObjectPool").spawn(
@@ -230,8 +324,11 @@ func _spawn_projectile(
 		projectile = weapon_data.projectile_scene.instantiate()
 		if projectile != null:
 			projectile_parent.add_child(projectile)
-	if projectile == null:
-		return false
+	var projectile_3d := projectile as Node3D
+	if projectile_3d == null:
+		if projectile != null:
+			projectile.queue_free()
+		return null
 	if not projectile.has_method(&"setup_projectile_data") \
 			or not projectile.has_method(&"launch_with_context"):
 		push_warning(
@@ -242,7 +339,7 @@ func _spawn_projectile(
 			projectile.call(&"despawn")
 		else:
 			projectile.queue_free()
-		return false
+		return null
 
 	projectile.call(&"setup_projectile_data", weapon_data.projectile_data)
 	var context := ProjectileLaunchContext.new()
@@ -269,7 +366,35 @@ func _spawn_projectile(
 	if remaining_ammunition <= 0 and not _depletion_emitted:
 		_depletion_emitted = true
 		ammunition_depleted.emit()
-	return true
+	return projectile_3d
+
+
+func _emit_release_failed(reason: ReleaseFailureReason) -> void:
+	if _active_release_request_id < 0:
+		return
+	var failed_request_id := _active_release_request_id
+	_clear_active_release_request()
+	payload_release_failed.emit(
+		owner_aircraft,
+		failed_request_id,
+		int(reason)
+	)
+
+
+func _clear_active_release_request() -> void:
+	_active_release_request_id = -1
+	_pending_release_count = 0
+	_pending_target_position = Vector3.ZERO
+	_pending_target_velocity = Vector3.ZERO
+	_last_spawned_projectile = null
+
+
+func _allocate_release_request_id() -> int:
+	var request_id := _next_payload_release_request_id
+	_next_payload_release_request_id += 1
+	if _next_payload_release_request_id <= 0:
+		_next_payload_release_request_id = 1
+	return request_id
 
 
 func _resolve_projectile_parent() -> Node:

@@ -14,6 +14,9 @@ enum State {
 
 const EPSILON := 0.0001
 
+var approach_repath_interval_sec := 0.5
+var approach_repath_threshold_m := 150.0
+
 var owner_squadron: AircraftSquadron
 var mission_data: AirMissionData
 var state: State = State.FAILED
@@ -24,6 +27,8 @@ var _finished := true
 var _destination_initialized := false
 var _last_approach_position := Vector3.ZERO
 var _last_dive_entry_position := Vector3.ZERO
+var _approach_repath_left := 0.0
+var _current_mission_destination := Vector3.ZERO
 
 
 func setup(
@@ -42,10 +47,12 @@ func setup(
 	_destination_initialized = false
 	_last_approach_position = Vector3.ZERO
 	_last_dive_entry_position = Vector3.ZERO
+	_approach_repath_left = 0.0
+	_current_mission_destination = Vector3.ZERO
 	return true
 
 
-func update(_delta: float) -> void:
+func update(delta: float) -> void:
 	if _finished or owner_squadron == null \
 			or not is_instance_valid(owner_squadron):
 		return
@@ -55,7 +62,7 @@ func update(_delta: float) -> void:
 		return
 	match state:
 		State.APPROACHING:
-			_update_approaching(target)
+			_update_approaching(target, delta)
 		State.DIVE_ENTRY:
 			_update_dive_entry(target)
 		State.DIVING:
@@ -113,17 +120,38 @@ func get_debug_snapshot() -> Dictionary:
 		"target_ship": target.name if target != null else "",
 		"destination_initialized": _destination_initialized,
 		"approach_position": _last_approach_position,
+		"approach_repath_timer": _approach_repath_left,
 		"dive_entry_position": _last_dive_entry_position,
+		"mission_destination_reached":
+			owner_squadron.has_reached_mission_destination() \
+			if owner_squadron != null \
+			and is_instance_valid(owner_squadron) else false,
 		"controller_state": controller_state,
 		"controller_result": controller_result,
 	}
 
 
-func _update_approaching(target: Node3D) -> void:
-	if not _destination_initialized:
-		_last_approach_position = _calculate_approach_position(target)
-		owner_squadron.set_mission_destination(_last_approach_position)
+func _update_approaching(target: Node3D, delta: float) -> void:
+	_approach_repath_left = maxf(
+		_approach_repath_left - maxf(delta, 0.0),
+		0.0
+	)
+	var next_position := _calculate_approach_position(target)
+	var should_update := not _destination_initialized \
+		or (
+			_approach_repath_left <= 0.0
+			and _current_mission_destination.distance_to(next_position) \
+				>= maxf(approach_repath_threshold_m, 0.0)
+		)
+	if should_update:
+		_last_approach_position = next_position
+		_current_mission_destination = next_position
+		owner_squadron.set_mission_destination(next_position)
 		_destination_initialized = true
+		_approach_repath_left = maxf(
+			approach_repath_interval_sec,
+			0.0
+		)
 	if not owner_squadron.has_reached_mission_destination():
 		return
 	state = State.DIVE_ENTRY
@@ -149,15 +177,22 @@ func _update_dive_entry(target: Node3D) -> void:
 		_finish_and_return(false)
 		return
 	var predicted_position := _calculate_predicted_target_position(target)
-	if not controller.begin_dive(
+	var begin_result := controller.begin_dive_with_source(
 		predicted_position,
-		_get_target_velocity(target)
-	):
-		_finish_and_return(false)
-		return
-	owner_squadron.dive_control_source = \
+		_get_target_velocity(target),
 		AircraftSquadron.DiveControlSource.AI
-	state = State.DIVING
+	)
+	match begin_result:
+		DiveBombAttackController.BeginDiveResult.STARTED, \
+				DiveBombAttackController.BeginDiveResult \
+					.ALREADY_ACTIVE_SAME_SOURCE:
+			state = State.DIVING
+		DiveBombAttackController.BeginDiveResult.NO_AMMUNITION, \
+				DiveBombAttackController.BeginDiveResult \
+					.INVALID_CONFIGURATION, \
+				DiveBombAttackController.BeginDiveResult \
+					.CONTROL_CONFLICT:
+			_finish_and_return(false)
 
 
 func _update_diving(target: Node3D) -> void:
@@ -177,7 +212,10 @@ func _update_diving(target: Node3D) -> void:
 		DiveBombAttackController.State.PULLING_OUT:
 			state = State.PULLING_OUT
 		DiveBombAttackController.State.COMPLETED:
-			if controller.did_release_any_bomb():
+			if int(controller.get_attack_result().get(
+				"released_count",
+				0
+			)) > 0:
 				_begin_egress(target)
 			else:
 				_finish_and_return(false)
@@ -195,7 +233,10 @@ func _update_pulling_out(target: Node3D) -> void:
 		return
 	if controller.state != DiveBombAttackController.State.COMPLETED:
 		return
-	if not controller.did_release_any_bomb():
+	if int(controller.get_attack_result().get(
+		"released_count",
+		0
+	)) <= 0:
 		_finish_and_return(false)
 		return
 	_begin_egress(target)

@@ -6,9 +6,7 @@ const STAGE: StageData = preload(
 )
 
 var _failures: Array[String] = []
-var _completion_count := 0
-var _completed_queued_count := 0
-var _completed_released_count := 0
+var _projectile_release_count := 0
 
 
 func _initialize() -> void:
@@ -31,78 +29,97 @@ func _run() -> void:
 	for aircraft in squadron.aircraft_units:
 		aircraft.activate()
 		aircraft.set_physics_process(false)
-	squadron.weapon_release_sequence_completed.connect(
-		_on_release_sequence_completed
-	)
+		aircraft.weapon_controller.weapon_released.connect(
+			_on_weapon_released
+		)
 	var aircraft := squadron.get_alive_aircraft()
+	squadron.formation_center = Vector3(0.0, 180.0, 200.0)
+	squadron._formation_forward = Vector3(0.0, 0.0, -1.0)
+	var altitudes := [95.0, 130.0, 160.0, 190.0]
 	for index in aircraft.size():
 		aircraft[index].global_position = Vector3(
-			float(index) * 90.0,
-			80.0 if index < 2 else 210.0,
-			0.0
+			float(index) * 120.0,
+			altitudes[index],
+			200.0 + float(index % 2) * 140.0
 		)
-	var ammunition_before := squadron.get_total_remaining_ammunition()
-	var queued_count := squadron.request_weapon_release_for_dive(
-		Vector3.ZERO,
-		Vector3.ZERO
+	var controller := squadron.dive_bomb_controller
+	_check(
+		controller.begin_dive_with_source(
+			Vector3.ZERO,
+			Vector3.ZERO,
+			AircraftSquadron.DiveControlSource.PLAYER
+		) == DiveBombAttackController.BeginDiveResult.STARTED,
+		"individual release dive starts"
+	)
+	controller.dive_elapsed_seconds = 1.0
+	controller.update_dive(0.0)
+	controller.update_dive(0.0)
+	_check(
+		controller.get_aircraft_release_state(aircraft[0]) \
+			== DiveBombAttackController.AircraftReleaseState.REQUESTED,
+		"only the lowest aircraft requests release first"
+	)
+	for index in range(1, aircraft.size()):
+		_check(
+			controller.get_aircraft_release_state(aircraft[index]) \
+				== DiveBombAttackController.AircraftReleaseState.PENDING,
+			"higher aircraft remains pending"
+		)
+	_check(
+		_projectile_release_count == 0,
+		"request acceptance is not projectile completion"
+	)
+	squadron._update_aircraft_weapon_releases(0.0)
+	_check(
+		controller.get_aircraft_release_state(aircraft[0]) \
+			== DiveBombAttackController.AircraftReleaseState.RELEASED,
+		"actual projectile creation marks the first aircraft released"
 	)
 	_check(
-		queued_count == aircraft.size(),
-		"dive release queues all release-capable survivors"
+		_projectile_release_count == 1,
+		"only one projectile is created for the first threshold crossing"
+	)
+	controller.update_dive(0.0)
+	squadron._update_aircraft_weapon_releases(0.0)
+	_check(
+		_projectile_release_count == 1,
+		"the same aircraft cannot release twice in one attack pass"
+	)
+	aircraft[1].global_position.y = 95.0
+	controller.update_dive(0.0)
+	_check(
+		controller.get_aircraft_release_state(aircraft[1]) \
+			== DiveBombAttackController.AircraftReleaseState.REQUESTED,
+		"second aircraft requests only after reaching its own altitude"
+	)
+	squadron._update_aircraft_weapon_releases(0.0)
+	_check(
+		controller.get_aircraft_release_state(aircraft[1]) \
+			== DiveBombAttackController.AircraftReleaseState.RELEASED,
+		"second aircraft independently completes release"
 	)
 	_check(
-		squadron.get_total_remaining_ammunition() == ammunition_before,
-		"queue registration is not treated as completed release"
+		_projectile_release_count == 2,
+		"different aircraft altitudes produce staggered projectiles"
 	)
-	_check(
-		_completion_count == 0,
-		"completion signal is not emitted when aircraft are only queued"
-	)
-	_drain_release_sequence(squadron)
-	_check(
-		_completion_count == 1,
-		"release sequence emits completion exactly once"
-	)
-	_check(
-		_completed_queued_count == aircraft.size(),
-		"completion reports the queued aircraft count"
-	)
-	_check(
-		_completed_released_count == aircraft.size(),
-		"completion reports the actual releasing aircraft count"
-	)
-	_check(
-		not squadron.is_weapon_release_in_progress(),
-		"release sequence becomes inactive after completion"
-	)
+	controller.cancel()
 	await _finish(battle)
 
 
-func _drain_release_sequence(squadron: AircraftSquadron) -> void:
-	for _index in 32:
-		squadron._update_weapon_release_sequence(0.25)
-		for aircraft in squadron.get_alive_aircraft():
-			aircraft.weapon_controller.update_weapon(0.25)
-		if not squadron.is_weapon_release_in_progress():
-			return
-
-
-func _on_release_sequence_completed(
-		queued_count: int,
-		released_count: int
+func _on_weapon_released(
+		_aircraft: AircraftUnit,
+		_projectile: Node
 ) -> void:
-	_completion_count += 1
-	_completed_queued_count = queued_count
-	_completed_released_count = released_count
+	_projectile_release_count += 1
 
 
 func _finish(battle: BattleScene) -> void:
 	battle.queue_free()
 	await process_frame
 	for failure in _failures:
-		push_error("DIVE BOMB RELEASE SEQUENCE TEST: %s" % failure)
+		push_error("DIVE BOMB INDIVIDUAL RELEASE TEST: %s" % failure)
 	print(
-		"DIVE_BOMB_RELEASE_SEQUENCE_COMPLETION_TEST %s"
+		"DIVE_BOMB_INDIVIDUAL_AUTOMATIC_RELEASE_TEST %s"
 		% ("PASS" if _failures.is_empty() else "FAIL")
 	)
 	quit(0 if _failures.is_empty() else 1)

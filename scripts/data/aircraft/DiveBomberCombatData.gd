@@ -16,6 +16,8 @@ class_name DiveBomberCombatData
 @export var release_altitude_tolerance_m: float = 8.0
 
 @export var automatic_pull_out_altitude_m: float = 45.0
+@export_range(0.1, 1.0, 0.05)
+var pull_out_aircraft_ratio: float = 0.5
 @export var pull_out_distance_m: float = 500.0
 @export var pull_out_climb_angle_degrees: float = 25.0
 
@@ -65,6 +67,9 @@ func validate() -> PackedStringArray:
 		)
 	if automatic_pull_out_altitude_m < 0.0:
 		errors.append("automatic pull-out altitude cannot be negative.")
+	if pull_out_aircraft_ratio < 0.1 \
+			or pull_out_aircraft_ratio > 1.0:
+		errors.append("pull_out_aircraft_ratio must be in [0.1, 1.0].")
 	if pull_out_distance_m <= 0.0:
 		errors.append("pull_out_distance_m must be positive.")
 	if pull_out_climb_angle_degrees <= 0.0 \

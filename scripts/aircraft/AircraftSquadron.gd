@@ -11,6 +11,18 @@ signal weapon_release_sequence_completed(
 	queued_count: int,
 	released_count: int
 )
+signal aircraft_weapon_release_finished(
+	aircraft: AircraftUnit,
+	success: bool,
+	cancelled: bool,
+	reason: int
+)
+signal dive_release_pass_finished(
+	released_count: int,
+	failed_count: int,
+	skipped_count: int,
+	cancelled: bool
+)
 
 enum State {
 	FORMING,
@@ -32,6 +44,17 @@ enum DiveControlSource {
 	AI,
 }
 
+enum AircraftReleaseRequestResult {
+	QUEUED,
+	ALREADY_PENDING,
+	ALREADY_RELEASED,
+	RETRYABLE,
+	NO_AMMUNITION,
+	NO_WEAPON_CONTROLLER,
+	WEAPON_DISABLED,
+	INVALID_AIRCRAFT,
+}
+
 const EPSILON := 0.0001
 
 @onready var mission_controller: AircraftMissionController = get_node_or_null(
@@ -43,6 +66,7 @@ const EPSILON := 0.0001
 	get_node_or_null("SelectionIndicator") as MeshInstance3D
 
 @export var manual_return_after_release := false
+@export var destination_change_epsilon_m := 5.0
 
 var squadron_data: SquadronData
 var aircraft_units: Array[AircraftUnit] = []
@@ -58,13 +82,17 @@ var _formation_forward: Vector3 = Vector3.FORWARD
 var _launch_elapsed_sec := 0.0
 var _next_aircraft_to_activate := 0
 var _completion_emitted := false
-var _release_queue: Array[AircraftUnit] = []
-var _release_interval_left := 0.0
-var _release_target_position := Vector3.ZERO
-var _release_target_velocity := Vector3.ZERO
-var _release_sequence_queued_count := 0
-var _release_sequence_released_count := 0
-var _release_sequence_active := false
+var _active_aircraft_release_requests: Dictionary = {}
+var _last_aircraft_release_results: Dictionary = {}
+var _active_release_requested_count := 0
+var _active_release_completed_count := 0
+var _active_release_failed_count := 0
+var _last_release_requested_count := 0
+var _last_release_completed_count := 0
+var _last_release_failed_count := 0
+var _last_release_skipped_count := 0
+var _last_release_cancelled := false
+var _dive_release_pass_active := false
 var _carrier_unavailable_cleanup_left := -1.0
 var _requested_aircraft_count := -1
 var _formation_activated_emitted := false
@@ -77,6 +105,7 @@ var _manual_attack_target_ref: WeakRef
 var _loiter_center := Vector3.ZERO
 var _loiter_angle_rad := 0.0
 var _loiter_initialized := false
+var _mission_destination_reached := false
 
 
 func setup(
@@ -97,8 +126,17 @@ func setup(
 		state = State.DESTROYED
 		return
 	_team = owner_carrier.team
+	_active_aircraft_release_requests.clear()
+	_last_aircraft_release_results.clear()
+	_dive_release_pass_active = false
+	_last_release_requested_count = 0
+	_last_release_completed_count = 0
+	_last_release_failed_count = 0
+	_last_release_skipped_count = 0
+	_last_release_cancelled = false
 	add_to_group(&"aircraft_squadrons")
 	formation_center = _get_carrier_launch_position()
+	_mission_destination_reached = false
 	_formation_forward = -owner_carrier.global_transform.basis.z.normalized()
 	if _formation_forward.length_squared() <= EPSILON:
 		_formation_forward = Vector3.FORWARD
@@ -118,6 +156,7 @@ func launch_to(world_position: Vector3) -> void:
 		return
 	destination = _clamp_destination_to_combat_radius(world_position)
 	_loiter_initialized = false
+	_mission_destination_reached = false
 	state = State.EN_ROUTE
 	_launch_elapsed_sec = 0.0
 	_next_aircraft_to_activate = 0
@@ -134,6 +173,7 @@ func request_return() -> void:
 	clear_fighter_targets()
 	cancel_pending_weapon_release()
 	_loiter_initialized = false
+	_mission_destination_reached = false
 	set_combat_formation_enabled(false)
 	set_player_selected(false)
 	dive_control_source = DiveControlSource.NONE
@@ -306,9 +346,13 @@ func begin_manual_dive() -> bool:
 	target.y = target_ship.global_position.y \
 		if target_ship != null else 0.0
 	var target_velocity := _get_target_world_velocity(target_ship)
-	if not dive_bomb_controller.begin_dive(target, target_velocity):
+	var begin_result := dive_bomb_controller.begin_dive_with_source(
+		target,
+		target_velocity,
+		DiveControlSource.PLAYER
+	)
+	if begin_result != DiveBombAttackController.BeginDiveResult.STARTED:
 		return false
-	dive_control_source = DiveControlSource.PLAYER
 	return true
 
 
@@ -409,42 +453,64 @@ func request_weapon_release_for_ready_aircraft(
 		minimum_altitude_m: float,
 		maximum_altitude_m: float
 ) -> int:
-	if is_weapon_release_in_progress():
-		return 0
-	var release_aircraft: Array[AircraftUnit] = []
+	var queued_count := 0
 	for aircraft in get_alive_aircraft():
 		var altitude := aircraft.global_position.y - target_position.y
 		if altitude < minimum_altitude_m \
 				or altitude > maximum_altitude_m:
 			continue
-		if aircraft.weapon_controller != null \
-				and aircraft.weapon_controller.can_release():
-			release_aircraft.append(aircraft)
-	return _start_weapon_release_sequence(
-		release_aircraft,
-		target_position,
-		target_velocity
-	)
+		if request_aircraft_weapon_release(
+			aircraft,
+			target_position,
+			target_velocity
+		) == AircraftReleaseRequestResult.QUEUED:
+			queued_count += 1
+	return queued_count
 
 
-func request_weapon_release_for_dive(
+func request_aircraft_weapon_release(
+		aircraft: AircraftUnit,
 		next_target_position: Vector3,
 		next_target_velocity: Vector3
-) -> int:
-	if is_weapon_release_in_progress():
-		return 0
-	var release_aircraft: Array[AircraftUnit] = []
-	for aircraft in get_alive_aircraft():
-		if aircraft == null or not is_instance_valid(aircraft) \
-				or aircraft.weapon_controller == null \
-				or not aircraft.weapon_controller.can_release():
-			continue
-		release_aircraft.append(aircraft)
-	return _start_weapon_release_sequence(
-		release_aircraft,
+) -> AircraftReleaseRequestResult:
+	if aircraft == null or not is_instance_valid(aircraft) \
+			or not aircraft.is_alive():
+		return AircraftReleaseRequestResult.INVALID_AIRCRAFT
+	var aircraft_id := aircraft.get_instance_id()
+	if _has_active_release_for_aircraft(aircraft_id):
+		return AircraftReleaseRequestResult.ALREADY_PENDING
+	var previous: Dictionary = _last_aircraft_release_results.get(
+		aircraft_id,
+		{}
+	)
+	if bool(previous.get("success", false)):
+		return AircraftReleaseRequestResult.ALREADY_RELEASED
+	var weapon_controller := aircraft.weapon_controller
+	if weapon_controller == null:
+		return AircraftReleaseRequestResult.NO_WEAPON_CONTROLLER
+	if not weapon_controller.has_ammunition():
+		return AircraftReleaseRequestResult.NO_AMMUNITION
+	if not weapon_controller.is_release_enabled():
+		return AircraftReleaseRequestResult.WEAPON_DISABLED
+	if not weapon_controller.can_release():
+		return (
+			AircraftReleaseRequestResult.RETRYABLE
+			if weapon_controller.can_retry_payload_release()
+			else AircraftReleaseRequestResult.WEAPON_DISABLED
+		)
+	var request_id := weapon_controller.request_release(
 		next_target_position,
 		next_target_velocity
 	)
+	if request_id < 0:
+		return AircraftReleaseRequestResult.RETRYABLE
+	_active_aircraft_release_requests[request_id] = {
+		"aircraft_ref": weakref(aircraft),
+		"aircraft_id": aircraft_id,
+		"requested_at": Time.get_ticks_msec(),
+	}
+	_active_release_requested_count += 1
+	return AircraftReleaseRequestResult.QUEUED
 
 
 func get_release_ready_aircraft_count(
@@ -452,8 +518,6 @@ func get_release_ready_aircraft_count(
 		minimum_altitude_m: float,
 		maximum_altitude_m: float
 ) -> int:
-	if is_weapon_release_in_progress():
-		return 0
 	var count := 0
 	for aircraft in get_alive_aircraft():
 		var altitude := aircraft.global_position.y - target_world_y
@@ -467,13 +531,30 @@ func get_release_ready_aircraft_count(
 
 
 func cancel_pending_weapon_release() -> void:
-	_release_queue.clear()
-	_release_interval_left = 0.0
-	_release_sequence_active = false
-	_release_sequence_queued_count = 0
-	_release_sequence_released_count = 0
+	var request_ids := _active_aircraft_release_requests.keys()
+	for request_value in request_ids:
+		var request_id := int(request_value)
+		var request_data: Dictionary = \
+			_active_aircraft_release_requests.get(request_id, {})
+		var aircraft_ref := request_data.get("aircraft_ref") as WeakRef
+		var aircraft := aircraft_ref.get_ref() as AircraftUnit \
+			if aircraft_ref != null else null
+		if aircraft != null and is_instance_valid(aircraft) \
+				and aircraft.weapon_controller != null \
+				and aircraft.weapon_controller.cancel_release_request(
+					request_id
+				):
+			continue
+		_finish_aircraft_release_request(
+			aircraft,
+			request_id,
+			false,
+			true,
+			AircraftWeaponController.ReleaseFailureReason.CANCELLED
+		)
 	for aircraft in get_alive_aircraft():
-		if aircraft.weapon_controller != null:
+		if aircraft.weapon_controller != null \
+				and aircraft.weapon_controller.is_release_in_progress():
 			aircraft.weapon_controller.cancel_pending_release()
 
 
@@ -504,21 +585,101 @@ func has_any_ammunition() -> bool:
 
 
 func is_weapon_release_in_progress() -> bool:
-	return _release_sequence_active \
-		or not _release_queue.is_empty() \
-		or _release_interval_left > 0.0
+	if not _active_aircraft_release_requests.is_empty():
+		return true
+	for aircraft in get_alive_aircraft():
+		if aircraft.weapon_controller != null \
+				and aircraft.weapon_controller.is_release_in_progress():
+			return true
+	return false
 
 
 func get_release_sequence_queued_count() -> int:
-	return _release_sequence_queued_count
+	return _active_release_requested_count
 
 
 func get_release_sequence_released_count() -> int:
-	return _release_sequence_released_count
+	return _active_release_completed_count
 
 
 func is_release_sequence_active() -> bool:
-	return _release_sequence_active
+	return _dive_release_pass_active \
+		or not _active_aircraft_release_requests.is_empty()
+
+
+func begin_dive_release_pass() -> void:
+	_active_release_requested_count = 0
+	_active_release_completed_count = 0
+	_active_release_failed_count = 0
+	_last_aircraft_release_results.clear()
+	_dive_release_pass_active = true
+
+
+func finish_dive_release_pass(
+		released_count: int,
+		failed_count: int,
+		skipped_count: int,
+		cancelled: bool
+) -> void:
+	if not _dive_release_pass_active:
+		return
+	_dive_release_pass_active = false
+	_last_release_requested_count = _active_release_requested_count
+	_last_release_completed_count = maxi(released_count, 0)
+	_last_release_failed_count = maxi(failed_count, 0)
+	_last_release_skipped_count = maxi(skipped_count, 0)
+	_last_release_cancelled = cancelled
+	weapon_release_sequence_completed.emit(
+		_last_release_requested_count,
+		_last_release_completed_count
+	)
+	dive_release_pass_finished.emit(
+		_last_release_completed_count,
+		_last_release_failed_count,
+		_last_release_skipped_count,
+		cancelled
+	)
+	_active_release_requested_count = 0
+	_active_release_completed_count = 0
+	_active_release_failed_count = 0
+
+
+func get_last_release_result() -> Dictionary:
+	return {
+		"requested_count": _last_release_requested_count,
+		"released_count": _last_release_completed_count,
+		"failed_count": _last_release_failed_count,
+		"skipped_count": _last_release_skipped_count,
+		"cancelled": _last_release_cancelled,
+	}
+
+
+func cancel_aircraft_weapon_release(aircraft_id: int) -> bool:
+	for request_value in _active_aircraft_release_requests.keys():
+		var request_id := int(request_value)
+		var data: Dictionary = _active_aircraft_release_requests.get(
+			request_id,
+			{}
+		)
+		if int(data.get("aircraft_id", 0)) != aircraft_id:
+			continue
+		var aircraft_ref := data.get("aircraft_ref") as WeakRef
+		var aircraft := aircraft_ref.get_ref() as AircraftUnit \
+			if aircraft_ref != null else null
+		if aircraft != null and is_instance_valid(aircraft) \
+				and aircraft.weapon_controller != null:
+			return aircraft.weapon_controller.cancel_release_request(
+				request_id
+			)
+		_finish_aircraft_release_request(
+			aircraft,
+			request_id,
+			false,
+			true,
+			AircraftWeaponController.ReleaseFailureReason.CANCELLED
+		)
+		return true
+	return false
 
 
 func get_aircraft_weapon_data() -> AircraftWeaponData:
@@ -565,14 +726,20 @@ func set_mission_destination(world_position: Vector3) -> void:
 			or state == State.RECOVERING \
 			or state == State.DESTROYED:
 		return
+	var next_destination := _clamp_destination_horizontal(world_position)
+	if destination.distance_to(next_destination) \
+			<= maxf(destination_change_epsilon_m, 0.0) \
+			and state in [State.EN_ROUTE, State.HOLDING]:
+		return
 	_loiter_initialized = false
-	destination = _clamp_destination_horizontal(world_position)
+	_mission_destination_reached = false
+	destination = next_destination
 	state = State.EN_ROUTE
 	set_physics_process(true)
 
 
 func has_reached_mission_destination() -> bool:
-	return state == State.HOLDING and _loiter_initialized
+	return _mission_destination_reached
 
 
 func handle_carrier_unavailable(cleanup_grace_sec: float = 2.0) -> void:
@@ -638,7 +805,11 @@ func _physics_process(delta: float) -> void:
 			_mark_destroyed()
 			return
 	_update_launch_sequence(delta)
-	_update_weapon_release_sequence(delta)
+	_update_aircraft_weapon_releases(delta)
+	if dive_bomb_controller != null and dive_bomb_controller.is_active():
+		if dive_control_source == DiveControlSource.PLAYER:
+			_update_player_dive_target()
+		dive_bomb_controller.update_dive(delta)
 	if mission_controller != null \
 			and not is_player_commanded() \
 			and state not in [
@@ -647,12 +818,6 @@ func _physics_process(delta: float) -> void:
 				State.DESTROYED,
 			]:
 		mission_controller.update_mission(delta)
-	if dive_bomb_controller != null and dive_bomb_controller.is_active():
-		if dive_control_source == DiveControlSource.PLAYER:
-			_update_player_dive_target()
-		dive_bomb_controller.update_dive(delta)
-		_update_selection_indicator()
-		return
 	if dive_control_source != DiveControlSource.NONE \
 			and dive_bomb_controller != null \
 			and dive_bomb_controller.state in [
@@ -665,10 +830,14 @@ func _physics_process(delta: float) -> void:
 		if was_player_dive and manual_return_after_release:
 			request_return()
 			return
+	if dive_bomb_controller != null and dive_bomb_controller.is_active():
+		_update_selection_indicator()
+		return
 	match state:
 		State.EN_ROUTE:
 			_advance_formation_center(destination, delta)
 			if _has_formation_arrived(destination):
+				_mission_destination_reached = true
 				_begin_loiter()
 		State.HOLDING:
 			_update_loiter(delta)
@@ -688,72 +857,89 @@ func _physics_process(delta: float) -> void:
 	_update_selection_indicator()
 
 
-func _update_weapon_release_sequence(delta: float) -> void:
-	if not _release_sequence_active:
-		return
-	_release_interval_left = maxf(0.0, _release_interval_left - delta)
-	if _release_interval_left > 0.0:
-		return
-	while not _release_queue.is_empty():
-		var aircraft_value: Variant = _release_queue.pop_front()
-		var aircraft := aircraft_value as AircraftUnit
-		if not is_instance_valid(aircraft) or not aircraft.is_alive() \
-				or aircraft.weapon_controller == null:
-			continue
-		if aircraft.weapon_controller.release(
-			_release_target_position,
-			_release_target_velocity
-		):
-			_release_sequence_released_count += 1
-			var data: AircraftWeaponData = \
-				aircraft.weapon_controller.weapon_data
-			_release_interval_left = maxf(
-				data.release_interval_sec if data != null else 0.0,
-				0.0
-			)
-			return
-	if _has_pending_aircraft_weapon_release():
-		return
-	_complete_weapon_release_sequence()
-
-
-func _start_weapon_release_sequence(
-		release_aircraft: Array[AircraftUnit],
-		next_target_position: Vector3,
-		next_target_velocity: Vector3
-) -> int:
-	if release_aircraft.is_empty():
-		return 0
-	_release_queue = release_aircraft.duplicate()
-	_release_target_position = next_target_position
-	_release_target_velocity = next_target_velocity
-	_release_interval_left = 0.0
-	_release_sequence_queued_count = _release_queue.size()
-	_release_sequence_released_count = 0
-	_release_sequence_active = true
-	return _release_sequence_queued_count
-
-
-func _has_pending_aircraft_weapon_release() -> bool:
+func _update_aircraft_weapon_releases(delta: float) -> void:
 	for aircraft in get_alive_aircraft():
-		if aircraft.weapon_controller != null \
-				and aircraft.weapon_controller.is_release_in_progress():
+		if aircraft.weapon_controller != null:
+			aircraft.weapon_controller.update_weapon(delta)
+
+
+func _has_active_release_for_aircraft(aircraft_id: int) -> bool:
+	for value in _active_aircraft_release_requests.values():
+		var data := value as Dictionary
+		if int(data.get("aircraft_id", 0)) == aircraft_id:
 			return true
 	return false
 
 
-func _complete_weapon_release_sequence() -> void:
-	if not _release_sequence_active:
+func _on_payload_release_completed(
+		aircraft: AircraftUnit,
+		request_id: int,
+		_projectile: Node3D
+) -> void:
+	_finish_aircraft_release_request(
+		aircraft,
+		request_id,
+		true,
+		false,
+		AircraftWeaponController.ReleaseFailureReason.NONE
+	)
+
+
+func _on_payload_release_failed(
+		aircraft: AircraftUnit,
+		request_id: int,
+		reason: int
+) -> void:
+	_finish_aircraft_release_request(
+		aircraft,
+		request_id,
+		false,
+		false,
+		reason
+	)
+
+
+func _on_payload_release_cancelled(
+		aircraft: AircraftUnit,
+		request_id: int
+) -> void:
+	_finish_aircraft_release_request(
+		aircraft,
+		request_id,
+		false,
+		true,
+		AircraftWeaponController.ReleaseFailureReason.CANCELLED
+	)
+
+
+func _finish_aircraft_release_request(
+		aircraft: AircraftUnit,
+		request_id: int,
+		success: bool,
+		cancelled: bool,
+		reason: int
+) -> void:
+	if not _active_aircraft_release_requests.has(request_id):
 		return
-	_release_sequence_active = false
-	var queued_count := _release_sequence_queued_count
-	var released_count := _release_sequence_released_count
-	_release_sequence_queued_count = 0
-	_release_sequence_released_count = 0
-	_release_interval_left = 0.0
-	weapon_release_sequence_completed.emit(
-		queued_count,
-		released_count
+	var request_data: Dictionary = \
+		_active_aircraft_release_requests.get(request_id, {})
+	var aircraft_id := int(request_data.get("aircraft_id", 0))
+	_active_aircraft_release_requests.erase(request_id)
+	if success:
+		_active_release_completed_count += 1
+	else:
+		_active_release_failed_count += 1
+	_last_aircraft_release_results[aircraft_id] = {
+		"success": success,
+		"cancelled": cancelled,
+		"request_id": request_id,
+		"reason": reason,
+	}
+	aircraft_weapon_release_finished.emit(
+		aircraft,
+		success,
+		cancelled,
+		reason
 	)
 
 
@@ -773,6 +959,27 @@ func _spawn_aircraft() -> void:
 		var offset := _calculate_formation_offset(index, count)
 		aircraft.global_position = formation_center + offset * 0.15
 		aircraft.setup(data, get_owner_carrier().team, offset)
+		aircraft.set_weapon_updates_managed_by_squadron(true)
+		if aircraft.weapon_controller != null:
+			var weapon_controller := aircraft.weapon_controller
+			if not weapon_controller.payload_release_completed.is_connected(
+				_on_payload_release_completed
+			):
+				weapon_controller.payload_release_completed.connect(
+					_on_payload_release_completed
+				)
+			if not weapon_controller.payload_release_failed.is_connected(
+				_on_payload_release_failed
+			):
+				weapon_controller.payload_release_failed.connect(
+					_on_payload_release_failed
+				)
+			if not weapon_controller.payload_release_cancelled.is_connected(
+				_on_payload_release_cancelled
+			):
+				weapon_controller.payload_release_cancelled.connect(
+					_on_payload_release_cancelled
+				)
 		aircraft.deactivate()
 		if not aircraft.destroyed.is_connected(_on_aircraft_destroyed):
 			aircraft.destroyed.connect(_on_aircraft_destroyed)
@@ -848,6 +1055,7 @@ func apply_direct_flight(
 	if direction.length_squared() <= EPSILON:
 		return
 	_loiter_initialized = false
+	_mission_destination_reached = false
 	_formation_forward = direction.normalized()
 	formation_center += _formation_forward \
 		* maxf(speed_mps, 0.0) * maxf(delta, 0.0)
@@ -859,6 +1067,7 @@ func apply_direct_flight(
 func finish_direct_flight_holding(world_altitude: float) -> void:
 	formation_center.y = world_altitude
 	destination = formation_center
+	_mission_destination_reached = true
 	_begin_loiter()
 	for aircraft in get_alive_aircraft():
 		aircraft.set_formation_flight()
@@ -1169,6 +1378,7 @@ func _mark_destroyed() -> void:
 func _on_aircraft_destroyed(aircraft: AircraftUnit) -> void:
 	if aircraft == null:
 		return
+	cancel_aircraft_weapon_release(aircraft.get_instance_id())
 	aircraft_lost.emit(self, aircraft)
 	call_deferred(&"_check_after_aircraft_loss")
 

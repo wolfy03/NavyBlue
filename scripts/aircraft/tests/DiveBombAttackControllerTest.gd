@@ -78,8 +78,8 @@ func _run() -> void:
 	var release_state_seen := false
 	var pull_out_seen := false
 	var previous_state := int(squadron.get_dive_attack_state())
-	for _index in 160:
-		_advance_dive(squadron, 0.1)
+	for _index in 600:
+		_advance_dive(squadron, 1.0 / 60.0)
 		var current_state := int(squadron.get_dive_attack_state())
 		_check(
 			current_state >= previous_state,
@@ -132,10 +132,9 @@ func _advance_dive(
 		squadron: AircraftSquadron,
 		delta: float
 ) -> void:
-	squadron._update_weapon_release_sequence(delta)
+	squadron._update_aircraft_weapon_releases(delta)
 	squadron.dive_bomb_controller.update_dive(delta)
 	for aircraft in squadron.get_alive_aircraft():
-		aircraft.weapon_controller.update_weapon(delta)
 		aircraft.movement.update_movement(delta)
 
 

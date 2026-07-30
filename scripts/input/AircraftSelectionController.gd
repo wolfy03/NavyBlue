@@ -235,7 +235,10 @@ func execute_special_action() -> bool:
 		attempted = true
 		if squadron.can_begin_manual_dive():
 			if squadron.begin_manual_dive():
-				command_feedback.emit("Dive attack started")
+				command_feedback.emit(
+					"Dive attack started. Bombs release at each "
+					+ "aircraft's safe altitude."
+				)
 				handled = true
 		elif squadron.dive_bomb_controller != null \
 				and squadron.dive_bomb_controller.is_active():
@@ -272,9 +275,9 @@ func _connect_dive_feedback(squadron: AircraftSquadron) -> void:
 		completed_callback
 	):
 		controller.automatic_release_completed.connect(completed_callback)
-	var failed_callback := _on_automatic_release_failed.bind(squadron)
-	if not controller.automatic_release_failed.is_connected(failed_callback):
-		controller.automatic_release_failed.connect(failed_callback)
+	var pass_callback := _on_dive_release_pass_finished.bind(squadron)
+	if not squadron.dive_release_pass_finished.is_connected(pass_callback):
+		squadron.dive_release_pass_finished.connect(pass_callback)
 
 
 func _on_automatic_release_completed(
@@ -283,25 +286,25 @@ func _on_automatic_release_completed(
 ) -> void:
 	if not selected_squadrons.has(squadron):
 		return
+	var total_count := squadron.dive_bomb_controller \
+		.get_release_aircraft_count()
 	command_feedback.emit(
-		"Automatic bomb release: %d aircraft" % released_count
+		"Bomb release: %d/%d" % [released_count, total_count]
 	)
 
 
-func _on_automatic_release_failed(
-		reason: int,
+func _on_dive_release_pass_finished(
+		released_count: int,
+		failed_count: int,
+		_skipped_count: int,
+		_cancelled: bool,
 		squadron: AircraftSquadron
 ) -> void:
 	if not selected_squadrons.has(squadron):
 		return
-	var reason_name := "UNKNOWN"
-	if reason >= 0 \
-			and reason < DiveBombAttackController.ReleaseBlockReason.size():
-		reason_name = DiveBombAttackController.ReleaseBlockReason.keys()[
-			reason
-		]
 	command_feedback.emit(
-		"Automatic bomb release failed: %s" % reason_name
+		"Dive attack complete: %d released, %d failed"
+		% [released_count, failed_count]
 	)
 
 

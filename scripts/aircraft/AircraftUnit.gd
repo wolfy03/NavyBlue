@@ -25,6 +25,7 @@ var aircraft_data: AircraftData
 var team: StringName = &"neutral"
 var formation_offset: Vector3 = Vector3.ZERO
 var active := false
+var weapon_updates_managed_by_squadron := false
 var _destroyed_emitted := false
 
 
@@ -59,8 +60,13 @@ func setup(
 func _physics_process(delta: float) -> void:
 	if active and movement != null:
 		movement.update_movement(delta)
-	if active and weapon_controller != null:
+	if active and weapon_controller != null \
+			and not weapon_updates_managed_by_squadron:
 		weapon_controller.update_weapon(delta)
+
+
+func set_weapon_updates_managed_by_squadron(managed: bool) -> void:
+	weapon_updates_managed_by_squadron = managed
 
 
 func set_formation_target(world_position: Vector3) -> void:
