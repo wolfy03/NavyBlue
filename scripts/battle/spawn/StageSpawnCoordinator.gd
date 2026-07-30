@@ -17,12 +17,22 @@ func setup(
 		next_spawn_points: Node3D,
 		next_debug_settings: BattleDebugSettings
 ) -> void:
+	shutdown()
 	ship_factory = next_ship_factory
 	player_ship_resolver = next_player_ship_resolver
 	state_restorer = next_state_restorer
 	faction_palette = next_faction_palette
 	spawn_points = next_spawn_points
 	debug_settings = next_debug_settings
+
+
+func shutdown() -> void:
+	ship_factory = null
+	player_ship_resolver = null
+	state_restorer = null
+	faction_palette = null
+	spawn_points = null
+	debug_settings = null
 
 
 func spawn_stage(
@@ -34,6 +44,11 @@ func spawn_stage(
 	if stage_data == null or parent == null:
 		result.errors.append("StageData or spawn parent is missing.")
 		return result
+	var validation_errors := stage_data.validate()
+	if not validation_errors.is_empty():
+		for error in validation_errors:
+			push_error("Invalid StageData '%s': %s" % [stage_data.id, error])
+		return StageSpawnResult.failed(validation_errors)
 	var player_resolution := player_ship_resolver.resolve(test_config)
 	var player_request := _build_request(
 		stage_data.player_spawn,

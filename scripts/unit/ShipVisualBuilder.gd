@@ -104,7 +104,13 @@ func _create_mount(
 	mount.rotation_degrees = slot.local_rotation_degrees
 	mount.scale = slot.local_scale
 	mount.name = String(slot.slot_id)
-	mount.setup(weapon_data, slot, owner_ship, team)
+	mount.setup(
+		weapon_data,
+		slot,
+		owner_ship,
+		team,
+		owner_ship.battle_services if owner_ship != null else null
+	)
 	return mount
 
 

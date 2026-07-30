@@ -26,9 +26,12 @@ var _initialized := false
 
 
 func setup(services: BattleServices) -> void:
-	var run_manager := services.run_manager if services != null else null
-	_player_ship_resolver.setup(run_manager)
-	_state_restorer.setup(run_manager)
+	shutdown()
+	if services == null:
+		push_error("SpawnSystem requires BattleServices.")
+		return
+	_player_ship_resolver.setup(services.run_session)
+	_state_restorer.setup(services.run_session)
 	_ship_factory.setup(
 		ship_scene,
 		_ship_database,
@@ -46,6 +49,15 @@ func setup(services: BattleServices) -> void:
 	_initialized = true
 
 
+func shutdown() -> void:
+	clear_spawned_units()
+	_stage_coordinator.shutdown()
+	_ship_factory.shutdown()
+	_player_ship_resolver.shutdown()
+	_state_restorer.shutdown()
+	_initialized = false
+
+
 func spawn_stage(
 		stage_data: StageData,
 		parent: Node,
@@ -53,10 +65,12 @@ func spawn_stage(
 ) -> StageSpawnResult:
 	clear_spawned_units()
 	if not _initialized:
-		push_warning(
+		push_error(
 			"SpawnSystem must be setup by the battle composition root."
 		)
-		return StageSpawnResult.new()
+		return StageSpawnResult.failed(
+			PackedStringArray(["Missing StageSpawnCoordinator."])
+		)
 	var result := _stage_coordinator.spawn_stage(
 		stage_data,
 		_resolve_parent(parent),
@@ -82,3 +96,7 @@ func _resolve_parent(parent: Node) -> Node:
 		var ships := current_scene.get_node_or_null("Ships")
 		return ships if ships != null else current_scene
 	return get_tree().root if get_tree() != null else null
+
+
+func _exit_tree() -> void:
+	shutdown()

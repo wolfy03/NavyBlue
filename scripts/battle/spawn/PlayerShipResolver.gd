@@ -1,12 +1,18 @@
 extends RefCounted
 class_name PlayerShipResolver
 
-var run_manager: Node
+var run_session: RunSessionReader
 var _warned_invalid_ids: Dictionary = {}
 
 
-func setup(next_run_manager: Node) -> void:
-	run_manager = next_run_manager
+func setup(next_run_session: RunSessionReader) -> void:
+	shutdown()
+	run_session = next_run_session
+
+
+func shutdown() -> void:
+	run_session = null
+	_warned_invalid_ids.clear()
 
 
 func resolve(test_config: BattleTestConfig = null) -> PlayerShipResolution:
@@ -17,10 +23,9 @@ func resolve(test_config: BattleTestConfig = null) -> PlayerShipResolution:
 			and not test_config.player_ship_override.is_empty():
 		result.ship_id = test_config.player_ship_override
 		result.source = PlayerShipResolution.Source.TEST_OVERRIDE
-	elif run_manager != null \
-			and bool(run_manager.get("is_run_active")):
+	elif run_session != null and run_session.is_run_active():
 		result.ship_id = StringName(
-			run_manager.call(&"get_selected_player_ship_id")
+			run_session.get_selected_player_ship_id()
 		)
 		result.source = PlayerShipResolution.Source.RUN_SELECTION
 	else:

@@ -1,6 +1,12 @@
 extends Resource
 class_name ShipSpawnData
 
+enum SpawnRole {
+	PLAYER,
+	ALLY,
+	ENEMY,
+}
+
 @export var ship_id: StringName
 @export var team: StringName
 @export var fleet_id: StringName
@@ -17,8 +23,12 @@ class_name ShipSpawnData
 @export var color_override := Color.WHITE
 
 
-func validate(expect_player: bool, label: String) -> PackedStringArray:
+func validate(
+		expected_role: SpawnRole,
+		label: String = "spawn"
+) -> PackedStringArray:
 	var errors := PackedStringArray()
+	var expect_player := expected_role == SpawnRole.PLAYER
 	if is_player != expect_player:
 		errors.append("%s must set is_player=%s." % [label, expect_player])
 	if not expect_player:
@@ -37,15 +47,28 @@ func validate(expect_player: bool, label: String) -> PackedStringArray:
 		)
 	if team.is_empty():
 		errors.append("%s is missing team." % label)
-	elif team not in [
-		FactionRelations.PLAYER,
-		FactionRelations.ALLY,
-		FactionRelations.ENEMY,
-		FactionRelations.NEUTRAL,
-	]:
-		errors.append("%s has unsupported team '%s'." % [label, team])
-	if display_name.is_empty() and spawn_marker_id.is_empty():
-		errors.append("%s requires display_name or spawn_marker_id." % label)
+	var expected_team := FactionRelations.PLAYER
+	match expected_role:
+		SpawnRole.ALLY:
+			expected_team = FactionRelations.ALLY
+		SpawnRole.ENEMY:
+			expected_team = FactionRelations.ENEMY
+	if not team.is_empty() and team != expected_team:
+		errors.append(
+			"%s must use team '%s', got '%s'."
+			% [label, expected_team, team]
+		)
+	if use_explicit_transform and not spawn_marker_id.is_empty():
+		errors.append(
+			"%s must use either explicit_transform or spawn_marker_id."
+			% label
+		)
+	if not use_explicit_transform and spawn_marker_id.is_empty():
+		errors.append(
+			"%s requires explicit_transform or spawn_marker_id." % label
+		)
+	if not explicit_transform.is_finite():
+		errors.append("%s explicit_transform must be finite." % label)
 	return errors
 
 

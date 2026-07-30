@@ -186,19 +186,19 @@ func emit_gun_burst_result(
 		result.hit_count
 	)
 	if battle_services != null:
-		battle_services.publish(&"fighter_gun_burst_fired", [
+		battle_services.events.emit_fighter_gun_burst(
 			owner_aircraft,
 			target,
 			result.rounds_fired,
 			result.hit_count,
-			result.hit_probability,
-		])
+			result.hit_probability
+		)
 		if result.total_damage > 0.0:
-			battle_services.publish(&"aircraft_gun_hit", [
+			battle_services.events.emit_aircraft_gun_hit(
 				owner_aircraft,
 				target,
-				result.total_damage,
-			])
+				result.total_damage
+			)
 
 
 func request_release(
@@ -316,34 +316,9 @@ func _spawn_projectile(
 	var projectile_parent := _resolve_projectile_parent()
 	if projectile_parent == null:
 		return null
-	var projectile: Node
-	if battle_services != null:
-		projectile = battle_services.spawn_pooled(
-			weapon_data.projectile_scene,
-			projectile_parent
-		)
-	if projectile == null:
-		projectile = weapon_data.projectile_scene.instantiate()
-		if projectile != null:
-			projectile_parent.add_child(projectile)
-	var projectile_3d := projectile as Node3D
-	if projectile_3d == null:
-		if projectile != null:
-			projectile.queue_free()
+	if battle_services == null:
+		push_error("AircraftWeaponController requires BattleServices.")
 		return null
-	if not projectile.has_method(&"setup_projectile_data") \
-			or not projectile.has_method(&"launch_with_context"):
-		push_warning(
-			"Aircraft weapon projectile does not implement the projectile "
-			+ "setup and launch contract: %s" % weapon_data.id
-		)
-		if projectile.has_method(&"despawn"):
-			projectile.call(&"despawn")
-		else:
-			projectile.queue_free()
-		return null
-
-	projectile.call(&"setup_projectile_data", weapon_data.projectile_data)
 	var context := ProjectileLaunchContext.new()
 	context.source_actor = owner_aircraft
 	context.source_team = owner_aircraft.team
@@ -357,18 +332,25 @@ func _spawn_projectile(
 		-maxf(weapon_data.downward_release_speed_mps, 0.0)
 	)
 	context.aim_point = target_position
-	projectile.call(&"launch_with_context", context)
+	var projectile := battle_services.projectile_factory.create(
+		weapon_data.projectile_scene,
+		projectile_parent,
+		weapon_data.projectile_data,
+		context
+	)
+	if projectile == null:
+		return null
 	remaining_ammunition = maxi(remaining_ammunition - 1, 0)
 	weapon_released.emit(owner_aircraft, projectile)
 	if battle_services != null:
-		battle_services.publish(
-			&"aircraft_weapon_released",
-			[owner_aircraft, projectile]
+		battle_services.events.emit_aircraft_released_payload(
+			owner_aircraft,
+			projectile
 		)
 	if remaining_ammunition <= 0 and not _depletion_emitted:
 		_depletion_emitted = true
 		ammunition_depleted.emit()
-	return projectile_3d
+	return projectile
 
 
 func _emit_release_failed(reason: ReleaseFailureReason) -> void:

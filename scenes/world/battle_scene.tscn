@@ -1,4 +1,4 @@
-[gd_scene load_steps=22 format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene load_steps=23 format=3 uid="uid://c346y3o6qqqhd"]
 
 [ext_resource type="Script" uid="uid://cj802p5ep0lqm" path="res://scripts/world/BattleScene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bqtoaaf4qto5a" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
@@ -17,6 +17,7 @@
 [ext_resource type="Script" path="res://scripts/aircraft/combat/AircraftCombatCoordinator.gd" id="15_air_combat"]
 [ext_resource type="Script" path="res://scripts/input/AircraftSelectionController.gd" id="16_air_selection"]
 [ext_resource type="Script" path="res://scripts/battle/BattleEnvironment.gd" id="17_environment"]
+[ext_resource type="Script" path="res://scripts/effects/CombatEffectPresenter.gd" id="18_effect_presenter"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -86,6 +87,9 @@ script = ExtResource("15_air_combat")
 
 [node name="CombatEffectController" type="Node3D" parent="."]
 script = ExtResource("12_effects")
+
+[node name="CombatEffectPresenter" type="Node" parent="."]
+script = ExtResource("18_effect_presenter")
 
 [node name="SpawnSystem" type="Node" parent="." unique_id=127868479]
 script = ExtResource("6_spawn")

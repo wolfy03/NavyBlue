@@ -24,3 +24,7 @@ func is_reached(serial: int = -1) -> bool:
 func reset() -> void:
 	command_serial = 0
 	reached_serial = -1
+
+
+func shutdown() -> void:
+	reset()

@@ -11,10 +11,15 @@ var flooding_time_left := 0.0
 var flooding_damage_per_second := 0.0
 var flooding_source: HitInfo
 var health: ShipHealth
+var battle_services: BattleServices
 
 
 func _ready() -> void:
 	health = get_parent().get_node_or_null("ShipHealth") as ShipHealth
+
+
+func setup(next_battle_services: BattleServices) -> void:
+	battle_services = next_battle_services
 
 
 func _physics_process(delta: float) -> void:
@@ -51,8 +56,8 @@ func apply_flooding(
 	flooding_source = source
 	if not was_flooding:
 		flooding_started.emit()
-		if has_node("/root/EventBus"):
-			get_node("/root/EventBus").flooding_started.emit(
+		if battle_services != null:
+			battle_services.events.emit_flooding_started(
 				get_parent(),
 				flooding_time_left
 			)
@@ -95,5 +100,5 @@ func _clear_flooding() -> void:
 	flooding_damage_per_second = 0.0
 	flooding_source = null
 	flooding_ended.emit()
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").flooding_ended.emit(get_parent())
+	if battle_services != null:
+		battle_services.events.emit_flooding_ended(get_parent())

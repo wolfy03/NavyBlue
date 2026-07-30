@@ -28,10 +28,11 @@ func _run() -> void:
 	attacker.global_position = Vector3(0.0, 95.0, 200.0)
 	attacker.weapon_controller.release_cooldown_left = 10.0
 	var controller := squadron.dive_bomb_controller
-	var release_settings := squadron.payload_release_settings.duplicate(
+	var release_settings := squadron.squadron_data \
+		.payload_release_settings.duplicate(
 		true
 	) as AircraftPayloadReleaseSettings
-	squadron.set_payload_release_settings(release_settings)
+	_install_release_settings(squadron, release_settings)
 	release_settings.maximum_additional_retries = 0
 	release_settings.retry_interval_sec = 0.0
 	_start_ready_dive(controller)
@@ -68,6 +69,17 @@ func _run() -> void:
 		"initial request permits exactly three additional retries"
 	)
 	await _finish(battle)
+
+
+func _install_release_settings(
+		squadron: AircraftSquadron,
+		settings: AircraftPayloadReleaseSettings
+) -> void:
+	var runtime_data := squadron.squadron_data.duplicate(true) as SquadronData
+	runtime_data.payload_release_settings = settings
+	squadron.squadron_data = runtime_data
+	squadron.payload_release_coordinator.settings = settings
+	squadron.dive_bomb_controller.setup(squadron)
 
 
 func _start_ready_dive(controller: DiveBombAttackController) -> void:

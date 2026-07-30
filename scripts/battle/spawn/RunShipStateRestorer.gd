@@ -1,11 +1,16 @@
 extends RefCounted
 class_name RunShipStateRestorer
 
-var run_manager: Node
+var run_session: RunSessionReader
 
 
-func setup(next_run_manager: Node) -> void:
-	run_manager = next_run_manager
+func setup(next_run_session: RunSessionReader) -> void:
+	shutdown()
+	run_session = next_run_session
+
+
+func shutdown() -> void:
+	run_session = null
 
 
 func get_player_weapon_loadout(ship_id: StringName) -> ShipWeaponLoadout:
@@ -28,23 +33,20 @@ func get_player_weapon_runtime_stats(
 
 
 func restore_player_ship(ship: ShipUnit) -> void:
-	if ship == null or run_manager == null:
+	if ship == null or run_session == null:
 		return
 	var state := _get_matching_player_state(
 		StringName(ship.ship_data.id) if ship.ship_data != null else &""
 	)
 	if not state.is_empty():
 		ship.restore_run_state(state.duplicate(true))
-	run_manager.call(&"restore_carrier_air_group", ship)
+	run_session.restore_carrier_air_group(ship)
 
 
 func _get_matching_player_state(ship_id: StringName) -> Dictionary:
-	if run_manager == null:
+	if run_session == null:
 		return {}
-	var value: Variant = run_manager.get("player_ship_state")
-	if not value is Dictionary:
-		return {}
-	var state := value as Dictionary
+	var state := run_session.get_player_ship_state()
 	var saved_ship_id := StringName(str(state.get("ship_id", "")))
 	if not saved_ship_id.is_empty() and saved_ship_id != ship_id:
 		return {}

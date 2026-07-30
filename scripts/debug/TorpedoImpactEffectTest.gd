@@ -71,7 +71,6 @@ func _run() -> void:
 		battle.queue_free()
 		_finish()
 		return
-	torpedo.setup_projectile_data(torpedo_data)
 	var hit_position := enemy.global_position
 	hit_position.y = -torpedo_data.running_depth_m
 	var context := ProjectileLaunchContext.new()
@@ -84,7 +83,8 @@ func _run() -> void:
 	)
 	context.aim_point = enemy.global_position
 	var hp_before := enemy.get_current_hp()
-	torpedo.launch_with_context(context)
+	torpedo.configure(torpedo_data, BattleTestServices.create(get_tree()))
+	torpedo.launch(context)
 	torpedo.call(&"_resolve_ship_hit", enemy, hit_position)
 	var hp_after := enemy.get_current_hp()
 	var effect_after := controller.get_debug_state()

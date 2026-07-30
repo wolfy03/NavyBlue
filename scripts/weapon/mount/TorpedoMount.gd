@@ -69,11 +69,6 @@ func fire() -> bool:
 func _launch_torpedo(index: int, total_count: int) -> bool:
 	if weapon_data == null or weapon_data.projectile_scene == null:
 		return false
-	var torpedo := _spawn_projectile(weapon_data.projectile_scene) \
-		as TorpedoProjectile
-	if torpedo == null:
-		push_warning("Torpedo projectile scene must instantiate TorpedoProjectile.")
-		return false
 	var muzzle := muzzles[index]
 	var launch_transform := muzzle.global_transform
 	var center_offset := float(total_count - 1) * 0.5
@@ -81,10 +76,6 @@ func _launch_torpedo(index: int, total_count: int) -> bool:
 	launch_transform.basis = launch_transform.basis.rotated(
 		Vector3.UP,
 		deg_to_rad(spread_offset)
-	)
-	torpedo.global_transform = launch_transform
-	torpedo.setup_projectile_data(
-		weapon_data.projectile_data as TorpedoProjectileData
 	)
 	var context := ProjectileLaunchContext.new()
 	context.source_actor = owner_ship
@@ -96,10 +87,20 @@ func _launch_torpedo(index: int, total_count: int) -> bool:
 	context.runtime_stats = runtime_stats.duplicate_stats()
 	context.target = owner_ship.combat.target as Node3D \
 		if owner_ship != null and owner_ship.combat != null else null
-	torpedo.launch_with_context(context)
+	if projectile_factory == null:
+		push_error("TorpedoMount requires an injected ProjectileFactory.")
+		return false
+	var torpedo := projectile_factory.create(
+		weapon_data.projectile_scene,
+		_get_projectile_parent(),
+		weapon_data.projectile_data,
+		context
+	) as TorpedoProjectile
+	if torpedo == null:
+		push_warning("Torpedo projectile scene must instantiate TorpedoProjectile.")
+		return false
 	fired.emit(torpedo)
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").torpedo_fired.emit(torpedo)
+	battle_services.events.emit_torpedo_fired(torpedo)
 	return true
 
 

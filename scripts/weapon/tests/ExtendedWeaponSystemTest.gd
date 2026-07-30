@@ -120,12 +120,12 @@ func _test_torpedo_physics_stability() -> void:
 	data.arming_distance_m = 1.0
 	var torpedo := torpedo_scene.instantiate() as TorpedoProjectile
 	root.add_child(torpedo)
-	torpedo.setup_projectile_data(data)
 	var context := ProjectileLaunchContext.new()
 	context.source_team = &"test"
 	context.source_weapon_id = &"physics_test_torpedo"
 	context.initial_transform = Transform3D(Basis.IDENTITY, Vector3.ZERO)
-	torpedo.launch_with_context(context)
+	torpedo.configure(data, BattleTestServices.create(self))
+	torpedo.launch(context)
 	var expected_depth := -data.running_depth_m
 	var initial_position := torpedo.global_position
 	var maximum_depth_error := 0.0
@@ -278,7 +278,6 @@ func _test_battle_weapon_flow() -> void:
 		var collision_torpedo := collision_scene.instantiate() \
 			as TorpedoProjectile
 		scene.get_node("Projectiles").add_child(collision_torpedo)
-		collision_torpedo.setup_projectile_data(collision_data)
 		var context := ProjectileLaunchContext.new()
 		context.source_ship = player
 		context.source_team = player.team
@@ -287,7 +286,11 @@ func _test_battle_weapon_flow() -> void:
 			Basis.IDENTITY,
 			target.global_position + Vector3(0.0, -2.0, 200.0)
 		)
-		collision_torpedo.launch_with_context(context)
+		collision_torpedo.configure(
+			collision_data,
+			BattleTestServices.create(self)
+		)
+		collision_torpedo.launch(context)
 		collision_torpedo.armed = true
 		collision_torpedo.previous_position = target.global_position \
 			+ Vector3(0.0, -2.0, 200.0)

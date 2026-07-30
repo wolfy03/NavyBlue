@@ -3,6 +3,7 @@ class_name WeaponMount
 
 signal fired(projectile: Node)
 signal reload_changed(current: float, maximum: float)
+signal fire_resolved(result: WeaponFireResult)
 
 var weapon_data: WeaponData
 var slot_data: ShipWeaponSlotData
@@ -10,24 +11,38 @@ var owner_ship: ShipUnit
 var owner_team: StringName = &"neutral"
 var aim_point := Vector3.ZERO
 var has_aim_point := false
-var reload_left := 0.0
+var runtime_state := WeaponRuntimeState.new()
+var reload_left: float:
+	get:
+		return runtime_state.cooldown_left_sec
+	set(value):
+		runtime_state.cooldown_left_sec = maxf(value, 0.0)
 var base_local_yaw_radians := 0.0
 var runtime_stats := WeaponRuntimeStats.new()
+var battle_services: BattleServices
+var projectile_factory: ProjectileFactory
 
 
 func setup(
 		data: WeaponData,
 		slot: ShipWeaponSlotData,
 		ship: ShipUnit,
-		team: StringName
+		team: StringName,
+		next_battle_services: BattleServices = null
 ) -> void:
 	weapon_data = data
 	slot_data = slot
 	owner_ship = ship
 	owner_team = team
 	reload_left = 0.0
+	runtime_state.reset()
 	base_local_yaw_radians = rotation.y
 	runtime_stats = WeaponRuntimeStats.new()
+	battle_services = next_battle_services \
+		if next_battle_services != null \
+		else (ship.battle_services if ship != null else null)
+	projectile_factory = battle_services.projectile_factory \
+		if battle_services != null else null
 
 
 func set_runtime_stats(stats: WeaponRuntimeStats) -> void:
@@ -41,7 +56,7 @@ func get_runtime_stats() -> WeaponRuntimeStats:
 
 func _physics_process(delta: float) -> void:
 	var previous_reload := reload_left
-	reload_left = maxf(0.0, reload_left - delta)
+	runtime_state.update(delta)
 	if not is_equal_approx(previous_reload, reload_left):
 		reload_changed.emit(reload_left, get_reload_seconds())
 
@@ -208,20 +223,6 @@ func get_modified_flooding_chance(base_chance: float) -> float:
 
 func adjust_pitch(_delta_degrees: float) -> void:
 	return
-
-
-func _spawn_projectile(scene: PackedScene) -> Node:
-	var parent := _get_projectile_parent()
-	if scene == null or parent == null:
-		return null
-	if has_node("/root/ObjectPool"):
-		var pooled: Node = get_node("/root/ObjectPool").spawn(scene, parent)
-		if pooled != null:
-			return pooled
-	var projectile := scene.instantiate()
-	if projectile != null:
-		parent.add_child(projectile)
-	return projectile
 
 
 func _get_projectile_parent() -> Node:

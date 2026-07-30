@@ -69,12 +69,20 @@ func _run() -> void:
 	projectile.global_position = Vector3(-80.0, 20.0, 0.0)
 	projectile.gravity_scale = 0.0
 	projectile.water_height = -100.0
-	var shell_stats := load(
-		"res://scripts/combat/default_ap_shell.tres"
-	).duplicate(true) as ShellStats
-	shell_stats.penetration = 500.0
+	var shell_data := load(
+		"res://resources/projectiles/small_ap_shell.tres"
+	).duplicate(true) as ShellProjectileData
+	shell_data.penetration = 500.0
 	var hp_before := target.get_defense_stats().current_hp
-	projectile.launch(Vector3.RIGHT * 320.0, &"test", shell_stats)
+	var context := ProjectileLaunchContext.new()
+	context.source_team = &"test"
+	context.initial_transform = projectile.global_transform
+	context.initial_velocity = Vector3.RIGHT * 320.0
+	projectile.configure(
+		shell_data,
+		BattleTestServices.create(get_tree())
+	)
+	projectile.launch(context)
 
 	for _frame in 60:
 		await get_tree().physics_frame

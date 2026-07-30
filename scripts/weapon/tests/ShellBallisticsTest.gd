@@ -223,7 +223,7 @@ func _test_direct_water_impact_and_pool() -> void:
 	if shell == null:
 		parent.queue_free()
 		return
-	shell.setup_projectile_data(shell_data)
+	shell.configure(shell_data, BattleTestServices.create(self))
 	var gravity := shell.get_effective_gravity_mps2()
 	var distance := 3000.0
 	var angle_value: Variant = BallisticMath.solve_low_arc_angle(
@@ -250,7 +250,7 @@ func _test_direct_water_impact_and_pool() -> void:
 	var event_bus := root.get_node_or_null("EventBus")
 	event_bus.projectile_water_impact.connect(on_water)
 	var launch_origin := context.initial_transform.origin
-	shell.launch_with_context(context)
+	shell.launch(context)
 	_check(
 		shell.call(&"_get_cached_ocean_manager") == ocean_manager,
 		"shell caches the OceanManager once at launch"
@@ -416,6 +416,10 @@ func _test_collision_exclusion_and_obstacle_policy() -> void:
 	).size()
 	var obstacle_shell := Projectile.new()
 	root.add_child(obstacle_shell)
+	obstacle_shell.configure(
+		load("res://resources/projectiles/small_ap_shell.tres"),
+		BattleTestServices.create(self)
+	)
 	obstacle_shell.velocity = Vector3.FORWARD * 100.0
 	obstacle_shell.call(&"_process_collision", obstacle_hit)
 	_check(
@@ -491,7 +495,15 @@ func _test_ricochet_visual_flow() -> void:
 	shell.ship_hit_resolved.connect(on_resolved)
 	var hp_before := target.get_defense_stats().current_hp
 	var direction := Vector3(0.5, 0.0, 8.0).normalized()
-	shell.launch(direction * 120.0, &"test")
+	var ricochet_data := load(
+		"res://resources/projectiles/small_ap_shell.tres"
+	) as ShellProjectileData
+	shell.configure(ricochet_data, BattleTestServices.create(self))
+	var ricochet_context := ProjectileLaunchContext.new()
+	ricochet_context.source_team = &"test"
+	ricochet_context.initial_transform = shell.global_transform
+	ricochet_context.initial_velocity = direction * 120.0
+	shell.launch(ricochet_context)
 	for _frame in 20:
 		await physics_frame
 		if not ricochet_results.is_empty():
@@ -570,7 +582,10 @@ func _test_ricochet_visual_flow() -> void:
 			Vector3(20.0, -200.0, -20.0),
 			Vector3.UP,
 			0.0,
-			1.0
+			1.0,
+			null,
+			BattleTestServices.create(self).projectile_pool,
+			BattleTestServices.create(self).events
 		)
 		_check(
 			reused_ricochet.global_position.distance_to(
@@ -619,7 +634,10 @@ func _test_ricochet_visual_flow() -> void:
 				Vector3(0.0, -1000.0, 0.0),
 				Vector3.UP,
 				0.0,
-				1.0
+				1.0,
+				null,
+				BattleTestServices.create(self).projectile_pool,
+				BattleTestServices.create(self).events
 			)
 			_check(
 				is_equal_approx(

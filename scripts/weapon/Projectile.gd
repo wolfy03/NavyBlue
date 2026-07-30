@@ -1,4 +1,4 @@
-extends Node3D
+extends ProjectileBase
 class_name Projectile
 
 const LIFETIME_SECONDS := 30.0
@@ -42,18 +42,12 @@ signal ship_hit_resolved(result: DamageResult)
 @export_range(0.1, 1.0, 0.01) var end_section_ratio: float = 0.68
 @export_range(0.1, 3.0, 0.05) var superstructure_height_ratio: float = 1.05
 @export_category("Debug")
-@export var debug_flight_log := false
 
-# Compatibility values retained as plain runtime data. They no longer drive a
-# RigidBody3D or participate in physics-engine integration.
+# Compatibility values retained as plain runtime data. Shells use direct
+# Node3D ballistic integration rather than Jolt body velocity.
 var gravity_scale := 1.0
 var mass := 1.0
 
-var projectile_data: ProjectileData
-var projectile_runtime_stats := WeaponRuntimeStats.new()
-var source_team: StringName = &"neutral"
-var source_ship_instance_id := 0
-var source_weapon_id: StringName
 var team: StringName = &"neutral"
 var velocity := Vector3.ZERO
 var initial_velocity := Vector3.ZERO
@@ -70,7 +64,6 @@ var ocean_manager_ref: WeakRef
 var despawn_reason: DespawnReason = DespawnReason.NONE
 var last_despawn_reason: DespawnReason = DespawnReason.NONE
 
-var _source_ship_ref: WeakRef
 var _despawn_requested := false
 var _default_splash_strength := 1.0
 var _collision_mask_warning_emitted := false
@@ -88,8 +81,7 @@ func _ready() -> void:
 	set_physics_process(false)
 
 
-func setup_projectile_data(data: ProjectileData) -> void:
-	projectile_data = data
+func _on_configured() -> void:
 	var shell_data := projectile_data as ShellProjectileData
 	if shell_data == null:
 		return
@@ -101,34 +93,7 @@ func setup_projectile_data(data: ProjectileData) -> void:
 	shell_stats = _make_shell_stats(shell_data)
 
 
-func launch(
-		start_velocity: Vector3,
-		owner_team: StringName,
-		fired_shell_stats: ShellStats = null,
-		source_ship: Node = null,
-		weapon_id: StringName = StringName()
-) -> void:
-	team = owner_team
-	_apply_launch_source(source_ship, owner_team, weapon_id)
-	if fired_shell_stats != null:
-		shell_stats = fired_shell_stats
-	_begin_flight(start_velocity, Vector3.ZERO)
-
-
-func launch_with_context(context: ProjectileLaunchContext) -> void:
-	if context == null:
-		despawn_with_reason(DespawnReason.INVALID_DATA)
-		return
-	if projectile_data == null and context.source_projectile_data != null:
-		setup_projectile_data(context.source_projectile_data)
-	global_transform = context.initial_transform
-	projectile_runtime_stats = context.runtime_stats.duplicate_stats() \
-		if context.runtime_stats != null else WeaponRuntimeStats.new()
-	_apply_launch_source(
-		context.source_actor,
-		context.source_team,
-		context.source_weapon_id
-	)
+func _on_launched(context: ProjectileLaunchContext) -> void:
 	team = context.source_team
 	target_aim_point = context.aim_point
 	if shell_stats != null:
@@ -367,23 +332,28 @@ func _process_ship_hit(collision: ShellCollisionResult) -> void:
 		source_weapon_id
 	)
 	hit_info.projectile_info = _get_projectile_damage_info()
-	var damage_result := DamageResolver.resolve_hit(hit_info)
-	ShipImpactEffectService.emit_shell_impact(
-		self,
-		collision.position,
-		hit_normal,
-		velocity,
-		damage_result,
-		projectile_data as ShellProjectileData
-	)
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").shell_hit.emit(
+	var damage_request := DamageRequest.from_hit_info(hit_info)
+	damage_request.source_team = source_team
+	damage_request.projectile_data = projectile_data
+	damage_request.relative_velocity = velocity
+	var damage_result := ShipDamageResolver.resolve(damage_request)
+	if battle_services != null:
+		battle_services.events.emit_damage_applied(damage_result)
+		battle_services.events.emit_shell_hit(
 			self,
 			collision.target_ship,
 			collision.position,
 			hit_normal,
 			damage_result
 		)
+	var impact_result := ProjectileImpactResult.new()
+	impact_result.surface_type = ProjectileImpactResult.SurfaceType.SHIP
+	impact_result.hit_position = collision.position
+	impact_result.hit_normal = hit_normal
+	impact_result.incoming_velocity = velocity
+	impact_result.target = collision.target_ship
+	impact_result.damage_result = damage_result
+	emit_impact(impact_result)
 	ship_hit_resolved.emit(damage_result)
 	if damage_result.hit_outcome == HitOutcome.Type.RICOCHET:
 		_spawn_ricochet_visual(
@@ -400,13 +370,13 @@ func _process_water_hit(collision: ShellCollisionResult) -> void:
 	water_impact_processed = true
 	impact_processed = true
 	active = false
-	WaterImpactService.emit_impact(
-		self,
-		collision.position,
-		_calculate_water_impact_strength(),
-		velocity,
-		collision.normal
-	)
+	var impact_result := ProjectileImpactResult.new()
+	impact_result.surface_type = ProjectileImpactResult.SurfaceType.WATER
+	impact_result.hit_position = collision.position
+	impact_result.hit_normal = collision.normal
+	impact_result.incoming_velocity = velocity
+	impact_result.impact_strength = _calculate_water_impact_strength()
+	emit_impact(impact_result)
 	despawn_with_reason(DespawnReason.WATER_IMPACT)
 
 
@@ -415,12 +385,12 @@ func _process_world_obstacle_hit(collision: ShellCollisionResult) -> void:
 		return
 	impact_processed = true
 	active = false
-	WorldImpactService.emit_impact(
-		self,
-		collision.position,
-		collision.normal,
-		velocity
-	)
+	var impact_result := ProjectileImpactResult.new()
+	impact_result.surface_type = ProjectileImpactResult.SurfaceType.TERRAIN
+	impact_result.hit_position = collision.position
+	impact_result.hit_normal = collision.normal
+	impact_result.incoming_velocity = velocity
+	emit_impact(impact_result)
 	despawn_with_reason(DespawnReason.WORLD_OBSTACLE)
 
 
@@ -435,8 +405,8 @@ func _spawn_ricochet_visual(
 	if parent == null:
 		return
 	var visual: Node
-	if has_node("/root/ObjectPool"):
-		visual = get_node("/root/ObjectPool").spawn(
+	if battle_services != null:
+		visual = battle_services.projectile_pool.acquire(
 			ricochet_visual_scene,
 			parent
 		)
@@ -460,7 +430,9 @@ func _spawn_ricochet_visual(
 			_get_cached_ocean_manager()
 		),
 		base_water_splash_strength,
-		_get_cached_ocean_manager()
+		_get_cached_ocean_manager(),
+		battle_services.projectile_pool if battle_services != null else null,
+		battle_services.events if battle_services != null else null
 	)
 
 
@@ -592,25 +564,6 @@ func _is_layer_in_shell_mask(collision_object: CollisionObject3D) -> bool:
 		and (shell_collision_mask & collision_object.collision_layer) != 0
 
 
-func _apply_launch_source(
-		ship: Node,
-		owner_team: StringName,
-		weapon_id: StringName
-) -> void:
-	source_team = owner_team
-	source_weapon_id = weapon_id
-	_source_ship_ref = null
-	source_ship_instance_id = 0
-	if ship != null and is_instance_valid(ship):
-		_source_ship_ref = weakref(ship)
-		source_ship_instance_id = ship.get_instance_id()
-
-
-func get_source_ship() -> Node:
-	return _source_ship_ref.get_ref() as Node \
-		if _source_ship_ref != null else null
-
-
 func despawn() -> void:
 	despawn_with_reason(DespawnReason.POOL_RECYCLE)
 
@@ -624,21 +577,12 @@ func despawn_with_reason(reason: DespawnReason) -> void:
 	last_despawn_reason = reason
 	last_despawn_position = global_position
 	_log_despawn(reason, global_position)
-	if has_node("/root/ObjectPool"):
-		var recycled: bool = get_node("/root/ObjectPool").recycle(self)
-		if recycled:
-			return
-	queue_free()
+	recycle_projectile()
 
 
 func on_spawned_from_pool() -> void:
+	super.on_spawned_from_pool()
 	_despawn_requested = false
-	projectile_data = null
-	projectile_runtime_stats = WeaponRuntimeStats.new()
-	source_team = &"neutral"
-	source_ship_instance_id = 0
-	source_weapon_id = StringName()
-	_source_ship_ref = null
 	team = &"neutral"
 	velocity = Vector3.ZERO
 	initial_velocity = Vector3.ZERO
@@ -667,12 +611,6 @@ func on_spawned_from_pool() -> void:
 
 func on_recycled_to_pool() -> void:
 	_despawn_requested = true
-	projectile_data = null
-	projectile_runtime_stats = WeaponRuntimeStats.new()
-	source_team = &"neutral"
-	source_ship_instance_id = 0
-	source_weapon_id = StringName()
-	_source_ship_ref = null
 	team = &"neutral"
 	active = false
 	velocity = Vector3.ZERO
@@ -693,6 +631,30 @@ func on_recycled_to_pool() -> void:
 	explosion_radius = 0.0
 	hide()
 	set_physics_process(false)
+	_stop_trail()
+	super.on_recycled_to_pool()
+
+
+func _on_reset_for_pool() -> void:
+	_despawn_requested = true
+	team = FactionRelations.NEUTRAL
+	active = false
+	velocity = Vector3.ZERO
+	initial_velocity = Vector3.ZERO
+	age_seconds = 0.0
+	previous_position = global_position
+	launch_position = global_position
+	target_aim_point = Vector3.ZERO
+	impact_processed = false
+	water_impact_processed = false
+	collision_excludes.clear()
+	ocean_manager_ref = null
+	shell_stats = DEFAULT_AP_SHELL
+	gravity_scale = 1.0
+	mass = 1.0
+	lifetime_seconds = LIFETIME_SECONDS
+	base_water_splash_strength = _default_splash_strength
+	explosion_radius = 0.0
 	_stop_trail()
 
 
@@ -810,7 +772,9 @@ func _orient_to_velocity() -> void:
 
 
 func _log_despawn(reason: DespawnReason, position: Vector3) -> void:
-	if not debug_flight_log:
+	if battle_services == null \
+			or battle_services.debug_settings == null \
+			or not battle_services.debug_settings.log_projectile_lifecycle:
 		return
 	var distance_xz := CombatGeometryXZ.distance_xz(
 		launch_position,

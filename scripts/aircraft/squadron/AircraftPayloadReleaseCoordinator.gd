@@ -21,23 +21,45 @@ var _active_completed_count := 0
 var _active_failed_count := 0
 var _active_cancelled_count := 0
 var _last_result := AircraftPayloadReleasePassResult.new()
+var _registered_weapon_refs: Array[WeakRef] = []
 
 
 func setup(
 		squadron: AircraftSquadron,
 		next_settings: AircraftPayloadReleaseSettings
 ) -> void:
-	cancel_all_requests()
+	shutdown()
 	owner_squadron = squadron
 	settings = next_settings
 	_last_aircraft_results.clear()
 	_last_result = AircraftPayloadReleasePassResult.new()
 
 
+func shutdown() -> void:
+	cancel_all_requests()
+	for weapon_ref in _registered_weapon_refs:
+		var weapon := weapon_ref.get_ref() as AircraftWeaponController \
+			if weapon_ref != null else null
+		_disconnect_weapon(weapon)
+	_registered_weapon_refs.clear()
+	_active_requests.clear()
+	_last_aircraft_results.clear()
+	_pass_active = false
+	_active_requested_count = 0
+	_active_completed_count = 0
+	_active_failed_count = 0
+	_active_cancelled_count = 0
+	owner_squadron = null
+	settings = null
+
+
 func register_aircraft(aircraft: AircraftUnit) -> void:
 	if aircraft == null or aircraft.weapon_controller == null:
 		return
 	var weapon := aircraft.weapon_controller
+	for weapon_ref in _registered_weapon_refs:
+		if weapon_ref != null and weapon_ref.get_ref() == weapon:
+			return
 	if not weapon.payload_release_completed.is_connected(
 		_on_payload_release_completed
 	):
@@ -56,10 +78,22 @@ func register_aircraft(aircraft: AircraftUnit) -> void:
 		weapon.payload_release_cancelled.connect(
 			_on_payload_release_cancelled
 		)
+	_registered_weapon_refs.append(weakref(weapon))
 
 
 func unregister_aircraft(aircraft_id: int) -> void:
 	cancel_aircraft_requests(aircraft_id)
+	for index in range(_registered_weapon_refs.size() - 1, -1, -1):
+		var weapon_ref := _registered_weapon_refs[index]
+		var weapon := weapon_ref.get_ref() as AircraftWeaponController \
+			if weapon_ref != null else null
+		if weapon == null:
+			_registered_weapon_refs.remove_at(index)
+			continue
+		var aircraft := weapon.get_parent() as AircraftUnit
+		if aircraft != null and aircraft.get_instance_id() == aircraft_id:
+			_disconnect_weapon(weapon)
+			_registered_weapon_refs.remove_at(index)
 
 
 func request_release(
@@ -368,4 +402,27 @@ func _cancel_request_by_id(request_id: int, reason: int) -> void:
 			false,
 			true,
 			reason
+		)
+
+
+func _disconnect_weapon(weapon: AircraftWeaponController) -> void:
+	if weapon == null or not is_instance_valid(weapon):
+		return
+	if weapon.payload_release_completed.is_connected(
+		_on_payload_release_completed
+	):
+		weapon.payload_release_completed.disconnect(
+			_on_payload_release_completed
+		)
+	if weapon.payload_release_failed.is_connected(
+		_on_payload_release_failed
+	):
+		weapon.payload_release_failed.disconnect(
+			_on_payload_release_failed
+		)
+	if weapon.payload_release_cancelled.is_connected(
+		_on_payload_release_cancelled
+	):
+		weapon.payload_release_cancelled.disconnect(
+			_on_payload_release_cancelled
 		)

@@ -11,8 +11,14 @@ func setup(
 		squadron: AircraftSquadron,
 		tracker: SquadronDestinationTracker
 ) -> void:
+	shutdown()
 	owner_squadron = squadron
 	destination_tracker = tracker
+
+
+func shutdown() -> void:
+	owner_squadron = null
+	destination_tracker = null
 
 
 func set_destination(

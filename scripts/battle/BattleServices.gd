@@ -1,11 +1,13 @@
 extends RefCounted
 class_name BattleServices
 
-var event_bus: Node
-var object_pool: Node
-var run_manager: Node
-var game_manager: Node
+var events := BattleEventPublisher.new()
+var projectile_pool := ProjectilePoolService.new()
+var projectile_factory := ProjectileFactory.new()
+var run_session := RunSessionReader.new()
+var game_flow := GameFlowService.new()
 var faction_palette: FactionPalette
+var debug_settings: BattleDebugSettings
 
 
 func setup(
@@ -13,29 +15,27 @@ func setup(
 		next_object_pool: Node,
 		next_run_manager: Node,
 		next_game_manager: Node,
-		next_faction_palette: FactionPalette
+		next_faction_palette: FactionPalette,
+		next_debug_settings: BattleDebugSettings = null
 ) -> void:
-	event_bus = next_event_bus
-	object_pool = next_object_pool
-	run_manager = next_run_manager
-	game_manager = next_game_manager
+	shutdown()
+	events.setup(next_event_bus)
+	projectile_pool.setup(next_object_pool)
+	projectile_factory.setup(projectile_pool, self)
+	run_session.setup(next_run_manager)
+	game_flow.setup(next_game_manager)
 	faction_palette = next_faction_palette
+	debug_settings = next_debug_settings
 
 
-func publish(signal_name: StringName, arguments: Array = []) -> void:
-	if event_bus == null or not is_instance_valid(event_bus) \
-			or not event_bus.has_signal(signal_name):
-		return
-	# Autoload scripts intentionally remain untyped at this composition boundary.
-	event_bus.callv(&"emit_signal", [signal_name] + arguments)
-
-
-func spawn_pooled(scene: PackedScene, parent: Node) -> Node:
-	if object_pool == null or not is_instance_valid(object_pool) \
-			or not object_pool.has_method(&"spawn"):
-		return null
-	# ObjectPool is an Autoload adapter; domain objects do not inspect /root.
-	return object_pool.call(&"spawn", scene, parent) as Node
+func shutdown() -> void:
+	events.shutdown()
+	projectile_factory.shutdown()
+	projectile_pool.shutdown()
+	run_session.shutdown()
+	game_flow.shutdown()
+	faction_palette = null
+	debug_settings = null
 
 
 func get_faction_color(team: StringName, fallback: Color) -> Color:

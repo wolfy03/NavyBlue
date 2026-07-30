@@ -58,7 +58,7 @@ func setup(
 	_apply_team_material()
 	activate()
 	if battle_services != null:
-		battle_services.publish(&"aircraft_spawned", [self])
+		battle_services.events.emit_aircraft_spawned(self)
 
 
 func _physics_process(delta: float) -> void:
@@ -183,5 +183,5 @@ func _on_health_died() -> void:
 	deactivate()
 	destroyed.emit(self)
 	if battle_services != null:
-		battle_services.publish(&"aircraft_destroyed", [self])
+		battle_services.events.emit_aircraft_destroyed(self)
 	queue_free()

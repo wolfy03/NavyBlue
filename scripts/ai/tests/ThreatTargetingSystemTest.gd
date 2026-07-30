@@ -368,13 +368,17 @@ func _test_projectile_source_reset() -> void:
 	var attacker := Node.new()
 	var projectile := Projectile.new()
 	root.add_child(projectile)
-	projectile.launch(
-		Vector3(0.0, 10.0, 100.0),
-		&"ally",
-		null,
-		attacker,
-		&"test_weapon"
-	)
+	var shell_data := load(
+		"res://resources/projectiles/small_ap_shell.tres"
+	) as ShellProjectileData
+	var context := ProjectileLaunchContext.new()
+	context.source_actor = attacker
+	context.source_team = &"ally"
+	context.source_weapon_id = &"test_weapon"
+	context.initial_transform = projectile.global_transform
+	context.initial_velocity = Vector3(0.0, 10.0, 100.0)
+	projectile.configure(shell_data, BattleTestServices.create(self))
+	projectile.launch(context)
 	_check(
 		projectile.source_ship_instance_id == attacker.get_instance_id()
 			and projectile.source_weapon_id == &"test_weapon",

@@ -1,0 +1,2 @@
+extends TacticalPositionSolver
+class_name FleetTacticalPlanner

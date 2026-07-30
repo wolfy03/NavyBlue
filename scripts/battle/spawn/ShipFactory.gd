@@ -13,10 +13,18 @@ func setup(
 		next_state_restorer: RunShipStateRestorer,
 		next_battle_services: BattleServices
 ) -> void:
+	shutdown()
 	ship_scene = next_ship_scene
 	ship_database = next_ship_database
 	state_restorer = next_state_restorer
 	battle_services = next_battle_services
+
+
+func shutdown() -> void:
+	ship_scene = null
+	ship_database = null
+	state_restorer = null
+	battle_services = null
 
 
 func create_ship(
@@ -67,6 +75,6 @@ func create_ship(
 	if request.is_player and state_restorer != null:
 		state_restorer.restore_player_ship(ship)
 	if battle_services != null:
-		battle_services.publish(&"ship_spawned", [ship])
+		battle_services.events.emit_ship_spawned(ship)
 	result.ship = ship
 	return result

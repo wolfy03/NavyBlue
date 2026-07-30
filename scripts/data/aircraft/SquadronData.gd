@@ -1,6 +1,11 @@
 extends Resource
 class_name SquadronData
 
+const DEFAULT_PAYLOAD_RELEASE_SETTINGS: AircraftPayloadReleaseSettings = \
+	preload(
+		"res://resources/aircraft/settings/default_payload_release_settings.tres"
+	)
+
 @export var id: String = ""
 @export var display_name: String = ""
 @export var aircraft_data: AircraftData
@@ -9,6 +14,8 @@ class_name SquadronData
 @export var launch_interval_sec: float = 0.25
 @export var rearm_duration_sec: float = 15.0
 @export var default_mission_data: AirMissionData
+@export var payload_release_settings: AircraftPayloadReleaseSettings = \
+	DEFAULT_PAYLOAD_RELEASE_SETTINGS
 
 @export_category("Loiter")
 @export var loiter_radius_m: float = 180.0
@@ -25,6 +32,10 @@ func validate() -> PackedStringArray:
 		return errors
 	if aircraft_count <= 0:
 		errors.append("aircraft_count must be positive.")
+	if payload_release_settings == null:
+		errors.append("payload_release_settings is required.")
+	else:
+		errors.append_array(payload_release_settings.validate())
 	if loiter_radius_m <= 0.0:
 		errors.append("loiter_radius_m must be positive.")
 	if loiter_angular_speed_deg_sec <= 0.0:

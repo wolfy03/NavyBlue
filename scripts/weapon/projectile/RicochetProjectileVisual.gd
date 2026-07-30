@@ -24,6 +24,8 @@ var active := false
 var water_impact_processed := false
 var base_splash_strength := 1.0
 var ocean_manager_ref: WeakRef
+var pool_service: ProjectilePoolService
+var events: BattleEventPublisher
 var _despawn_requested := false
 
 @onready var trail_particles: GPUParticles3D = get_node_or_null(
@@ -42,8 +44,12 @@ func launch(
 		hit_normal: Vector3,
 		sea_level_m: float,
 		next_base_splash_strength: float = 1.0,
-		ocean_manager: Node = null
+		ocean_manager: Node = null,
+		next_pool_service: ProjectilePoolService = null,
+		next_events: BattleEventPublisher = null
 ) -> void:
+	pool_service = next_pool_service
+	events = next_events
 	water_height_m = sea_level_m
 	base_splash_strength = maxf(next_base_splash_strength, 0.0)
 	_cache_ocean_manager(ocean_manager)
@@ -148,7 +154,8 @@ func _process_water_impact(hit: WaterSurfaceHit) -> void:
 		hit.position,
 		_calculate_splash_strength(),
 		velocity,
-		hit.normal
+		hit.normal,
+		events
 	)
 	despawn()
 
@@ -166,10 +173,8 @@ func despawn() -> void:
 	if _despawn_requested:
 		return
 	_despawn_requested = true
-	if has_node("/root/ObjectPool"):
-		var recycled: bool = get_node("/root/ObjectPool").recycle(self)
-		if recycled:
-			return
+	if pool_service != null and pool_service.release(self):
+		return
 	queue_free()
 
 
@@ -182,6 +187,8 @@ func on_spawned_from_pool() -> void:
 	water_impact_processed = false
 	base_splash_strength = 1.0
 	ocean_manager_ref = null
+	pool_service = null
+	events = null
 	_despawn_requested = false
 	hide()
 	set_physics_process(false)
@@ -197,6 +204,8 @@ func on_recycled_to_pool() -> void:
 	water_impact_processed = false
 	base_splash_strength = 1.0
 	ocean_manager_ref = null
+	pool_service = null
+	events = null
 	_despawn_requested = true
 	hide()
 	set_physics_process(false)

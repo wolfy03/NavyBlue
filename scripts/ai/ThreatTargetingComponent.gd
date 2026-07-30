@@ -11,7 +11,7 @@ signal target_changed(previous_target: Node3D, next_target: Node3D)
 @export var fallback_target_safety_radius_m := 90.0
 
 @export_category("Debug")
-@export var debug_enabled := false
+var debug_enabled := false
 @export_range(0.1, 2.0, 0.05) var debug_update_interval_sec := 0.4
 
 var target_evaluation_count := 0
@@ -46,6 +46,11 @@ func setup(
 	_owner_ship = owner_ship
 	_role_profile = role_profile if role_profile != null else ShipAIRoleProfile.new()
 	_candidate_provider = candidate_provider
+	debug_enabled = (
+		owner_ship.battle_services != null
+		and owner_ship.battle_services.debug_settings != null
+		and owner_ship.battle_services.debug_settings.log_battle_ai
+	)
 	_random.seed = owner_ship.get_instance_id() * 1103515245 + 12345
 	_evaluation_elapsed_sec = -_random.randf_range(
 		0.0,

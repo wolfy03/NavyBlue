@@ -9,8 +9,19 @@ func setup(
 		next_selection_controller: AircraftSelectionController,
 		next_carrier_controller: CarrierCommandController
 ) -> void:
+	shutdown()
 	selection_controller = next_selection_controller
 	carrier_controller = next_carrier_controller
+
+
+func shutdown() -> void:
+	if selection_controller != null:
+		selection_controller.set_input_enabled(false)
+		selection_controller.clear_selection()
+	if carrier_controller != null and carrier_controller.is_targeting():
+		carrier_controller.cancel_targeting()
+	selection_controller = null
+	carrier_controller = null
 
 
 func set_input_enabled(enabled: bool) -> void:

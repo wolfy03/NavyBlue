@@ -17,6 +17,7 @@ class_name CombatEffectController
 var _shell_pool: ReusableEffectPool
 var _torpedo_pool: ReusableEffectPool
 var _fighter_tracer_pool: ReusableEffectPool
+var events: BattleEventPublisher
 
 
 func _ready() -> void:
@@ -36,14 +37,26 @@ func _ready() -> void:
 		fighter_tracer_scene,
 		fighter_tracer_pool_size
 	)
-	if has_node("/root/EventBus"):
-		var event_bus := get_node("/root/EventBus")
-		if not event_bus.fighter_gun_burst_fired.is_connected(
+func setup(next_events: BattleEventPublisher) -> void:
+	shutdown()
+	events = next_events
+	if events != null:
+		if not events.fighter_gun_burst.is_connected(
 			_on_fighter_gun_burst_fired
 		):
-			event_bus.fighter_gun_burst_fired.connect(
+			events.fighter_gun_burst.connect(
 				_on_fighter_gun_burst_fired
 			)
+
+
+func shutdown() -> void:
+	if events != null and events.fighter_gun_burst.is_connected(
+		_on_fighter_gun_burst_fired
+	):
+		events.fighter_gun_burst.disconnect(
+			_on_fighter_gun_burst_fired
+		)
+	events = null
 
 
 func spawn_shell_impact(
@@ -116,14 +129,7 @@ func clear_pools() -> void:
 
 
 func _exit_tree() -> void:
-	if has_node("/root/EventBus"):
-		var event_bus := get_node("/root/EventBus")
-		if event_bus.fighter_gun_burst_fired.is_connected(
-			_on_fighter_gun_burst_fired
-		):
-			event_bus.fighter_gun_burst_fired.disconnect(
-				_on_fighter_gun_burst_fired
-			)
+	shutdown()
 
 
 func _on_fighter_gun_burst_fired(

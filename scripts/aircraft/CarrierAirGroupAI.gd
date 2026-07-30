@@ -20,7 +20,7 @@ enum LaunchBlockReason {
 	UNSUPPORTED_MISSION,
 }
 
-@export var debug_diagnostics := true
+var debug_diagnostics := false
 
 var owner_carrier: ShipUnit
 var air_group: CarrierAirGroup
@@ -66,6 +66,11 @@ func setup(
 	owner_carrier = carrier
 	air_group = next_air_group
 	profile = next_profile
+	debug_diagnostics = (
+		air_group.battle_services != null
+		and air_group.battle_services.debug_settings != null
+		and air_group.battle_services.debug_settings.log_aircraft_missions
+	)
 	_initialized = true
 	_decision_timer = 0.0
 	_decision_count = 0

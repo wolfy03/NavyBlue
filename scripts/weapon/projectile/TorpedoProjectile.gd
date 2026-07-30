@@ -40,14 +40,12 @@ func _ready() -> void:
 	_stop_wake()
 
 
-func setup_projectile_data(data: ProjectileData) -> void:
-	super.setup_projectile_data(data)
-	torpedo_data = data as TorpedoProjectileData
+func _on_configured() -> void:
+	torpedo_data = projectile_data as TorpedoProjectileData
 
 
-func launch_with_context(context: ProjectileLaunchContext) -> void:
-	super.launch_with_context(context)
-	if torpedo_data == null or context == null:
+func _on_launched(context: ProjectileLaunchContext) -> void:
+	if torpedo_data == null:
 		push_warning("Torpedo launch requires TorpedoProjectileData and context.")
 		despawn()
 		return
@@ -267,19 +265,28 @@ func _resolve_ship_hit(
 		source_ship_instance_id,
 		source_weapon_id
 	)
-	var result := DamageResolver.resolve_hit(hit_info)
-	ShipImpactEffectService.emit_torpedo_impact(
-		self,
-		hit_position,
-		-direction,
-		direction,
-		result,
-		torpedo_data,
-		water_height_m
-	)
+	var damage_request := DamageRequest.from_hit_info(hit_info)
+	damage_request.source_team = source_team
+	damage_request.projectile_data = projectile_data
+	damage_request.relative_velocity = direction * speed_mps
+	var result := ShipDamageResolver.resolve(damage_request)
+	if battle_services != null:
+		battle_services.events.emit_damage_applied(result)
+	var impact_result := ProjectileImpactResult.new()
+	impact_result.surface_type = ProjectileImpactResult.SurfaceType.SHIP
+	impact_result.hit_position = hit_position
+	impact_result.hit_normal = -direction
+	impact_result.incoming_velocity = direction
+	impact_result.target = target_ship
+	impact_result.damage_result = result
+	emit_impact(impact_result)
 	hit_resolved.emit(result)
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").torpedo_hit.emit(self, target_ship, result)
+	if battle_services != null:
+		battle_services.events.emit_torpedo_hit(
+			self,
+			target_ship,
+			result
+		)
 	call_deferred(&"despawn")
 
 
@@ -376,6 +383,23 @@ func on_recycled_to_pool() -> void:
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	super.on_recycled_to_pool()
+
+
+func _on_reset_for_pool() -> void:
+	torpedo_data = null
+	speed_mps = 0.0
+	travelled_distance_m = 0.0
+	age_seconds = 0.0
+	armed = false
+	launch_position = Vector3.ZERO
+	water_height_m = 0.0
+	impact_processed = false
+	target_ref = null
+	previous_position = Vector3.ZERO
+	desired_yaw_radians = 0.0
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	_stop_wake()
 
 
 func _configure_wake() -> void:

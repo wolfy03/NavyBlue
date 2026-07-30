@@ -13,6 +13,7 @@ $env:APPDATA = $testAppData
 
 $tests = @(
 	"res://scripts/weapon/tests/CombatVisibilityTest.gd",
+	"res://scripts/weapon/tests/ProjectileBaseContractTest.gd",
 	"res://scripts/weapon/tests/ShellBallisticsTest.gd",
 	"res://scripts/weapon/tests/ExtendedWeaponSystemTest.gd",
 	"res://scripts/weapon/tests/WeaponReadinessTest.gd",
@@ -25,6 +26,9 @@ $tests = @(
 	"res://scripts/world/tests/MainMenuCarrierFlowTest.gd",
 	"res://scripts/world/tests/PlayerShipResolutionTest.gd",
 	"res://scripts/world/tests/StageDataNoPlayerShipTypeTest.gd",
+	"res://scripts/battle/tests/BattleServicesTypedAdapterTest.gd",
+	"res://scripts/battle/tests/NoDomainRootAutoloadLookupTest.gd",
+	"res://scripts/battle/tests/ResourceValidationImmutabilityTest.gd",
 	"res://scripts/combat/tests/CombatDamageTest.gd",
 	"res://scripts/combat/tests/ProjectileCollisionTest.gd",
 	"res://scripts/world/tests/BattleSceneSmokeTest.gd",
@@ -39,6 +43,7 @@ $tests = @(
 	"res://scripts/aircraft/tests/CarrierAirGroupAIActivationTest.gd",
 	"res://scripts/aircraft/tests/CarrierAirGroupAILaunchTest.gd",
 	"res://scripts/aircraft/tests/CarrierAirGroupSetupLifecycleTest.gd",
+	"res://scripts/aircraft/tests/CollaboratorSetupTwiceTest.gd",
 	"res://scripts/aircraft/tests/CarrierLossResolutionTest.gd",
 	"res://scripts/aircraft/tests/CarrierBattleEndIdempotencyTest.gd",
 	"res://scripts/aircraft/tests/CarrierSaveMigrationTest.gd",

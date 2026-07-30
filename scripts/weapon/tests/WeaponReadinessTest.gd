@@ -487,7 +487,6 @@ func _spawn_guidance_torpedo(
 ) -> TorpedoProjectile:
 	var torpedo := projectile_scene.instantiate() as TorpedoProjectile
 	root.add_child(torpedo)
-	torpedo.setup_projectile_data(data)
 	var context := ProjectileLaunchContext.new()
 	context.source_team = &"test"
 	context.source_weapon_id = &"guidance_test"
@@ -496,7 +495,8 @@ func _spawn_guidance_torpedo(
 		Vector3(0.0, 0.0, 0.0)
 	)
 	context.target = target
-	torpedo.launch_with_context(context)
+	torpedo.configure(data, BattleTestServices.create(self))
+	torpedo.launch(context)
 	return torpedo
 
 

@@ -193,13 +193,14 @@ func _spawn_torpedo(
 	) as PackedScene
 	var torpedo := projectile_scene.instantiate() as TorpedoProjectile
 	scene.get_node("Projectiles").add_child(torpedo)
-	torpedo.setup_projectile_data(data.duplicate(true) as TorpedoProjectileData)
+	var runtime_data := data.duplicate(true) as TorpedoProjectileData
 	var context := ProjectileLaunchContext.new()
 	context.source_ship = source_ship
 	context.source_team = source_ship.team
 	context.source_weapon_id = &"xz_collision_test"
 	context.initial_transform = Transform3D(Basis.IDENTITY, Vector3.ZERO)
-	torpedo.launch_with_context(context)
+	torpedo.configure(runtime_data, BattleTestServices.create(self))
+	torpedo.launch(context)
 	return torpedo
 
 

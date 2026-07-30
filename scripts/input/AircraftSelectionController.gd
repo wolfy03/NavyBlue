@@ -42,6 +42,7 @@ func setup(
 		environment: BattleEnvironment,
 		services: BattleServices
 ) -> void:
+	_disconnect_battle_events()
 	_camera = camera as RTSCamera
 	_selection_rect = selection_rect
 	_battle_environment = environment
@@ -447,9 +448,9 @@ func _update_selection_rect() -> void:
 
 
 func _connect_battle_events() -> void:
-	var event_bus := _battle_services.event_bus \
+	var events := _battle_services.events \
 		if _battle_services != null else null
-	if event_bus == null:
+	if events == null:
 		return
 	var connections := {
 		&"battle_cleared": Callable(self, &"_on_battle_ended"),
@@ -458,9 +459,28 @@ func _connect_battle_events() -> void:
 	}
 	for signal_name: StringName in connections:
 		var callback: Callable = connections[signal_name]
-		if event_bus.has_signal(signal_name) \
-				and not event_bus.is_connected(signal_name, callback):
-			event_bus.connect(signal_name, callback)
+		if not events.is_connected(signal_name, callback):
+			events.connect(signal_name, callback)
+
+
+func _disconnect_battle_events() -> void:
+	var events := _battle_services.events \
+		if _battle_services != null else null
+	if events == null:
+		return
+	var connections := {
+		&"battle_cleared": Callable(self, &"_on_battle_ended"),
+		&"battle_failed": Callable(self, &"_on_battle_ended"),
+		&"battle_started": Callable(self, &"_on_battle_started"),
+	}
+	for signal_name: StringName in connections:
+		var callback: Callable = connections[signal_name]
+		if events.is_connected(signal_name, callback):
+			events.disconnect(signal_name, callback)
+
+
+func _exit_tree() -> void:
+	_disconnect_battle_events()
 
 
 func _on_battle_ended(_stage_id: String) -> void:

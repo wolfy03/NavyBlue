@@ -28,7 +28,14 @@ func _run() -> void:
 		_finish()
 		return
 	add_child(mount)
-	mount.setup(weapon, null, null, &"test")
+	var battle_services := BattleTestServices.create(get_tree())
+	mount.setup(
+		weapon,
+		null,
+		null,
+		&"test",
+		battle_services
+	)
 	mount.fired.connect(_on_mount_fired)
 	var event_bus := get_node_or_null("/root/EventBus")
 	if event_bus != null:

@@ -75,8 +75,8 @@
 
 ## Deliberate Dynamic Boundaries
 
-- `BattleServices` uses `callv` for Autoload signals and ObjectPool because the
-  existing Autoload scripts do not expose globally named service interfaces.
+- Typed service adapters use dynamic calls only against legacy Autoload scripts
+  that do not expose globally named interfaces.
 - `BattleStateController` invokes RunManager and GameManager through injected
   Node references for the same reason.
 - Projectile scene setup remains dynamic because multiple projectile scene
@@ -97,18 +97,38 @@
 
 ## Remaining Migration Debt
 
-- Projectile, weapon-mount, ship-damage, effect, and fleet-AI classes still
-  contain legacy direct EventBus or ObjectPool discovery. Moving these safely
-  requires extending the battle-service injection chain through every pooled
-  projectile and mount scene.
 - `BattleScene`, menu, and meta-flow code remain valid composition roots and
   still resolve Autoloads directly.
 - RunManager has no globally named typed interface, so
   `PlayerShipResolver` and `RunShipStateRestorer` use dynamic calls against an
   injected Node at the serialization boundary.
-- Projectile scenes still use a dynamic setup contract because the current
-  shell, bomb, and torpedo implementations do not share one typed base.
-- Domain-specific debug exports outside the refactored command, spawn, and
-  aircraft-release paths have not yet migrated to `BattleDebugSettings`.
+- Manual shell/bomb integration and RigidBody torpedo integration use separate
+  typed projectile roots to preserve their established physics contracts.
+- Some optional effect and ocean integrations retain documented behavioral
+  calls at external presentation boundaries.
 - The full 36,000-frame 10v10 and battle AI endurance tests exceed the current
   validation window and remain required before a performance-focused release.
+
+## Stabilization Pass
+
+- Added idempotent `setup`/`shutdown` contracts and explicit signal disconnects
+  to squadron, payload, command, and spawn collaborators.
+- Added `ShipSpawnData`, `StageData`, `FactionData`, and `FactionPalette`
+  validation and fail-fast stage spawning.
+- Made `SquadronData.payload_release_settings` the single payload
+  infrastructure settings owner.
+- Replaced broad battle service calls with `BattleEventPublisher`,
+  `ProjectilePoolService`, `RunSessionReader`, and `GameFlowService`.
+- Added typed shell/bomb and torpedo projectile roots, `ProjectileFactory`,
+  runtime reset state, and typed impact results.
+- Added typed damage requests/results and separated impact presentation into
+  `CombatEffectPresenter` and `EffectFactory`.
+- Added common `WeaponRuntimeState`; mount-specific traverse, ballistics, and
+  salvo rules remain in their existing concrete mounts.
+- Removed direct EventBus/ObjectPool discovery from weapon, combat, effect,
+  ship, and AI domain directories.
+- Split FleetAI perception, target scoring, tactical-position planning, and
+  order dispatch behind typed collaborators while preserving existing update
+  intervals and tactical policy.
+- Added typed boundary, lifecycle, Resource immutability, projectile contract,
+  and endurance smoke tests.

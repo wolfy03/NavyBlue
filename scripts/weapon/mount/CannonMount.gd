@@ -28,9 +28,10 @@ func setup(
 		data: WeaponData,
 		slot: ShipWeaponSlotData,
 		ship: ShipUnit,
-		team: StringName
+		team: StringName,
+		next_battle_services: BattleServices = null
 ) -> void:
-	super.setup(data, slot, ship, team)
+	super.setup(data, slot, ship, team, next_battle_services)
 	if weapon_data != null:
 		reload_seconds = weapon_data.reload_seconds
 		muzzle_velocity = weapon_data.muzzle_velocity
@@ -110,10 +111,6 @@ func fire() -> bool:
 
 
 func _launch_shell(index: int, total_count: int) -> bool:
-	var projectile := _spawn_projectile(_get_projectile_scene())
-	if projectile == null:
-		push_warning("Cannon mount could not create its shell projectile.")
-		return false
 	var center_offset := float(total_count - 1) * 0.5
 	var spread_offset_degrees := (
 		float(index) - center_offset
@@ -123,10 +120,7 @@ func _launch_shell(index: int, total_count: int) -> bool:
 		Vector3.UP,
 		deg_to_rad(spread_offset_degrees)
 	)
-	projectile.global_transform = launch_transform
 	var active_data := weapon_data.projectile_data if weapon_data != null else null
-	if projectile.has_method(&"setup_projectile_data"):
-		projectile.call(&"setup_projectile_data", active_data)
 	var context := ProjectileLaunchContext.new()
 	context.source_actor = owner_ship
 	context.source_team = owner_team
@@ -137,27 +131,19 @@ func _launch_shell(index: int, total_count: int) -> bool:
 		* get_modified_projectile_speed(muzzle_velocity)
 	context.aim_point = aim_point
 	context.runtime_stats = runtime_stats.duplicate_stats()
-	if projectile.has_method(&"launch_with_context"):
-		projectile.call(&"launch_with_context", context)
-	elif projectile.has_method(&"launch"):
-		projectile.call(
-			&"launch",
-			context.initial_velocity,
-			context.source_team,
-			shell_stats,
-			context.source_actor,
-			context.source_weapon_id
-		)
-	else:
-		push_warning("Shell projectile does not implement a launch method.")
-		if projectile.has_method(&"despawn"):
-			projectile.call(&"despawn")
-		else:
-			projectile.queue_free()
+	if projectile_factory == null:
+		push_error("CannonMount requires an injected ProjectileFactory.")
+		return false
+	var projectile := projectile_factory.create(
+		_get_projectile_scene(),
+		_get_projectile_parent(),
+		active_data,
+		context
+	)
+	if projectile == null:
+		push_warning("Cannon mount could not create its shell projectile.")
 		return false
 	fired.emit(projectile)
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").projectile_fired.emit(projectile)
 	return true
 
 

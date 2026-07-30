@@ -158,7 +158,7 @@ func launch_squadron(
 	squadron.launch_to(world_position)
 	squadron_launched.emit(squadron)
 	if battle_services != null:
-		battle_services.publish(&"squadron_launched", [squadron])
+		battle_services.events.emit_squadron_launched(squadron)
 	return squadron
 
 
@@ -767,7 +767,7 @@ func _on_squadron_recovered(squadron: AircraftSquadron) -> void:
 	_disconnect_squadron(squadron)
 	squadron_recovered.emit(squadron)
 	if battle_services != null:
-		battle_services.publish(&"squadron_recovered", [squadron])
+		battle_services.events.emit_squadron_recovered(squadron)
 	squadron.release_aircraft()
 	squadron.queue_free()
 
@@ -795,7 +795,7 @@ func _on_squadron_destroyed(squadron: AircraftSquadron) -> void:
 	_disconnect_squadron(squadron)
 	squadron_destroyed.emit(squadron)
 	if battle_services != null:
-		battle_services.publish(&"squadron_destroyed", [squadron])
+		battle_services.events.emit_squadron_destroyed(squadron)
 	squadron.release_aircraft()
 	squadron.queue_free()
 

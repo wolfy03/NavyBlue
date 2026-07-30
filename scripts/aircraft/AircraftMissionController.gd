@@ -34,8 +34,22 @@ func setup(
 		next_owner_squadron: AircraftSquadron,
 		next_battle_services: BattleServices = null
 ) -> void:
+	shutdown()
 	owner_squadron = next_owner_squadron
 	battle_services = next_battle_services
+	mission_data = null
+	state = MissionState.IDLE
+	_target_ref = null
+	_event_finished = false
+	_approach_initialized = false
+	_move_destination = Vector3.ZERO
+	intercept_behavior = null
+	dive_bomb_behavior = null
+
+
+func shutdown() -> void:
+	owner_squadron = null
+	battle_services = null
 	mission_data = null
 	state = MissionState.IDLE
 	_target_ref = null
@@ -337,10 +351,16 @@ func _publish_mission_event(
 ) -> void:
 	if battle_services == null:
 		return
-	var arguments: Array = [owner_squadron]
-	if target != null:
-		arguments.append(target)
-	battle_services.publish(event_name, arguments)
+	match event_name:
+		&"air_mission_started":
+			battle_services.events.emit_air_mission_started(
+				owner_squadron,
+				target
+			)
+		&"air_mission_completed":
+			battle_services.events.emit_air_mission_completed(owner_squadron)
+		&"air_mission_failed":
+			battle_services.events.emit_air_mission_failed(owner_squadron)
 
 
 func _is_valid_target(target: Node3D) -> bool:

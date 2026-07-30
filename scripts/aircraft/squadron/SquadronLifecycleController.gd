@@ -5,7 +5,12 @@ var owner_squadron: AircraftSquadron
 
 
 func setup(squadron: AircraftSquadron) -> void:
+	shutdown()
 	owner_squadron = squadron
+
+
+func shutdown() -> void:
+	owner_squadron = null
 
 
 func spawn_aircraft() -> void:
@@ -95,6 +100,8 @@ func activate_next_aircraft() -> void:
 
 
 func release_aircraft() -> void:
+	if owner_squadron == null:
+		return
 	owner_squadron.clear_fighter_targets()
 	owner_squadron.cancel_pending_weapon_release()
 	for aircraft in owner_squadron.aircraft_units:

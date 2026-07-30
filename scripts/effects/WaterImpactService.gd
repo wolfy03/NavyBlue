@@ -9,7 +9,8 @@ static func emit_impact(
 		position: Vector3,
 		strength: float,
 		velocity: Vector3 = Vector3.ZERO,
-		normal: Vector3 = Vector3.UP
+		normal: Vector3 = Vector3.UP,
+		events: BattleEventPublisher = null
 ) -> void:
 	if caller == null:
 		return
@@ -32,8 +33,8 @@ static func emit_impact(
 				normal,
 				caller
 			)
-	if caller.has_node("/root/EventBus"):
-		caller.get_node("/root/EventBus").projectile_water_impact.emit(
+	if events != null:
+		events.emit_projectile_water_impact(
 			position,
 			maxf(strength, 0.0)
 		)

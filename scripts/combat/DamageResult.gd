@@ -2,6 +2,7 @@ class_name DamageResult
 extends RefCounted
 
 var resolved: bool = false
+var request: DamageRequest
 var hit_info: HitInfo
 var target_ship: Node3D
 var damage_type: DamageType.Type = DamageType.Type.SHELL_AP
@@ -15,3 +16,5 @@ var raw_damage: float = 0.0
 var applied_damage: float = 0.0
 var final_damage: float = 0.0
 var flooding_triggered := false
+var destroyed := false
+var hit_zone: StringName

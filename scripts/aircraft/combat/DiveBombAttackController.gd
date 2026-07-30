@@ -82,14 +82,16 @@ var _release_conflict_warning_emitted := false
 
 
 func setup(squadron: AircraftSquadron) -> void:
+	shutdown()
 	owner_squadron = squadron
 	dive_data = squadron.squadron_data.aircraft_data \
 		.dive_bomber_combat_data \
 		if squadron != null \
 		and squadron.squadron_data != null \
 		and squadron.squadron_data.aircraft_data != null else null
-	payload_release_settings = squadron.payload_release_settings \
-		if squadron != null else null
+	payload_release_settings = squadron.squadron_data \
+		.payload_release_settings \
+		if squadron != null and squadron.squadron_data != null else null
 	if owner_squadron != null \
 			and not owner_squadron.aircraft_weapon_release_finished \
 				.is_connected(_on_aircraft_weapon_release_finished):
@@ -97,6 +99,24 @@ func setup(squadron: AircraftSquadron) -> void:
 			_on_aircraft_weapon_release_finished
 		)
 	reset()
+
+
+func shutdown() -> void:
+	if owner_squadron != null \
+			and is_instance_valid(owner_squadron) \
+			and owner_squadron.aircraft_weapon_release_finished.is_connected(
+				_on_aircraft_weapon_release_finished
+			):
+		owner_squadron.aircraft_weapon_release_finished.disconnect(
+			_on_aircraft_weapon_release_finished
+		)
+	if owner_squadron != null and is_instance_valid(owner_squadron) \
+			and state != State.IDLE:
+		cancel()
+	reset()
+	owner_squadron = null
+	dive_data = null
+	payload_release_settings = null
 
 
 func reset() -> void:

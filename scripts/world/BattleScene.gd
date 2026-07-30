@@ -27,6 +27,9 @@ const DEFAULT_DEBUG_SETTINGS: BattleDebugSettings = preload(
 @onready var combat_effect_controller: Node = get_node_or_null(
 	"CombatEffectController"
 )
+@onready var combat_effect_presenter: CombatEffectPresenter = get_node_or_null(
+	"CombatEffectPresenter"
+) as CombatEffectPresenter
 @onready var camera: Camera3D = get_node_or_null("RTSCamera") as Camera3D
 @onready var input_manager: PlayerInputManager = \
 	get_node_or_null("PlayerInputManager") as PlayerInputManager
@@ -64,8 +67,18 @@ func _ready() -> void:
 		get_node_or_null("/root/ObjectPool"),
 		get_node_or_null("/root/RunManager"),
 		get_node_or_null("/root/GameManager"),
-		spawn_system.faction_palette if spawn_system != null else null
+		spawn_system.faction_palette if spawn_system != null else null,
+		debug_settings
 	)
+	if combat_effect_presenter != null:
+		var typed_effect_controller := combat_effect_controller \
+			as CombatEffectController
+		if typed_effect_controller != null:
+			typed_effect_controller.setup(battle_services.events)
+		combat_effect_presenter.setup(
+			typed_effect_controller,
+			battle_services.events
+		)
 	if combat_effect_controller == null:
 		push_warning(
 			"CombatEffectController is missing. Ship impact effects are disabled."
@@ -363,7 +376,8 @@ func _get_or_create_fleet_controller(ship: ShipUnit) -> FleetAIController:
 		Callable(self, &"get_battle_units"),
 		battlefield_bounds,
 		_resolve_ai_difficulty_profile(),
-		Callable(self, &"get_incoming_attacker_count")
+		Callable(self, &"get_incoming_attacker_count"),
+		battle_services
 	)
 	controller.became_empty.connect(_on_fleet_became_empty)
 	_fleet_controllers[fleet_key] = controller

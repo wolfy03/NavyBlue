@@ -8,9 +8,10 @@ signal damage_applied(amount: float, penetration_result: int, hit_info: HitInfo)
 signal damage_result_applied(result: DamageResult)
 
 @export var defense_stats: ShipDefenseStats
-@export var debug_damage_log: bool = true
+var debug_damage_log := false
 
 var _death_emitted: bool = false
+var battle_services: BattleServices
 
 var max_health: float:
 	get:
@@ -31,11 +32,20 @@ func _ready() -> void:
 	setup(defense_stats)
 
 
-func setup(stats: ShipDefenseStats) -> void:
+func setup(
+		stats: ShipDefenseStats,
+		next_battle_services: BattleServices = null
+) -> void:
 	if stats == null:
 		defense_stats = ShipDefenseStats.new()
 	else:
 		defense_stats = stats.duplicate(true) as ShipDefenseStats
+	battle_services = next_battle_services
+	debug_damage_log = (
+		battle_services != null
+		and battle_services.debug_settings != null
+		and battle_services.debug_settings.log_damage_resolution
+	)
 	defense_stats.resource_local_to_scene = true
 	defense_stats.reset_health()
 	_death_emitted = false
@@ -77,13 +87,14 @@ func apply_damage_result(result: DamageResult) -> float:
 	result.applied_damage = final_damage
 	result.final_damage = final_damage
 	result.resolved = true
+	result.destroyed = defense_stats.current_hp <= 0.0
 	damage_applied.emit(
 		final_damage,
 		result.penetration_result,
 		result.hit_info
 	)
 	damage_result_applied.emit(result)
-	if has_node("/root/EventBus"):
+	if battle_services != null:
 		var damage_info := {
 			"damage_type": result.damage_type,
 			"hit_outcome": result.hit_outcome,
@@ -95,7 +106,7 @@ func apply_damage_result(result: DamageResult) -> float:
 			damage_info["attacker_ship"] = result.hit_info.get_attacker_ship()
 			damage_info["source_ship_instance_id"] = result.hit_info.source_ship_instance_id
 			damage_info["weapon_id"] = result.hit_info.source_weapon_id
-		get_node("/root/EventBus").ship_damaged.emit(
+		battle_services.events.emit_ship_damaged(
 			get_parent(),
 			final_damage,
 			damage_info

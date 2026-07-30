@@ -432,8 +432,8 @@ func sink() -> void:
 	velocity = Vector3.ZERO
 	collision_layer = 0
 	collision_mask = 0
-	if has_node("/root/EventBus"):
-		get_node("/root/EventBus").ship_destroyed.emit(self)
+	if battle_services != null:
+		battle_services.events.emit_ship_destroyed(self)
 	call_deferred(&"queue_free")
 
 func _register_groups() -> void:
@@ -467,7 +467,11 @@ func _setup_components() -> void:
 	avoidance.setup(self, settings)
 	buoyancy.water_height = settings.sea_level_m
 	combat.setup(self, built_mounts)
-	health.setup(ship_data.defense_stats if ship_data != null else null)
+	health.setup(
+		ship_data.defense_stats if ship_data != null else null,
+		battle_services
+	)
+	damage_status.setup(battle_services)
 	targeting.setup(self, ship_data.ai_role_profile if ship_data != null else null, _ai_candidate_provider)
 	ai.setup(self, ship_data)
 	if not targeting.target_changed.is_connected(_on_target_changed):

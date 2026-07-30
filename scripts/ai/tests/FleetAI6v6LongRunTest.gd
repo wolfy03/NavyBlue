@@ -7,6 +7,7 @@ var _failures: Array[String] = []
 var _provider_units: Array = []
 var _ship_scene := preload("res://scenes/unit/ship.tscn")
 var _ship_database := ShipDatabase.new()
+var _battle_services: BattleServices
 
 
 func _initialize() -> void:
@@ -17,17 +18,39 @@ func _run() -> void:
 	var simulation_frames := _resolve_simulation_frames()
 	var arena := Node3D.new()
 	root.add_child(arena)
+	_battle_services = BattleTestServices.create(self)
 	var projectiles := Node3D.new()
 	projectiles.name = "Projectiles"
+	projectiles.add_to_group(&"projectile_root")
 	arena.add_child(projectiles)
+	var aircraft := Node3D.new()
+	aircraft.name = "Aircraft"
+	aircraft.add_to_group(&"aircraft_root")
+	arena.add_child(aircraft)
 	var bounds := BattlefieldBounds.new()
 	arena.add_child(bounds)
 	var fleet_a := FleetAIController.new()
 	var fleet_b := FleetAIController.new()
 	arena.add_child(fleet_a)
 	arena.add_child(fleet_b)
-	fleet_a.setup(&"six_a", &"ally", Callable(self, &"_get_provider_units"), bounds)
-	fleet_b.setup(&"six_b", &"enemy", Callable(self, &"_get_provider_units"), bounds)
+	fleet_a.setup(
+		&"six_a",
+		&"ally",
+		Callable(self, &"_get_provider_units"),
+		bounds,
+		null,
+		Callable(),
+		_battle_services
+	)
+	fleet_b.setup(
+		&"six_b",
+		&"enemy",
+		Callable(self, &"_get_provider_units"),
+		bounds,
+		null,
+		Callable(),
+		_battle_services
+	)
 
 	var composition := [
 		"cv_seabastion",
@@ -207,7 +230,15 @@ func _spawn_ship(
 ) -> ShipUnit:
 	var ship := _ship_scene.instantiate() as ShipUnit
 	var source_data := _ship_database.get_ship(ship_id)
-	ship.setup(source_data.duplicate(true) as ShipData, team, false, Color.WHITE)
+	ship.setup(
+		source_data.duplicate(true) as ShipData,
+		team,
+		false,
+		Color.WHITE,
+		null,
+		{},
+		_battle_services
+	)
 	parent.add_child(ship)
 	ship.global_position = position
 	ship.rotation.y = deg_to_rad(yaw_degrees)

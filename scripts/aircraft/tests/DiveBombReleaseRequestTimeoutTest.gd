@@ -29,11 +29,15 @@ func _run() -> void:
 		aircraft.activate()
 		aircraft.set_physics_process(false)
 	var aircraft := squadron.get_alive_aircraft()[0]
-	var release_settings := squadron.payload_release_settings.duplicate(
+	var release_settings := squadron.squadron_data \
+		.payload_release_settings.duplicate(
 		true
 	) as AircraftPayloadReleaseSettings
 	release_settings.request_timeout_sec = 0.01
-	squadron.set_payload_release_settings(release_settings)
+	var runtime_data := squadron.squadron_data.duplicate(true) as SquadronData
+	runtime_data.payload_release_settings = release_settings
+	squadron.squadron_data = runtime_data
+	squadron.payload_release_coordinator.settings = release_settings
 	var request_result := squadron.request_aircraft_payload_release(
 		aircraft,
 		AircraftPayloadReleaseContext.create(

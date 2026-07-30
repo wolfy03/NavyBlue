@@ -50,7 +50,7 @@ func start_battle(
 	for enemy in enemies:
 		_connect_ship_death(enemy, Callable(self, "_on_enemy_died").bind(enemy))
 	if battle_services != null:
-		battle_services.publish(&"battle_started", [stage_id])
+		battle_services.events.emit_battle_started(stage_id)
 	call_deferred("_check_result")
 
 func stop_battle() -> void:
@@ -121,19 +121,19 @@ func _clear_battle() -> void:
 	var rewards: Array = reward_system.roll_upgrade_rewards(3, reward_table_id)
 	var reward_ids: Array[String] = reward_system.get_reward_ids(rewards)
 	reward_system.free()
-	var run_manager := battle_services.run_manager \
+	var run_session := battle_services.run_session \
 		if battle_services != null else null
-	if run_manager != null:
-		run_manager.call(&"capture_player_ship", player_ship)
-		run_manager.call(&"set_pending_rewards", reward_ids)
-		var save_error := run_manager.call(&"save_current_run") as Error
+	if run_session != null:
+		run_session.capture_player_ship(player_ship)
+		run_session.set_pending_rewards(reward_ids)
+		var save_error := run_session.save_current_run()
 		if save_error != OK:
 			push_warning("Failed to save run after battle clear: %s" % save_error)
 	if battle_services != null:
-		battle_services.publish(&"battle_cleared", [stage_id])
+		battle_services.events.emit_battle_cleared(stage_id)
 	battle_cleared.emit(stage_id)
-	if battle_services != null and battle_services.game_manager != null:
-		battle_services.game_manager.call(&"enter_reward")
+	if battle_services != null:
+		battle_services.game_flow.enter_reward()
 	# TODO: Connect this to SceneLoader.load_reward() when reward scene exists.
 
 func _fail_battle() -> void:
@@ -143,21 +143,21 @@ func _fail_battle() -> void:
 	stop_battle()
 	_resolve_player_components(false)
 	_clear_active_projectiles()
-	var run_manager := battle_services.run_manager \
+	var run_session := battle_services.run_session \
 		if battle_services != null else null
-	if run_manager != null:
-		run_manager.call(&"finish_run", {
+	if run_session != null:
+		run_session.finish_run({
 			"success": false,
 			"stage_id": stage_id,
 		})
-		var clear_error := run_manager.call(&"clear_saved_run") as Error
+		var clear_error := run_session.clear_saved_run()
 		if clear_error != OK:
 			push_warning("Failed to clear saved run after battle failure: %s" % clear_error)
 	if battle_services != null:
-		battle_services.publish(&"battle_failed", [stage_id])
+		battle_services.events.emit_battle_failed(stage_id)
 	battle_failed.emit(stage_id)
-	if battle_services != null and battle_services.game_manager != null:
-		battle_services.game_manager.call(&"enter_game_over")
+	if battle_services != null:
+		battle_services.game_flow.enter_game_over()
 
 
 func _resolve_player_components(success: bool) -> void:

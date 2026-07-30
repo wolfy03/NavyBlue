@@ -15,28 +15,32 @@ class_name StageData
 func validate() -> PackedStringArray:
 	var errors := PackedStringArray()
 	var spawn_names: Dictionary = {}
+	var marker_names: Dictionary = {}
 	_validate_spawn(
 		player_spawn,
 		"player_spawn",
-		true,
+		ShipSpawnData.SpawnRole.PLAYER,
 		errors,
-		spawn_names
+		spawn_names,
+		marker_names
 	)
 	for index in ally_spawns.size():
 		_validate_spawn(
 			ally_spawns[index],
 			"ally_spawns[%d]" % index,
-			false,
+			ShipSpawnData.SpawnRole.ALLY,
 			errors,
-			spawn_names
+			spawn_names,
+			marker_names
 		)
 	for index in enemy_spawns.size():
 		_validate_spawn(
 			enemy_spawns[index],
 			"enemy_spawns[%d]" % index,
-			false,
+			ShipSpawnData.SpawnRole.ENEMY,
 			errors,
-			spawn_names
+			spawn_names,
+			marker_names
 		)
 	return errors
 
@@ -44,20 +48,24 @@ func validate() -> PackedStringArray:
 func _validate_spawn(
 		spawn: ShipSpawnData,
 		label: String,
-		expect_player: bool,
+		expected_role: ShipSpawnData.SpawnRole,
 		errors: PackedStringArray,
-		spawn_names: Dictionary
+		spawn_names: Dictionary,
+		marker_names: Dictionary
 ) -> void:
 	if spawn == null:
 		errors.append("%s must be a ShipSpawnData Resource." % label)
 		return
-	errors.append_array(spawn.validate(expect_player, label))
-	var spawn_name := spawn.display_name \
-		if not spawn.display_name.is_empty() \
-		else String(spawn.spawn_marker_id)
-	if spawn_name.is_empty():
-		return
-	if spawn_names.has(spawn_name):
-		errors.append("Duplicate spawn name: %s" % spawn_name)
-	else:
-		spawn_names[spawn_name] = true
+	errors.append_array(spawn.validate(expected_role, label))
+	if not spawn.display_name.is_empty():
+		if spawn_names.has(spawn.display_name):
+			errors.append("Duplicate spawn display_name: %s" % spawn.display_name)
+		else:
+			spawn_names[spawn.display_name] = true
+	if not spawn.spawn_marker_id.is_empty():
+		if marker_names.has(spawn.spawn_marker_id):
+			errors.append(
+				"Duplicate spawn marker: %s" % spawn.spawn_marker_id
+			)
+		else:
+			marker_names[spawn.spawn_marker_id] = true

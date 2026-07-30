@@ -16,8 +16,10 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var run_manager := root.get_node_or_null("RunManager")
+	var run_session := RunSessionReader.new()
+	run_session.setup(run_manager)
 	var resolver := PlayerShipResolver.new()
-	resolver.setup(run_manager)
+	resolver.setup(run_session)
 	var config := NewRunConfig.new()
 	config.starting_ship_id = "cv_seabastion"
 	run_manager.start_new_run(config)
@@ -39,6 +41,8 @@ func _run() -> void:
 		"BattleTestConfig override wins in tests"
 	)
 	run_manager.reset_run()
+	resolver.shutdown()
+	run_session.shutdown()
 	_finish()
 
 

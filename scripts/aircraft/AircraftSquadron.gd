@@ -42,11 +42,6 @@ enum DiveControlSource {
 }
 
 const EPSILON := 0.0001
-const DEFAULT_PAYLOAD_RELEASE_SETTINGS: AircraftPayloadReleaseSettings = \
-	preload(
-		"res://resources/aircraft/settings/default_payload_release_settings.tres"
-	)
-
 @onready var mission_controller: AircraftMissionController = get_node_or_null(
 	"AircraftMissionController"
 ) as AircraftMissionController
@@ -57,9 +52,6 @@ const DEFAULT_PAYLOAD_RELEASE_SETTINGS: AircraftPayloadReleaseSettings = \
 
 @export var manual_return_after_release := false
 @export var destination_change_epsilon_m := 5.0
-@export var payload_release_settings: AircraftPayloadReleaseSettings = \
-	DEFAULT_PAYLOAD_RELEASE_SETTINGS
-
 var squadron_data: SquadronData
 var aircraft_units: Array[AircraftUnit] = []
 var state: State = State.FORMING
@@ -100,6 +92,10 @@ func setup(
 		launch_aircraft_count: int = -1,
 		next_battle_services: BattleServices = null
 ) -> void:
+	shutdown()
+	state = State.FORMING
+	_completion_emitted = false
+	_formation_activated_emitted = false
 	_owner_carrier_ref = weakref(carrier) \
 		if carrier != null and is_instance_valid(carrier) else null
 	squadron_data = data
@@ -113,7 +109,10 @@ func setup(
 		state = State.DESTROYED
 		return
 	_team = owner_carrier.team
-	payload_release_coordinator.setup(self, payload_release_settings)
+	payload_release_coordinator.setup(
+		self,
+		squadron_data.payload_release_settings
+	)
 	movement_controller.setup(self, destination_tracker)
 	lifecycle_controller.setup(self)
 	if not payload_release_coordinator.aircraft_release_finished.is_connected(
@@ -143,6 +142,44 @@ func setup(
 	if coordinator != null:
 		coordinator.register_squadron(self)
 	set_physics_process(false)
+
+
+func shutdown() -> void:
+	set_physics_process(false)
+	var coordinator := get_combat_coordinator() if is_inside_tree() else null
+	if coordinator != null:
+		coordinator.unregister_intercept_assignment(self)
+		coordinator.unregister_squadron(self)
+	if dive_bomb_controller != null:
+		dive_bomb_controller.shutdown()
+	if mission_controller != null:
+		mission_controller.shutdown()
+	if lifecycle_controller.owner_squadron != null:
+		lifecycle_controller.release_aircraft()
+	if payload_release_coordinator.aircraft_release_finished.is_connected(
+		_on_aircraft_payload_release_finished
+	):
+		payload_release_coordinator.aircraft_release_finished.disconnect(
+			_on_aircraft_payload_release_finished
+		)
+	if payload_release_coordinator.pass_finished.is_connected(
+		_on_payload_release_pass_finished
+	):
+		payload_release_coordinator.pass_finished.disconnect(
+			_on_payload_release_pass_finished
+		)
+	payload_release_coordinator.shutdown()
+	movement_controller.shutdown()
+	lifecycle_controller.shutdown()
+	destination_tracker.shutdown()
+	clear_fighter_targets()
+	_owner_carrier_ref = null
+	_manual_attack_target_ref = null
+	_fighter_target_squadron_ref = null
+	aircraft_units.clear()
+	battle_services = null
+	if is_in_group(&"aircraft_squadrons"):
+		remove_from_group(&"aircraft_squadrons")
 
 
 func launch_to(world_position: Vector3) -> void:
@@ -436,17 +473,6 @@ func request_aircraft_payload_release(
 	return payload_release_coordinator.request_release(aircraft, context)
 
 
-func set_payload_release_settings(
-		next_settings: AircraftPayloadReleaseSettings
-) -> void:
-	if next_settings == null:
-		return
-	payload_release_settings = next_settings
-	payload_release_coordinator.settings = next_settings
-	if dive_bomb_controller != null:
-		dive_bomb_controller.payload_release_settings = next_settings
-
-
 func cancel_pending_weapon_release() -> void:
 	payload_release_coordinator.cancel_all_requests()
 	for aircraft in get_alive_aircraft():
@@ -610,7 +636,8 @@ func get_owner_carrier() -> ShipUnit:
 
 
 func release_aircraft() -> void:
-	lifecycle_controller.release_aircraft()
+	if lifecycle_controller.owner_squadron != null:
+		lifecycle_controller.release_aircraft()
 
 
 func _physics_process(delta: float) -> void:
@@ -966,7 +993,7 @@ func _mark_destroyed() -> void:
 		squadron_lost.emit(self)
 		return
 	if battle_services != null:
-		battle_services.publish(&"squadron_destroyed", [self])
+		battle_services.events.emit_squadron_destroyed(self)
 	release_aircraft()
 	queue_free()
 
@@ -996,9 +1023,4 @@ func _prune_aircraft() -> void:
 
 
 func _exit_tree() -> void:
-	cancel_pending_weapon_release()
-	if is_in_group(&"aircraft_squadrons"):
-		remove_from_group(&"aircraft_squadrons")
-	var coordinator := get_combat_coordinator()
-	if coordinator != null:
-		coordinator.unregister_squadron(self)
+	shutdown()

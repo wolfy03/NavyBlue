@@ -123,8 +123,15 @@ func _test_three_vs_three_battle_scene() -> void:
 	var event_bus: Node = root.get_node("EventBus")
 	var damage_connections: Array = event_bus.ship_damaged.get_connections()
 	_check(
-		damage_connections.size() == 3,
-		"only the three team-separated fleet coordinators subscribe to global damage"
+		damage_connections.is_empty(),
+		"fleet coordinators do not subscribe directly to the global EventBus"
+	)
+	var published_damage_connections: Array = (
+		scene.battle_services.events.ship_damaged.get_connections()
+	)
+	_check(
+		published_damage_connections.size() == 3,
+		"the three team-separated fleet coordinators subscribe through BattleEventPublisher"
 	)
 	scene.queue_free()
 	await process_frame

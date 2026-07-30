@@ -22,6 +22,7 @@ func _run() -> void:
 		root.get_node_or_null("GameManager"),
 		null
 	)
+	effects.setup(battle_services.events)
 	var fighter_data := FighterTestSupport.FIGHTER_DATA.duplicate(
 		true
 	) as AircraftData
