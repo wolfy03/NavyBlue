@@ -3,10 +3,19 @@ class_name WeaponProjectileBase
 
 signal impact_resolved(result: ProjectileImpactResult)
 
-var projectile_data: ProjectileData
-var launch_context: ProjectileLaunchContext
-var battle_services: BattleServices
-var runtime_state := ProjectileRuntimeState.new()
+var lifecycle := ProjectileLifecycle.new()
+var projectile_data: ProjectileData:
+	get:
+		return lifecycle.projectile_data
+var launch_context: ProjectileLaunchContext:
+	get:
+		return lifecycle.launch_context
+var battle_services: BattleServices:
+	get:
+		return lifecycle.battle_services
+var runtime_state: ProjectileRuntimeState:
+	get:
+		return lifecycle.runtime_state
 
 var projectile_runtime_stats := WeaponRuntimeStats.new()
 var source_team: StringName = FactionRelations.NEUTRAL
@@ -27,26 +36,23 @@ func _ready() -> void:
 func configure(
 		data: ProjectileData,
 		services: BattleServices
-) -> void:
-	if data == null or services == null:
+) -> bool:
+	if not lifecycle.configure(data, services):
 		push_error(
 			"WeaponProjectileBase.configure requires data and BattleServices."
 		)
-		return
-	projectile_data = data
-	battle_services = services
-	runtime_state = ProjectileRuntimeState.new()
+		return false
 	_on_configured()
+	return true
 
 
-func launch(context: ProjectileLaunchContext) -> void:
-	if projectile_data == null or battle_services == null or context == null:
+func launch(context: ProjectileLaunchContext) -> bool:
+	if not lifecycle.begin_launch(context):
 		push_error(
 			"WeaponProjectileBase.launch called before valid configuration."
 		)
 		recycle_projectile()
-		return
-	launch_context = context
+		return false
 	projectile_runtime_stats = context.runtime_stats.duplicate_stats() \
 		if context.runtime_stats != null else WeaponRuntimeStats.new()
 	_apply_launch_source(
@@ -55,16 +61,13 @@ func launch(context: ProjectileLaunchContext) -> void:
 		context.source_weapon_id
 	)
 	global_transform = context.initial_transform
-	runtime_state.active = true
 	_on_launched(context)
+	return true
 
 
 func reset_for_pool() -> void:
 	_on_reset_for_pool()
-	projectile_data = null
-	launch_context = null
-	battle_services = null
-	runtime_state = ProjectileRuntimeState.new()
+	lifecycle.reset()
 	projectile_runtime_stats = WeaponRuntimeStats.new()
 	source_team = FactionRelations.NEUTRAL
 	source_ship_instance_id = 0
@@ -86,9 +89,8 @@ func recycle_projectile() -> void:
 
 
 func emit_impact(result: ProjectileImpactResult) -> void:
-	if result == null or runtime_state.impact_resolved:
+	if result == null or not lifecycle.mark_impact_once():
 		return
-	runtime_state.impact_resolved = true
 	result.projectile = self
 	impact_resolved.emit(result)
 	if battle_services != null:
@@ -106,10 +108,7 @@ func get_source_ship() -> Node:
 
 func on_spawned_from_pool() -> void:
 	_base_despawn_requested = false
-	projectile_data = null
-	launch_context = null
-	battle_services = null
-	runtime_state = ProjectileRuntimeState.new()
+	lifecycle.reset()
 	projectile_runtime_stats = WeaponRuntimeStats.new()
 	source_team = FactionRelations.NEUTRAL
 	source_ship_instance_id = 0

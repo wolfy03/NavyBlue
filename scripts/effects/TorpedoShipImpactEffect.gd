@@ -1,4 +1,4 @@
-extends Node3D
+extends PooledEffectBase
 class_name TorpedoShipImpactEffect
 
 @export_range(0.5, 8.0, 0.1, "or_greater") var lifetime_seconds := 3.0
@@ -12,8 +12,6 @@ class_name TorpedoShipImpactEffect
 @onready var audio_player: AudioStreamPlayer3D = $AudioStreamPlayer3D
 @onready var lifetime_timer: Timer = $LifetimeTimer
 
-var active := false
-var last_activated_msec := 0
 var _age_seconds := 0.0
 var _shockwave_material: StandardMaterial3D
 
@@ -27,18 +25,12 @@ func _ready() -> void:
 	deactivate()
 
 
-func activate(
-		hit_position: Vector3,
-		normal: Vector3,
-		strength: float
-) -> void:
-	active = true
-	last_activated_msec = Time.get_ticks_msec()
-	global_position = hit_position
-	var safe_strength := clampf(strength, 1.0, 4.0)
+func _on_activate(request: EffectRequest) -> void:
+	global_position = request.position
+	var safe_strength := clampf(request.strength, 1.0, 4.0)
 	scale = Vector3.ONE * (1.2 + safe_strength * 0.55)
 	_age_seconds = 0.0
-	_align_to_normal(normal)
+	_align_to_normal(request.normal)
 	flash_particles.amount_ratio = 1.0
 	bubble_particles.amount_ratio = clampf(0.45 + safe_strength * 0.18, 0.0, 1.0)
 	debris_particles.amount_ratio = clampf(0.35 + safe_strength * 0.2, 0.0, 1.0)
@@ -54,7 +46,6 @@ func activate(
 	impact_light.light_energy = 8.0 + safe_strength * 4.0
 	impact_light.omni_range = 24.0 + safe_strength * 12.0
 	impact_light.visible = true
-	visible = true
 	set_process(true)
 	lifetime_timer.start(lifetime_seconds + safe_strength * 0.2)
 
@@ -73,9 +64,7 @@ func _process(delta: float) -> void:
 		shockwave_mesh.visible = false
 
 
-func deactivate() -> void:
-	active = false
-	visible = false
+func _on_deactivate() -> void:
 	scale = Vector3.ONE
 	set_process(false)
 	_stop(flash_particles)

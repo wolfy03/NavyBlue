@@ -1,5 +1,9 @@
 extends SceneTree
 
+const DEFAULT_FACTION_PALETTE: FactionPalette = preload(
+	"res://resources/factions/default_faction_palette.tres"
+)
+
 var _failures := PackedStringArray()
 
 
@@ -11,14 +15,15 @@ func _run() -> void:
 	var settings := BattleDebugSettings.new()
 	settings.log_projectile_lifecycle = true
 	var services := BattleServices.new()
-	services.setup(
+	var setup_succeeded := services.setup(
 		root.get_node_or_null("EventBus"),
 		root.get_node_or_null("ObjectPool"),
 		root.get_node_or_null("RunManager"),
 		root.get_node_or_null("GameManager"),
-		null,
+		DEFAULT_FACTION_PALETTE,
 		settings
 	)
+	_check(setup_succeeded, "required services configure successfully")
 	_check(services.events is BattleEventPublisher, "typed event publisher")
 	_check(
 		services.projectile_pool is ProjectilePoolService,
@@ -41,14 +46,15 @@ func _run() -> void:
 			and services.projectile_factory.battle_services == null,
 		"shutdown is idempotent and releases injected references"
 	)
-	services.setup(
+	setup_succeeded = services.setup(
 		root.get_node_or_null("EventBus"),
 		root.get_node_or_null("ObjectPool"),
 		null,
 		null,
-		null,
+		DEFAULT_FACTION_PALETTE,
 		settings
 	)
+	_check(setup_succeeded, "optional run and game services may be absent")
 	_check(
 		services.projectile_factory.battle_services == services,
 		"services can be configured again after shutdown"

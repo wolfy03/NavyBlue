@@ -1,4 +1,4 @@
-extends Node3D
+extends PooledEffectBase
 class_name FighterTracerEffect
 
 @export var lifetime_seconds := 0.12
@@ -8,46 +8,31 @@ class_name FighterTracerEffect
 	"TracerMesh"
 ) as MeshInstance3D
 
-var active := false
-var last_activated_msec := 0
 var _age_seconds := 0.0
 
 
-func activate(
-		start_position: Vector3,
-		end_position: Vector3,
-		rounds_fired: int,
-		hit_count: int,
-		tracer_interval: int
-) -> void:
-	global_position = start_position
+func _on_activate(request: EffectRequest) -> void:
+	global_position = request.position
 	_age_seconds = 0.0
-	last_activated_msec = Time.get_ticks_msec()
-	active = true
-	visible = true
 	set_process(true)
 	_build_tracer_mesh(
-		end_position - start_position,
+		request.end_position - request.position,
 		clampi(
-			ceili(float(rounds_fired) / float(maxi(tracer_interval, 1))),
+			ceili(
+				float(request.rounds_fired)
+				/ float(maxi(request.tracer_interval, 1))
+			),
 			1,
 			3
 		),
-		hit_count > 0
+		request.hit_count > 0
 	)
 
 
-func deactivate() -> void:
-	active = false
+func _on_deactivate() -> void:
 	_age_seconds = 0.0
-	visible = false
-	set_process(false)
 	if tracer_mesh != null:
 		tracer_mesh.mesh = null
-
-
-func is_available() -> bool:
-	return not active
 
 
 func _process(delta: float) -> void:

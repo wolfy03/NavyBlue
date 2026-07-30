@@ -21,7 +21,8 @@ func shutdown() -> void:
 
 func spawn_water_splash(
 		caller: Node,
-		request: EffectRequest
+		request: EffectRequest,
+		publish_legacy_water_event := false
 ) -> void:
 	if caller == null or request == null:
 		return
@@ -31,7 +32,7 @@ func spawn_water_splash(
 		request.strength,
 		request.velocity,
 		request.normal,
-		events
+		events if publish_legacy_water_event else null
 	)
 
 
@@ -95,7 +96,7 @@ func spawn_torpedo_impact(
 	if request.velocity.length_squared() > 0.0001:
 		splash_request.velocity += request.velocity.normalized() * 5.0
 	splash_request.strength = clampf(strength * 1.25, 2.0, 4.0)
-	spawn_water_splash(caller, splash_request)
+	spawn_water_splash(caller, splash_request, true)
 
 
 func spawn_world_impact(

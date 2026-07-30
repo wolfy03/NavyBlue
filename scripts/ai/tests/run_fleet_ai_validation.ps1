@@ -22,6 +22,7 @@ if ([string]::IsNullOrWhiteSpace($GodotBin)) {
 $projectRoot = Resolve-Path (Join-Path $PSScriptRoot "../../..")
 $tests = @(
 	"res://scripts/ai/tests/ThreatTargetingSystemTest.gd",
+	"res://scripts/ai/tests/FleetAIArchitectureTest.gd",
 	"res://scripts/ai/tests/FleetAIStage3Test.gd",
 	"res://scripts/ai/tests/FleetAIStabilizationTest.gd"
 )

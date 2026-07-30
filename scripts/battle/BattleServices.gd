@@ -17,8 +17,17 @@ func setup(
 		next_game_manager: Node,
 		next_faction_palette: FactionPalette,
 		next_debug_settings: BattleDebugSettings = null
-) -> void:
+) -> bool:
 	shutdown()
+	var dependency_errors := validate_dependencies(
+		next_event_bus,
+		next_object_pool,
+		next_faction_palette
+	)
+	if not dependency_errors.is_empty():
+		for dependency_error in dependency_errors:
+			push_error("BattleServices setup failed: %s" % dependency_error)
+		return false
 	events.setup(next_event_bus)
 	projectile_pool.setup(next_object_pool)
 	projectile_factory.setup(projectile_pool, self)
@@ -26,6 +35,25 @@ func setup(
 	game_flow.setup(next_game_manager)
 	faction_palette = next_faction_palette
 	debug_settings = next_debug_settings
+	return true
+
+
+func validate_dependencies(
+		next_event_bus: Node,
+		next_object_pool: Node,
+		next_faction_palette: FactionPalette
+) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if next_event_bus == null:
+		errors.append("EventBus is required.")
+	if next_object_pool == null:
+		errors.append("ObjectPool is required.")
+	if next_faction_palette == null:
+		errors.append("FactionPalette is required.")
+	else:
+		for palette_error in next_faction_palette.validate():
+			errors.append("FactionPalette: %s" % palette_error)
+	return errors
 
 
 func shutdown() -> void:
@@ -39,7 +67,10 @@ func shutdown() -> void:
 
 
 func get_faction_color(team: StringName, fallback: Color) -> Color:
-	if faction_palette == null \
-			or faction_palette.get_faction(team) == null:
+	if faction_palette == null:
 		return fallback
-	return faction_palette.get_color(team)
+	var faction := faction_palette.get_faction(team)
+	if faction == null:
+		faction_palette.warn_unknown_faction_once(team)
+		return fallback
+	return faction.primary_color

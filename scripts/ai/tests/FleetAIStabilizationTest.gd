@@ -239,7 +239,10 @@ func _test_battlefield_incoming_attackers() -> void:
 	var ally_alpha_controller := ally_alpha.get_fleet_controller()
 	var enemy_alpha_controller := enemy_alpha.get_fleet_controller()
 	ally_alpha_controller.set_process(false)
-	ally_alpha_controller.empty_fleet_grace_sec = 0.0
+	ally_alpha_controller.fleet_ai_settings = (
+		ally_alpha_controller.fleet_ai_settings.duplicate(true)
+	)
+	ally_alpha_controller.fleet_ai_settings.empty_fleet_grace_sec = 0.0
 	ally_alpha_controller.unregister_member(ally_alpha)
 	ally_alpha_controller.update_fleet(0.1)
 	await process_frame
@@ -394,6 +397,10 @@ func _test_stable_difficulty_error_and_primary_hysteresis() -> void:
 	_provider_units = [member, target_a, target_b]
 	member.configure_ai_target_provider(Callable(self, &"_get_provider_units"))
 	fleet.register_member(member)
+	_check(
+		fleet.get_member_exit_callback_count() == 1,
+		"member registration stores one exit callback"
+	)
 	fleet.update_fleet(10.0)
 	fleet.update_fleet(10.0)
 	var context := fleet.get_member_context(member)
@@ -625,7 +632,8 @@ func _test_debug_throttle_and_empty_lifecycle() -> void:
 	_provider_units = [member]
 	fleet.register_member(member)
 	fleet.debug_enabled = true
-	fleet.debug_update_interval_sec = 0.4
+	fleet.fleet_ai_settings = fleet.fleet_ai_settings.duplicate(true)
+	fleet.fleet_ai_settings.debug_update_interval_sec = 0.4
 	fleet.debug_snapshot_update_count = 0
 	fleet.update_fleet(0.1)
 	fleet.update_fleet(0.1)
@@ -644,10 +652,19 @@ func _test_debug_throttle_and_empty_lifecycle() -> void:
 		func(_team: StringName, _fleet_id: StringName) -> void:
 			empty_events[0] += 1
 	)
-	fleet.empty_fleet_grace_sec = 1.0
+	fleet.fleet_ai_settings = fleet.fleet_ai_settings.duplicate(true)
+	fleet.fleet_ai_settings.empty_fleet_grace_sec = 1.0
 	fleet.unregister_member(member)
+	_check(
+		fleet.get_member_exit_callback_count() == 0,
+		"member unregister disconnects its exit callback"
+	)
 	fleet.update_fleet(0.6)
 	fleet.register_member(member)
+	_check(
+		fleet.get_member_exit_callback_count() == 1,
+		"member re-register stores one fresh exit callback"
+	)
 	fleet.update_fleet(0.5)
 	_check(
 		empty_events[0] == 0,

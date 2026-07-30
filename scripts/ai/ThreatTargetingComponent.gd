@@ -599,21 +599,18 @@ func get_fleet_controller() -> FleetAIController:
 
 func _apply_fleet_recommendation(context: TargetEvaluationContext) -> void:
 	var fleet_controller := get_fleet_controller()
-	if fleet_controller == null \
-			or not fleet_controller.has_method(&"get_target_recommendation"):
+	if fleet_controller == null:
 		return
-	var recommendation: Variant = fleet_controller.call(
-		&"get_target_recommendation",
+	var recommendation := fleet_controller.get_target_recommendation(
 		_owner_ship,
 		context.candidate
 	)
-	if not recommendation is Dictionary:
+	if recommendation == null:
 		return
-	var data := recommendation as Dictionary
-	context.fleet_recommendation_score = float(data.get("score", 0.0))
-	context.fleet_is_primary_target = bool(data.get("is_primary", false))
-	context.fleet_is_secondary_target = bool(data.get("is_secondary", false))
-	context.fleet_is_emergency_target = bool(data.get("is_emergency", false))
+	context.fleet_recommendation_score = recommendation.score
+	context.fleet_is_primary_target = recommendation.is_primary
+	context.fleet_is_secondary_target = recommendation.is_secondary
+	context.fleet_is_emergency_target = recommendation.is_emergency
 	context.is_emergency_threat = context.is_emergency_threat \
 		or context.fleet_is_emergency_target
 

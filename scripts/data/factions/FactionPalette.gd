@@ -9,6 +9,7 @@ const REQUIRED_FACTIONS: Array[StringName] = [
 ]
 
 @export var factions: Array[FactionData] = []
+var _warned_unknown_factions: Dictionary = {}
 
 
 func validate() -> PackedStringArray:
@@ -46,5 +47,12 @@ func get_faction(faction_id: StringName) -> FactionData:
 func get_color(faction_id: StringName) -> Color:
 	var faction := get_faction(faction_id)
 	if faction == null:
-		push_warning("Unknown faction id: %s" % faction_id)
+		warn_unknown_faction_once(faction_id)
 	return faction.primary_color if faction != null else Color(0.5, 0.5, 0.5)
+
+
+func warn_unknown_faction_once(faction_id: StringName) -> void:
+	if _warned_unknown_factions.has(faction_id):
+		return
+	_warned_unknown_factions[faction_id] = true
+	push_warning("Unknown faction id: %s" % faction_id)

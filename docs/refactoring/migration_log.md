@@ -132,3 +132,36 @@
   intervals and tactical policy.
 - Added typed boundary, lifecycle, Resource immutability, projectile contract,
   and endurance smoke tests.
+
+## Fleet, Projectile, And Effect Lifecycle Pass
+
+- Moved FleetAI targeting, emergency, role, tactical, lifecycle, scheduling,
+  and debug cadence values from `FleetAIController` to `FleetAISettings`.
+- Converted difficulty cadence values to multipliers while preserving the
+  previous easy, normal, and hard effective timings.
+- Added typed `FleetTargetRecommendation`, `FleetTacticalDecision`,
+  `FleetMemberOrder`, and `FleetEngagementPolicy`.
+- Replaced dynamic FleetAI recommendation calls and Dictionary field access.
+- Added an explicit member exit callback registry and idempotent event/member
+  disconnection during FleetAI shutdown.
+- Added `ProjectileLifecycle` shared by the manual and RigidBody projectile
+  roots without changing their physics inheritance.
+- Added typed pool acquisition and projectile creation results, explicit
+  instantiate fallback, and safe failed-release cleanup.
+- Made `BattleServices.setup()` validate required dependencies and return a
+  success result.
+- Migrated internal shell, torpedo, and fighter tracer scenes to
+  `PooledEffectBase` and typed `EffectRequest` activation.
+- Added `TestTeardownAudit`; moved test-scoped battle services from root
+  metadata to an exit-aware host node.
+- Extended endurance metrics and added 1,800/9,000/36,000 frame profiles.
+- Added explicit `BattleScene.shutdown()` orchestration for FleetAI, spawning,
+  effects, and battle-scoped services.
+- Removed the unused `ShipImpactEffectService`; typed combat effect requests
+  now flow through `CombatEffectController` and `EffectFactory`.
+- Updated the 10v10 endurance fixture to inject `BattleServices` and register
+  projectile and aircraft roots before creating combat units.
+- Completed 1,800-frame smoke and 6v6 validation, two 9,000-frame 10v10 seeds,
+  and one 9,000-frame BattleAI validation with zero reported failures.
+- The final 83-entry extended validation run completed without ObjectDB leaks,
+  Resource-in-use warnings, or unexpected errors.

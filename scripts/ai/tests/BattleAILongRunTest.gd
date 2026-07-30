@@ -1,6 +1,6 @@
 extends SceneTree
 
-const SIMULATION_FRAMES := 36000
+const DEFAULT_SIMULATION_FRAMES := 36000
 
 var _failures: Array[String] = []
 
@@ -10,6 +10,9 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	var simulation_frames := _resolve_simulation_frames()
+	var simulation_seed := _resolve_seed()
+	seed(simulation_seed)
 	var packed := load("res://scenes/world/battle_scene.tscn") as PackedScene
 	if packed == null:
 		push_error("AI LONG RUN: battle scene failed to load")
@@ -20,7 +23,7 @@ func _run() -> void:
 	await process_frame
 	await physics_frame
 
-	for _frame in SIMULATION_FRAMES:
+	for _frame in simulation_frames:
 		await physics_frame
 
 	var live_units := scene.get_battle_units()
@@ -55,7 +58,7 @@ func _run() -> void:
 
 	print(
 		"AI_LONG_RUN frames=%d live_units=%d max_evaluations=%d max_pursuit_updates=%d max_path_calculations=%d failures=%d" % [
-			SIMULATION_FRAMES,
+			simulation_frames,
 			live_units.size(),
 			max_target_evaluations,
 			max_pursuit_updates,
@@ -73,3 +76,14 @@ func _run() -> void:
 	await physics_frame
 	await process_frame
 	quit(0 if _failures.is_empty() else 1)
+
+
+func _resolve_simulation_frames() -> int:
+	var override := OS.get_environment("NAVYBLUE_LONG_RUN_FRAMES")
+	return maxi(int(override), 1) \
+		if override.is_valid_int() else DEFAULT_SIMULATION_FRAMES
+
+
+func _resolve_seed() -> int:
+	var override := OS.get_environment("NAVYBLUE_ENDURANCE_SEED")
+	return int(override) if override.is_valid_int() else 1

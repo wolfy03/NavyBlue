@@ -134,12 +134,13 @@ func _launch_shell(index: int, total_count: int) -> bool:
 	if projectile_factory == null:
 		push_error("CannonMount requires an injected ProjectileFactory.")
 		return false
-	var projectile := projectile_factory.create(
+	var creation := projectile_factory.create_result(
 		_get_projectile_scene(),
 		_get_projectile_parent(),
 		active_data,
 		context
 	)
+	var projectile := creation.projectile
 	if projectile == null:
 		push_warning("Cannon mount could not create its shell projectile.")
 		return false

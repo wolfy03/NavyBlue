@@ -69,14 +69,14 @@ func spawn_shell_impact(
 ) -> Node:
 	if _shell_pool == null:
 		return null
-	return _shell_pool.spawn_effect([
-		position,
-		normal,
-		incoming_velocity,
-		hit_outcome,
-		shell_type,
-		strength,
-	])
+	var request := EffectRequest.new()
+	request.position = position
+	request.normal = normal
+	request.velocity = incoming_velocity
+	request.hit_outcome = hit_outcome
+	request.shell_type = shell_type
+	request.strength = strength
+	return _shell_pool.spawn_effect(request)
 
 
 func spawn_torpedo_impact(
@@ -87,11 +87,11 @@ func spawn_torpedo_impact(
 ) -> Node:
 	if _torpedo_pool == null:
 		return null
-	return _torpedo_pool.spawn_effect([
-		hit_position,
-		normal,
-		strength,
-	])
+	var request := EffectRequest.new()
+	request.position = hit_position
+	request.normal = normal
+	request.strength = strength
+	return _torpedo_pool.spawn_effect(request)
 
 
 func get_debug_state() -> Dictionary:
@@ -149,13 +149,14 @@ func _on_fighter_gun_burst_fired(
 	if attacker.weapon_controller != null \
 			and attacker.weapon_controller.weapon_data != null:
 		gun_data = attacker.weapon_controller.weapon_data.gun_data
-	_fighter_tracer_pool.spawn_effect([
-		attacker.global_position,
-		target.global_position,
-		rounds_fired,
-		hit_count,
-		gun_data.tracer_interval if gun_data != null else 3,
-	])
+	var request := EffectRequest.new()
+	request.position = attacker.global_position
+	request.end_position = target.global_position
+	request.rounds_fired = rounds_fired
+	request.hit_count = hit_count
+	request.tracer_interval = gun_data.tracer_interval \
+		if gun_data != null else 3
+	_fighter_tracer_pool.spawn_effect(request)
 
 
 func _create_pool(

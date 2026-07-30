@@ -18,8 +18,13 @@ func run(
 	var chunk_index := 0
 	while frame_index < safe_total:
 		var frame_count := mini(safe_chunk, safe_total - frame_index)
+		var chunk_started_msec := Time.get_ticks_msec()
 		for _frame in frame_count:
 			await tree.physics_frame
+		metrics.record_chunk_timing(
+			frame_count,
+			float(Time.get_ticks_msec() - chunk_started_msec)
+		)
 		frame_index += frame_count
 		var elapsed_sec := float(
 			Time.get_ticks_msec() - started_msec

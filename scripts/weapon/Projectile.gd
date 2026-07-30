@@ -406,10 +406,12 @@ func _spawn_ricochet_visual(
 		return
 	var visual: Node
 	if battle_services != null:
-		visual = battle_services.projectile_pool.acquire(
+		var acquire_result := battle_services.projectile_pool.acquire_result(
 			ricochet_visual_scene,
-			parent
+			parent,
+			true
 		)
+		visual = acquire_result.instance
 	if visual == null:
 		visual = ricochet_visual_scene.instantiate()
 		if visual != null:

@@ -1,11 +1,12 @@
 extends SceneTree
 
-const SIMULATION_FRAMES := 36000
+const DEFAULT_SIMULATION_FRAMES := 36000
 
 var _failures: Array[String] = []
 var _provider_units: Array = []
 var _ship_scene := preload("res://scenes/unit/ship.tscn")
 var _ship_database := ShipDatabase.new()
+var _battle_services: BattleServices
 
 
 func _initialize() -> void:
@@ -13,19 +14,44 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	var simulation_frames := _resolve_simulation_frames()
+	var simulation_seed := _resolve_seed()
+	seed(simulation_seed)
 	var arena := Node3D.new()
 	root.add_child(arena)
+	_battle_services = BattleTestServices.create(self)
 	var projectiles := Node3D.new()
 	projectiles.name = "Projectiles"
+	projectiles.add_to_group(&"projectile_root")
 	arena.add_child(projectiles)
+	var aircraft := Node3D.new()
+	aircraft.name = "Aircraft"
+	aircraft.add_to_group(&"aircraft_root")
+	arena.add_child(aircraft)
 	var bounds := BattlefieldBounds.new()
 	arena.add_child(bounds)
 	var fleet_a := FleetAIController.new()
 	var fleet_b := FleetAIController.new()
 	arena.add_child(fleet_a)
 	arena.add_child(fleet_b)
-	fleet_a.setup(&"ten_a", &"ally", Callable(self, &"_get_provider_units"), bounds)
-	fleet_b.setup(&"ten_b", &"enemy", Callable(self, &"_get_provider_units"), bounds)
+	fleet_a.setup(
+		&"ten_a",
+		&"ally",
+		Callable(self, &"_get_provider_units"),
+		bounds,
+		null,
+		Callable(),
+		_battle_services
+	)
+	fleet_b.setup(
+		&"ten_b",
+		&"enemy",
+		Callable(self, &"_get_provider_units"),
+		bounds,
+		null,
+		Callable(),
+		_battle_services
+	)
 
 	var composition := [
 		"bb_ironwake",
@@ -70,13 +96,13 @@ func _run() -> void:
 		fleet_b.register_member(member)
 
 	var started_msec := Time.get_ticks_msec()
-	for _frame in SIMULATION_FRAMES:
+	for _frame in simulation_frames:
 		await physics_frame
 	var elapsed_sec := maxf(
 		float(Time.get_ticks_msec() - started_msec) * 0.001,
 		0.001
 	)
-	var average_processing_fps := float(SIMULATION_FRAMES) / elapsed_sec
+	var average_processing_fps := float(simulation_frames) / elapsed_sec
 
 	fleet_a.assignment_tracker.cleanup()
 	fleet_b.assignment_tracker.cleanup()
@@ -134,7 +160,7 @@ func _run() -> void:
 
 	print(
 		"FLEET_AI_10V10 frames=%d elapsed_sec=%.2f processing_fps=%.1f live=%d fleet_eval=%d/%d cleanup=%d/%d max_target_eval=%d max_path=%d(%s) max_pursuit=%d max_target_changes=%d max_tactical_nav=%d failures=%d" % [
-			SIMULATION_FRAMES,
+			simulation_frames,
 			elapsed_sec,
 			average_processing_fps,
 			all_members.size(),
@@ -163,6 +189,17 @@ func _run() -> void:
 	quit(0 if _failures.is_empty() else 1)
 
 
+func _resolve_simulation_frames() -> int:
+	var override := OS.get_environment("NAVYBLUE_LONG_RUN_FRAMES")
+	return maxi(int(override), 1) \
+		if override.is_valid_int() else DEFAULT_SIMULATION_FRAMES
+
+
+func _resolve_seed() -> int:
+	var override := OS.get_environment("NAVYBLUE_ENDURANCE_SEED")
+	return int(override) if override.is_valid_int() else 1
+
+
 func _spawn_ship(
 		parent: Node3D,
 		ship_id: String,
@@ -172,7 +209,15 @@ func _spawn_ship(
 ) -> ShipUnit:
 	var ship := _ship_scene.instantiate() as ShipUnit
 	var source_data := _ship_database.get_ship(ship_id)
-	ship.setup(source_data.duplicate(true) as ShipData, team, false, Color.WHITE)
+	ship.setup(
+		source_data.duplicate(true) as ShipData,
+		team,
+		false,
+		Color.WHITE,
+		null,
+		{},
+		_battle_services
+	)
 	parent.add_child(ship)
 	ship.global_position = position
 	ship.rotation.y = deg_to_rad(yaw_degrees)

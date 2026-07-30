@@ -15,9 +15,29 @@ construct typed adapters.
 `BattleServices` is a typed aggregate only. Domain code must not call arbitrary
 Autoload methods through it.
 
+Required dependencies:
+
+- `EventBus`
+- `ObjectPool`
+- `FactionPalette`
+
+Optional dependencies:
+
+- `RunManager`
+- `GameManager`
+- `BattleDebugSettings`
+
+`BattleServices.setup()` returns `false` before any collaborator is configured
+when a required dependency or faction palette is invalid. `BattleScene`
+aborts battle initialization on that result.
+
 Projectile creation is exposed by the typed `ProjectileFactory`. Damage and
 impact presentation travel through `BattleEventPublisher` to
 `CombatEffectPresenter`.
+
+Internal shell, torpedo, and fighter tracer effects inherit
+`PooledEffectBase`. Ocean interaction remains a documented behavioral boundary
+because the ocean subsystem owns its ripple and splash implementation.
 
 ## Allowed Dynamic Calls
 

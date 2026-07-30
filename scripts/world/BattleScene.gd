@@ -59,17 +59,21 @@ var enemy_fleet_ai: FleetAIController
 var _fleet_controllers: Dictionary = {}
 var _validated_stage_ids: Dictionary = {}
 var battle_services := BattleServices.new()
+var _shutdown_started := false
 
 func _ready() -> void:
 	BattleInputActions.ensure_defaults()
-	battle_services.setup(
+	if not battle_services.setup(
 		get_node_or_null("/root/EventBus"),
 		get_node_or_null("/root/ObjectPool"),
 		get_node_or_null("/root/RunManager"),
 		get_node_or_null("/root/GameManager"),
 		spawn_system.faction_palette if spawn_system != null else null,
 		debug_settings
-	)
+	):
+		push_error("Battle initialization stopped: required services are missing.")
+		set_process(false)
+		return
 	if combat_effect_presenter != null:
 		var typed_effect_controller := combat_effect_controller \
 			as CombatEffectController
@@ -112,6 +116,34 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_update_impact_marker()
+
+
+func shutdown() -> void:
+	if _shutdown_started:
+		return
+	_shutdown_started = true
+	set_process(false)
+	for controller_value in _fleet_controllers.values():
+		var controller := controller_value as FleetAIController
+		if controller != null and is_instance_valid(controller):
+			controller.shutdown()
+	_fleet_controllers.clear()
+	friendly_fleet_ai = null
+	enemy_fleet_ai = null
+	if spawn_system != null:
+		spawn_system.shutdown()
+	if combat_effect_presenter != null:
+		combat_effect_presenter.shutdown()
+	var typed_effect_controller := \
+		combat_effect_controller as CombatEffectController
+	if typed_effect_controller != null:
+		typed_effect_controller.shutdown()
+		typed_effect_controller.clear_pools()
+	battle_services.shutdown()
+
+
+func _exit_tree() -> void:
+	shutdown()
 
 func _resolve_stage_data() -> StageData:
 	if stage_override != null:
@@ -370,7 +402,7 @@ func _get_or_create_fleet_controller(ship: ShipUnit) -> FleetAIController:
 	var controller := FleetAIController.new()
 	controller.name = "FleetAI_%s_%s" % [String(ship.team), String(resolved_fleet_id)]
 	add_child(controller)
-	controller.setup(
+	if not controller.setup(
 		resolved_fleet_id,
 		ship.team,
 		Callable(self, &"get_battle_units"),
@@ -378,7 +410,11 @@ func _get_or_create_fleet_controller(ship: ShipUnit) -> FleetAIController:
 		_resolve_ai_difficulty_profile(),
 		Callable(self, &"get_incoming_attacker_count"),
 		battle_services
-	)
+	):
+		push_error("FleetAI setup failed for fleet '%s'." % resolved_fleet_id)
+		remove_child(controller)
+		controller.free()
+		return null
 	controller.became_empty.connect(_on_fleet_became_empty)
 	_fleet_controllers[fleet_key] = controller
 	_refresh_primary_fleet_references()

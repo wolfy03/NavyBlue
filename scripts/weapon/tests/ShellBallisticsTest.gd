@@ -270,7 +270,11 @@ func _test_direct_water_impact_and_pool() -> void:
 		) - distance) <= distance * 0.01,
 		"direct shell lands within one percent at 3 km"
 	)
-	_check(water_events[0] == 1, "normal shell emits exactly one water impact")
+	_check(
+		water_events[0] == 1,
+		"normal shell emits exactly one water impact (actual=%d)"
+			% water_events[0]
+	)
 	_check(
 		bool(shell.get(&"_despawn_requested")),
 		"pooled shell stays despawn-locked while recycled"

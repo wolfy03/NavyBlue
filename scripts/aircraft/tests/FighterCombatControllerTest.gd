@@ -1,5 +1,9 @@
 extends SceneTree
 
+const DEFAULT_FACTION_PALETTE: FactionPalette = preload(
+	"res://resources/factions/default_faction_palette.tres"
+)
+
 var _failures: Array[String] = []
 var _destroyed_count := 0
 
@@ -20,7 +24,7 @@ func _run() -> void:
 		root.get_node_or_null("ObjectPool"),
 		root.get_node_or_null("RunManager"),
 		root.get_node_or_null("GameManager"),
-		null
+		DEFAULT_FACTION_PALETTE
 	)
 	effects.setup(battle_services.events)
 	var fighter_data := FighterTestSupport.FIGHTER_DATA.duplicate(
@@ -94,7 +98,11 @@ func _run() -> void:
 			== fighter_data.weapon_data.ammunition_per_sortie,
 		"leaving firing cone resets lock and prevents fire"
 	)
+	effects.shutdown()
+	effects.clear_pools()
+	battle_services.shutdown()
 	arena.queue_free()
+	await process_frame
 	await process_frame
 	_finish()
 

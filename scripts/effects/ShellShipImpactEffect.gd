@@ -1,4 +1,4 @@
-extends Node3D
+extends PooledEffectBase
 class_name ShellShipImpactEffect
 
 @export_range(0.2, 8.0, 0.1, "or_greater") var lifetime_seconds := 2.4
@@ -11,10 +11,6 @@ class_name ShellShipImpactEffect
 @onready var audio_player: AudioStreamPlayer3D = $AudioStreamPlayer3D
 @onready var lifetime_timer: Timer = $LifetimeTimer
 
-var active := false
-var last_activated_msec := 0
-
-
 func _ready() -> void:
 	_setup_particles()
 	lifetime_timer.one_shot = true
@@ -23,21 +19,12 @@ func _ready() -> void:
 	deactivate()
 
 
-func activate(
-		world_position: Vector3,
-		surface_normal: Vector3,
-		incoming_velocity: Vector3,
-		hit_outcome: HitOutcome.Type,
-		shell_type: ShellStats.ShellType,
-		strength: float
-) -> void:
-	active = true
-	last_activated_msec = Time.get_ticks_msec()
-	global_position = world_position
-	_align_to_surface(surface_normal, incoming_velocity)
-	var safe_strength := clampf(strength, 0.5, 4.0)
+func _on_activate(request: EffectRequest) -> void:
+	global_position = request.position
+	_align_to_surface(request.normal, request.velocity)
+	var safe_strength := clampf(request.strength, 0.5, 4.0)
 	scale = Vector3.ONE * (1.0 + safe_strength * 0.38)
-	_configure_outcome(hit_outcome, shell_type)
+	_configure_outcome(request.hit_outcome, request.shell_type)
 	_restart(flash_particles)
 	_restart(spark_particles)
 	_restart(smoke_particles)
@@ -45,14 +32,11 @@ func activate(
 	impact_light.light_energy = 5.0 + safe_strength * 3.0
 	impact_light.omni_range = 18.0 + safe_strength * 8.0
 	impact_light.visible = true
-	visible = true
 	set_process(false)
 	lifetime_timer.start(lifetime_seconds + safe_strength * 0.18)
 
 
-func deactivate() -> void:
-	active = false
-	visible = false
+func _on_deactivate() -> void:
 	scale = Vector3.ONE
 	_stop(flash_particles)
 	_stop(spark_particles)

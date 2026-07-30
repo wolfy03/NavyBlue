@@ -107,25 +107,25 @@ func _run() -> void:
 	non_penetrated.hit_outcome = HitOutcome.Type.NON_PENETRATED
 	non_penetrated.damage_type = DamageType.Type.SHELL_AP
 	non_penetrated.raw_damage = 10.0
-	ShipImpactEffectService.emit_shell_impact(
-		self,
+	controller.spawn_shell_impact(
 		Vector3(5.0, 20.0, 0.0),
 		Vector3.LEFT,
 		Vector3.RIGHT * 250.0,
-		non_penetrated,
-		null
+		non_penetrated.hit_outcome,
+		ShellStats.ShellType.AP,
+		1.0
 	)
 	var ricochet := DamageResult.new()
 	ricochet.hit_outcome = HitOutcome.Type.RICOCHET
 	ricochet.damage_type = DamageType.Type.SHELL_AP
 	ricochet.raw_damage = 1.0
-	ShipImpactEffectService.emit_shell_impact(
-		self,
+	controller.spawn_shell_impact(
 		Vector3(-5.0, 20.0, 0.0),
 		Vector3.LEFT,
 		Vector3.RIGHT * 250.0,
-		ricochet,
-		null
+		ricochet.hit_outcome,
+		ShellStats.ShellType.AP,
+		0.75
 	)
 	state = controller.get_debug_state() if controller != null else {}
 	_check(
@@ -142,17 +142,18 @@ func _run() -> void:
 	var reusable_pool := controller._shell_pool \
 		if controller != null else null
 	if reusable_pool != null and not reusable_pool._effects.is_empty():
-		var reusable_effect := reusable_pool._effects[0] as Node
-		if reusable_effect != null and reusable_effect.has_method(&"deactivate"):
-			reusable_effect.call(&"deactivate")
-		var respawned := reusable_pool.spawn_effect([
-			Vector3(0.0, 20.0, 4.0),
-			Vector3.LEFT,
-			Vector3.RIGHT * 250.0,
-			HitOutcome.Type.PENETRATED,
-			ShellStats.ShellType.AP,
-			1.0,
-		])
+		var reusable_effect := \
+			reusable_pool._effects[0] as PooledEffectBase
+		if reusable_effect != null:
+			reusable_effect.deactivate()
+		var request := EffectRequest.new()
+		request.position = Vector3(0.0, 20.0, 4.0)
+		request.normal = Vector3.LEFT
+		request.velocity = Vector3.RIGHT * 250.0
+		request.hit_outcome = HitOutcome.Type.PENETRATED
+		request.shell_type = ShellStats.ShellType.AP
+		request.strength = 1.0
+		var respawned := reusable_pool.spawn_effect(request)
 		_check(
 			respawned == reusable_effect,
 			"inactive ship impact effect is reused from the pool"

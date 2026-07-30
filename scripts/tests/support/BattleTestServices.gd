@@ -1,24 +1,34 @@
 extends RefCounted
 class_name BattleTestServices
 
+const DEFAULT_FACTION_PALETTE: FactionPalette = preload(
+	"res://resources/factions/default_faction_palette.tres"
+)
 
 static func create(tree: SceneTree) -> BattleServices:
 	if tree == null:
 		return BattleServices.new()
 	var tree_root := tree.root
-	var existing: Variant = tree_root.get_meta(&"battle_test_services") \
-		if tree_root.has_meta(&"battle_test_services") else null
-	if existing is BattleServices:
-		return existing as BattleServices
+	var host := tree_root.get_node_or_null(
+		"BattleTestServicesHost"
+	) as BattleTestServicesHost
+	if host != null and host.services != null:
+		return host.services
+	if host == null:
+		host = BattleTestServicesHost.new()
+		host.name = "BattleTestServicesHost"
+		tree_root.add_child(host)
 	var services := BattleServices.new()
-	services.setup(
+	var configured := services.setup(
 		tree_root.get_node_or_null("EventBus"),
 		tree_root.get_node_or_null("ObjectPool"),
 		tree_root.get_node_or_null("RunManager"),
 		tree_root.get_node_or_null("GameManager"),
-		null
+		DEFAULT_FACTION_PALETTE
 	)
-	tree_root.set_meta(&"battle_test_services", services)
+	if not configured:
+		push_error("BattleTestServices could not configure required services.")
+	host.services = services
 	var presenter := tree_root.get_node_or_null(
 		"BattleTestCombatEffectPresenter"
 	) as CombatEffectPresenter

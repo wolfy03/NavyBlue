@@ -90,12 +90,13 @@ func _launch_torpedo(index: int, total_count: int) -> bool:
 	if projectile_factory == null:
 		push_error("TorpedoMount requires an injected ProjectileFactory.")
 		return false
-	var torpedo := projectile_factory.create(
+	var creation := projectile_factory.create_result(
 		weapon_data.projectile_scene,
 		_get_projectile_parent(),
 		weapon_data.projectile_data,
 		context
-	) as TorpedoProjectile
+	)
+	var torpedo := creation.projectile as TorpedoProjectile
 	if torpedo == null:
 		push_warning("Torpedo projectile scene must instantiate TorpedoProjectile.")
 		return false

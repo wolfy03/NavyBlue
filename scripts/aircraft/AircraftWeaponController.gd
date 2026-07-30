@@ -332,12 +332,13 @@ func _spawn_projectile(
 		-maxf(weapon_data.downward_release_speed_mps, 0.0)
 	)
 	context.aim_point = target_position
-	var projectile := battle_services.projectile_factory.create(
+	var creation := battle_services.projectile_factory.create_result(
 		weapon_data.projectile_scene,
 		projectile_parent,
 		weapon_data.projectile_data,
 		context
 	)
+	var projectile := creation.projectile
 	if projectile == null:
 		return null
 	remaining_ammunition = maxi(remaining_ammunition - 1, 0)

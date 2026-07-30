@@ -1,6 +1,6 @@
 # Remaining Debt Inventory
 
-Baseline: `ad6ce9d9cfc637c9a75828bf94cce58fc4a010ec`.
+Baseline: `9a1fce593c51278905391338e4c42bde12123398`.
 
 ## Direct Autoload Discovery
 
@@ -13,7 +13,6 @@ Wave and ocean code is explicitly outside this migration.
 ## Dynamic Boundaries
 
 - RunManager access is dynamic in player resolution and state restore
-- effect pools use a behavioral activate/deactivate contract
 - optional ocean integration uses a behavioral sampling contract
 
 ## Runtime Ownership Risks
@@ -21,8 +20,8 @@ Wave and ocean code is explicitly outside this migration.
 - payload release coordination connects to weapon-controller signals
 - lifecycle and movement collaborators retain their owner squadron
 - stage collaborators retain factories, services, resources, and scene nodes
-- pooled effect implementations still use an activate/deactivate behavior
-  contract at the presenter boundary
+- ocean ripple/splash integration remains behavioral because it is outside the
+  internal combat-effect pool
 
 ## Resource Mutation Risks
 
@@ -42,12 +41,20 @@ not domain logging.
 
 - Full 10v10 36,000-frame and multi-seed BattleAI endurance profiles remain a
   nightly/local release gate.
-- Existing test processes report Godot shutdown ObjectDB/resource-use warnings;
-  the endurance harness checks persistent runtime growth, but test-fixture
-  teardown can be tightened separately.
+- The current release-candidate gate completed 1,800-frame battle/6v6 smoke,
+  9,000-frame 10v10 seeds 1 and 2, and a 9,000-frame BattleAI seed with no
+  reported metric failures.
+- `BattleTestServices` no longer stores services in SceneTree root metadata.
+  A lifecycle host and explicit fixture shutdown removed the prior ObjectDB
+  and Resource-in-use warnings from the final 83-entry extended validation
+  run. `TestTeardownAudit` reports no projectile, effect, squadron, FleetAI,
+  member callback, or payload-request runtime residue after shutdown.
+- Warning-path tests still emit their expected diagnostics for pool failure
+  and save migration. They do not leave ObjectDB or Resource-use residue.
 - Shell/bomb and torpedo roots use separate typed bases because Godot native
   inheritance cannot share one custom root across manual `Node3D` and
   `RigidBody3D` physics without changing established projectile behavior.
-- Fleet tactical policy still resides in `FleetAIController`; perception,
-  target scoring, position solving, and dispatch are separated, while a fuller
-  typed tactical-decision object remains a future extraction.
+- Role suitability and interceptor composition are still calculated in
+  `FleetAIController`. Target hysteresis and attacker saturation moved to
+  `FleetEngagementPolicy`; recommendations, decisions, and member orders are
+  typed.
