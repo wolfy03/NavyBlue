@@ -11,6 +11,10 @@ class_name DiveBomberCombatData
 @export var minimum_release_altitude_m: float = 70.0
 @export var maximum_release_altitude_m: float = 160.0
 
+@export_category("Automatic Release")
+@export var automatic_release_altitude_m: float = 90.0
+@export var release_altitude_tolerance_m: float = 8.0
+
 @export var automatic_pull_out_altitude_m: float = 45.0
 @export var pull_out_distance_m: float = 500.0
 @export var pull_out_climb_angle_degrees: float = 25.0
@@ -40,6 +44,25 @@ func validate() -> PackedStringArray:
 	if minimum_release_altitude_m < 0.0 \
 			or maximum_release_altitude_m < minimum_release_altitude_m:
 		errors.append("release altitude range is invalid.")
+	if maximum_release_altitude_m < automatic_release_altitude_m:
+		errors.append(
+			"maximum_release_altitude_m must be greater than or equal "
+			+ "to automatic_release_altitude_m."
+		)
+	if automatic_release_altitude_m < minimum_release_altitude_m:
+		errors.append(
+			"automatic_release_altitude_m must be greater than or equal "
+			+ "to minimum_release_altitude_m."
+		)
+	if minimum_release_altitude_m <= automatic_pull_out_altitude_m:
+		errors.append(
+			"minimum_release_altitude_m must be greater than "
+			+ "automatic_pull_out_altitude_m."
+		)
+	if release_altitude_tolerance_m < 0.0:
+		errors.append(
+			"release_altitude_tolerance_m must not be negative."
+		)
 	if automatic_pull_out_altitude_m < 0.0:
 		errors.append("automatic pull-out altitude cannot be negative.")
 	if pull_out_distance_m <= 0.0:

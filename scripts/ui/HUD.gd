@@ -69,7 +69,7 @@ func set_command_mode(mode: int) -> void:
 	if mode == PlayerInputManager.CommandMode.AIRCRAFT:
 		mode_label.text = "AIRCRAFT COMMAND"
 		mode_hint_label.text = \
-			"Drag select | Right-click move | . dive/release | TAB ship"
+			"Drag select | Right-click move | . start dive attack | TAB ship"
 	else:
 		mode_label.text = "SHIP COMMAND"
 		mode_hint_label.text = \

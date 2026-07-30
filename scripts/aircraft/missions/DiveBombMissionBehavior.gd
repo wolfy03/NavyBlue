@@ -5,7 +5,6 @@ enum State {
 	APPROACHING,
 	DIVE_ENTRY,
 	DIVING,
-	RELEASING,
 	PULLING_OUT,
 	EGRESS,
 	RETURNING,
@@ -23,7 +22,8 @@ var successful := false
 var _target_ref: WeakRef
 var _finished := true
 var _destination_initialized := false
-var _bombs_released := false
+var _last_approach_position := Vector3.ZERO
+var _last_dive_entry_position := Vector3.ZERO
 
 
 func setup(
@@ -40,7 +40,8 @@ func setup(
 	successful = false
 	_finished = false
 	_destination_initialized = false
-	_bombs_released = false
+	_last_approach_position = Vector3.ZERO
+	_last_dive_entry_position = Vector3.ZERO
 	return true
 
 
@@ -59,8 +60,6 @@ func update(_delta: float) -> void:
 			_update_dive_entry(target)
 		State.DIVING:
 			_update_diving(target)
-		State.RELEASING:
-			state = State.PULLING_OUT
 		State.PULLING_OUT:
 			_update_pulling_out(target)
 		State.EGRESS:
@@ -98,26 +97,56 @@ func get_target_ship() -> Node3D:
 	return _get_target_ship()
 
 
+func get_debug_snapshot() -> Dictionary:
+	var controller_state := "MISSING"
+	var controller_result := {}
+	if owner_squadron != null and is_instance_valid(owner_squadron) \
+			and owner_squadron.dive_bomb_controller != null:
+		var controller := owner_squadron.dive_bomb_controller
+		controller_state = DiveBombAttackController.State.keys()[
+			int(controller.state)
+		]
+		controller_result = controller.get_attack_result()
+	var target := _get_target_ship()
+	return {
+		"state": State.keys()[int(state)],
+		"target_ship": target.name if target != null else "",
+		"destination_initialized": _destination_initialized,
+		"approach_position": _last_approach_position,
+		"dive_entry_position": _last_dive_entry_position,
+		"controller_state": controller_state,
+		"controller_result": controller_result,
+	}
+
+
 func _update_approaching(target: Node3D) -> void:
-	var approach_position := _calculate_approach_position(target)
 	if not _destination_initialized:
-		owner_squadron.set_mission_destination(approach_position)
+		_last_approach_position = _calculate_approach_position(target)
+		owner_squadron.set_mission_destination(_last_approach_position)
 		_destination_initialized = true
-	if owner_squadron.state != AircraftSquadron.State.HOLDING:
+	if not owner_squadron.has_reached_mission_destination():
 		return
 	state = State.DIVE_ENTRY
 	_destination_initialized = false
 
 
 func _update_dive_entry(target: Node3D) -> void:
-	var entry_position := _calculate_dive_entry_position(target)
 	if not _destination_initialized:
-		owner_squadron.set_mission_destination(entry_position)
+		_last_dive_entry_position = _calculate_dive_entry_position(target)
+		owner_squadron.set_mission_destination(_last_dive_entry_position)
 		_destination_initialized = true
-	if owner_squadron.state != AircraftSquadron.State.HOLDING:
+	if not owner_squadron.has_reached_mission_destination():
 		return
 	var controller := owner_squadron.dive_bomb_controller
 	if controller == null:
+		_finish_and_return(false)
+		return
+	if controller.is_active():
+		if owner_squadron.dive_control_source \
+				== AircraftSquadron.DiveControlSource.AI:
+			state = State.DIVING
+			return
+		_finish_and_return(false)
 		return
 	var predicted_position := _calculate_predicted_target_position(target)
 	if not controller.begin_dive(
@@ -126,6 +155,8 @@ func _update_dive_entry(target: Node3D) -> void:
 	):
 		_finish_and_return(false)
 		return
+	owner_squadron.dive_control_source = \
+		AircraftSquadron.DiveControlSource.AI
 	state = State.DIVING
 
 
@@ -134,36 +165,43 @@ func _update_diving(target: Node3D) -> void:
 	if controller == null:
 		_finish_and_return(false)
 		return
-	var predicted_position := _calculate_predicted_target_position(target)
 	controller.update_target(
-		predicted_position,
+		_calculate_predicted_target_position(target),
 		_get_target_velocity(target)
 	)
-	if controller.state == DiveBombAttackController.State.PULLING_OUT:
-		state = State.PULLING_OUT
-		return
-	if _is_target_inside_release_window(predicted_position):
-		var released_count := controller.release_ready_bombs()
-		if released_count > 0:
-			_bombs_released = true
-	if controller.should_force_pull_out():
-		controller.begin_pull_out()
-		state = State.PULLING_OUT
+	match controller.state:
+		DiveBombAttackController.State.DIVE_ENTRY, \
+				DiveBombAttackController.State.DIVING, \
+				DiveBombAttackController.State.RELEASING:
+			return
+		DiveBombAttackController.State.PULLING_OUT:
+			state = State.PULLING_OUT
+		DiveBombAttackController.State.COMPLETED:
+			if controller.did_release_any_bomb():
+				_begin_egress(target)
+			else:
+				_finish_and_return(false)
+		DiveBombAttackController.State.FAILED:
+			_finish_and_return(false)
+		_:
+			pass
 
 
 func _update_pulling_out(target: Node3D) -> void:
 	var controller := owner_squadron.dive_bomb_controller
-	if controller == null:
-		_finish_and_return(false)
-		return
-	if controller.state == DiveBombAttackController.State.FAILED:
+	if controller == null \
+			or controller.state == DiveBombAttackController.State.FAILED:
 		_finish_and_return(false)
 		return
 	if controller.state != DiveBombAttackController.State.COMPLETED:
 		return
-	if not _bombs_released:
+	if not controller.did_release_any_bomb():
 		_finish_and_return(false)
 		return
+	_begin_egress(target)
+
+
+func _begin_egress(target: Node3D) -> void:
 	var direction := owner_squadron.get_formation_forward()
 	direction.y = 0.0
 	if direction.length_squared() <= EPSILON:
@@ -182,7 +220,7 @@ func _update_pulling_out(target: Node3D) -> void:
 
 
 func _update_egress() -> void:
-	if owner_squadron.state != AircraftSquadron.State.HOLDING:
+	if not owner_squadron.has_reached_mission_destination():
 		return
 	successful = true
 	_finished = true
@@ -211,6 +249,8 @@ func _cancel_dive() -> void:
 			and is_instance_valid(owner_squadron) \
 			and owner_squadron.dive_bomb_controller != null:
 		owner_squadron.dive_bomb_controller.cancel()
+		owner_squadron.dive_control_source = \
+			AircraftSquadron.DiveControlSource.NONE
 
 
 func _calculate_approach_position(target: Node3D) -> Vector3:
@@ -258,25 +298,6 @@ func _calculate_predicted_target_position(target: Node3D) -> Vector3:
 	return target.global_position + _get_target_velocity(target) * fall_time
 
 
-func _is_target_inside_release_window(
-		predicted_position: Vector3
-) -> bool:
-	var dive_data := _get_dive_data()
-	var offset := predicted_position - owner_squadron.formation_center
-	var horizontal_distance := Vector2(offset.x, offset.z).length()
-	if horizontal_distance \
-			> maxf(dive_data.automatic_release_distance_m, 0.0):
-		return false
-	if offset.length_squared() <= EPSILON:
-		return true
-	var minimum_dot := cos(deg_to_rad(
-		clampf(dive_data.maximum_dive_target_angle_degrees, 0.0, 89.0)
-	))
-	return owner_squadron.get_formation_forward().dot(
-		offset.normalized()
-	) >= minimum_dot
-
-
 func _get_attack_direction(target: Node3D) -> Vector3:
 	var carrier := owner_squadron.get_owner_carrier()
 	var origin := carrier.global_position \
@@ -288,8 +309,15 @@ func _get_attack_direction(target: Node3D) -> Vector3:
 
 
 func _get_target_velocity(target: Node3D) -> Vector3:
+	if target.has_method(&"get_world_velocity"):
+		var world_velocity: Variant = target.call(&"get_world_velocity")
+		if world_velocity is Vector3:
+			return world_velocity
 	var body := target as CharacterBody3D
-	return body.velocity if body != null else Vector3.ZERO
+	if body != null:
+		return body.velocity
+	var value: Variant = target.get(&"velocity")
+	return value as Vector3 if value is Vector3 else Vector3.ZERO
 
 
 func _get_operating_world_altitude() -> float:

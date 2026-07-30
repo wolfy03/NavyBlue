@@ -208,7 +208,6 @@ func _test_strike_lifecycle(
 			as DiveBombMissionBehavior
 		if behavior != null and behavior.state in [
 			DiveBombMissionBehavior.State.DIVING,
-			DiveBombMissionBehavior.State.RELEASING,
 			DiveBombMissionBehavior.State.PULLING_OUT,
 		]:
 			entered_dive = true

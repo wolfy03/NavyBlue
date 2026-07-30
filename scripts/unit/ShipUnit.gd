@@ -373,6 +373,11 @@ func get_engine_output() -> float:
 func get_speed_knots_style() -> float:
 	return movement.get_speed()
 
+
+func get_world_velocity() -> Vector3:
+	return velocity
+
+
 func get_primary_impact_point(gravity: float) -> Variant:
 	return combat.get_primary_impact_point(gravity)
 

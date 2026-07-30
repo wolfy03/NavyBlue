@@ -7,6 +7,10 @@ signal aircraft_lost(squadron, aircraft: AircraftUnit)
 signal formation_activated(squadron)
 signal return_requested(squadron)
 signal player_selection_changed(selected: bool)
+signal weapon_release_sequence_completed(
+	queued_count: int,
+	released_count: int
+)
 
 enum State {
 	FORMING,
@@ -22,12 +26,10 @@ enum CommandAuthority {
 	PLAYER,
 }
 
-enum ManualDiveCommandState {
+enum DiveControlSource {
 	NONE,
-	READY,
-	DIVING,
-	RELEASED,
-	PULLING_OUT,
+	PLAYER,
+	AI,
 }
 
 const EPSILON := 0.0001
@@ -49,8 +51,7 @@ var destination: Vector3 = Vector3.ZERO
 var formation_center: Vector3 = Vector3.ZERO
 var command_authority: CommandAuthority = CommandAuthority.AI
 var player_selected := false
-var manual_dive_state: ManualDiveCommandState = \
-	ManualDiveCommandState.NONE
+var dive_control_source: DiveControlSource = DiveControlSource.NONE
 
 var _owner_carrier_ref: WeakRef
 var _formation_forward: Vector3 = Vector3.FORWARD
@@ -61,6 +62,9 @@ var _release_queue: Array[AircraftUnit] = []
 var _release_interval_left := 0.0
 var _release_target_position := Vector3.ZERO
 var _release_target_velocity := Vector3.ZERO
+var _release_sequence_queued_count := 0
+var _release_sequence_released_count := 0
+var _release_sequence_active := false
 var _carrier_unavailable_cleanup_left := -1.0
 var _requested_aircraft_count := -1
 var _formation_activated_emitted := false
@@ -132,7 +136,7 @@ func request_return() -> void:
 	_loiter_initialized = false
 	set_combat_formation_enabled(false)
 	set_player_selected(false)
-	manual_dive_state = ManualDiveCommandState.NONE
+	dive_control_source = DiveControlSource.NONE
 	_has_manual_move_target = false
 	_manual_attack_target_ref = null
 	if dive_bomb_controller != null:
@@ -262,9 +266,7 @@ func issue_player_move_command(
 	if dive_bomb_controller != null:
 		dive_bomb_controller.cancel()
 	set_command_authority(CommandAuthority.PLAYER)
-	manual_dive_state = ManualDiveCommandState.READY \
-		if get_aircraft_role() == AircraftData.AircraftRole.DIVE_BOMBER \
-		else ManualDiveCommandState.NONE
+	dive_control_source = DiveControlSource.NONE
 	_manual_attack_target_ref = weakref(attack_target) \
 		if _is_valid_manual_attack_target(attack_target) else null
 	var carrier := get_owner_carrier()
@@ -280,14 +282,18 @@ func issue_player_move_command(
 	return true
 
 
+func can_begin_manual_dive() -> bool:
+	return _can_accept_player_command() \
+		and is_player_commanded() \
+		and get_aircraft_role() \
+			== AircraftData.AircraftRole.DIVE_BOMBER \
+		and dive_bomb_controller != null \
+		and not dive_bomb_controller.is_active() \
+		and has_any_ammunition()
+
+
 func begin_manual_dive() -> bool:
-	if not _can_accept_player_command() \
-			or not is_player_commanded() \
-			or get_aircraft_role() \
-				!= AircraftData.AircraftRole.DIVE_BOMBER \
-			or manual_dive_state != ManualDiveCommandState.READY \
-			or dive_bomb_controller == null \
-			or not has_any_ammunition():
+	if not can_begin_manual_dive():
 		return false
 	cancel_current_mission_for_player_command()
 	var target_ship := get_manual_attack_target()
@@ -299,34 +305,17 @@ func begin_manual_dive() -> bool:
 		)
 	target.y = target_ship.global_position.y \
 		if target_ship != null else 0.0
-	var target_velocity := target_ship.velocity \
-		if target_ship is CharacterBody3D else Vector3.ZERO
+	var target_velocity := _get_target_world_velocity(target_ship)
 	if not dive_bomb_controller.begin_dive(target, target_velocity):
 		return false
-	manual_dive_state = ManualDiveCommandState.DIVING
+	dive_control_source = DiveControlSource.PLAYER
 	return true
 
 
-func request_manual_bomb_release() -> bool:
-	if not is_player_commanded() \
-			or manual_dive_state not in [
-				ManualDiveCommandState.DIVING,
-				ManualDiveCommandState.RELEASED,
-			] \
-			or dive_bomb_controller == null:
-		return false
-	var released_count := dive_bomb_controller.release_ready_bombs()
-	if released_count <= 0:
-		return false
-	manual_dive_state = ManualDiveCommandState.RELEASED
-	return true
-
-
-func get_manual_release_block_reason() -> int:
-	if dive_bomb_controller == null:
-		return int(DiveBombAttackController.ReleaseBlockReason.NOT_DIVING)
-	dive_bomb_controller.can_release_bombs()
-	return int(dive_bomb_controller.release_block_reason)
+func get_dive_attack_state() -> DiveBombAttackController.State:
+	return dive_bomb_controller.state \
+		if dive_bomb_controller != null \
+		else DiveBombAttackController.State.IDLE
 
 
 func get_manual_attack_target() -> ShipUnit:
@@ -422,7 +411,7 @@ func request_weapon_release_for_ready_aircraft(
 ) -> int:
 	if is_weapon_release_in_progress():
 		return 0
-	_release_queue.clear()
+	var release_aircraft: Array[AircraftUnit] = []
 	for aircraft in get_alive_aircraft():
 		var altitude := aircraft.global_position.y - target_position.y
 		if altitude < minimum_altitude_m \
@@ -430,13 +419,32 @@ func request_weapon_release_for_ready_aircraft(
 			continue
 		if aircraft.weapon_controller != null \
 				and aircraft.weapon_controller.can_release():
-			_release_queue.append(aircraft)
-	if _release_queue.is_empty():
+			release_aircraft.append(aircraft)
+	return _start_weapon_release_sequence(
+		release_aircraft,
+		target_position,
+		target_velocity
+	)
+
+
+func request_weapon_release_for_dive(
+		next_target_position: Vector3,
+		next_target_velocity: Vector3
+) -> int:
+	if is_weapon_release_in_progress():
 		return 0
-	_release_target_position = target_position
-	_release_target_velocity = target_velocity
-	_release_interval_left = 0.0
-	return _release_queue.size()
+	var release_aircraft: Array[AircraftUnit] = []
+	for aircraft in get_alive_aircraft():
+		if aircraft == null or not is_instance_valid(aircraft) \
+				or aircraft.weapon_controller == null \
+				or not aircraft.weapon_controller.can_release():
+			continue
+		release_aircraft.append(aircraft)
+	return _start_weapon_release_sequence(
+		release_aircraft,
+		next_target_position,
+		next_target_velocity
+	)
 
 
 func get_release_ready_aircraft_count(
@@ -461,6 +469,9 @@ func get_release_ready_aircraft_count(
 func cancel_pending_weapon_release() -> void:
 	_release_queue.clear()
 	_release_interval_left = 0.0
+	_release_sequence_active = false
+	_release_sequence_queued_count = 0
+	_release_sequence_released_count = 0
 	for aircraft in get_alive_aircraft():
 		if aircraft.weapon_controller != null:
 			aircraft.weapon_controller.cancel_pending_release()
@@ -493,13 +504,21 @@ func has_any_ammunition() -> bool:
 
 
 func is_weapon_release_in_progress() -> bool:
-	if not _release_queue.is_empty():
-		return true
-	for aircraft in get_alive_aircraft():
-		if aircraft.weapon_controller != null \
-				and aircraft.weapon_controller.is_release_in_progress():
-			return true
-	return false
+	return _release_sequence_active \
+		or not _release_queue.is_empty() \
+		or _release_interval_left > 0.0
+
+
+func get_release_sequence_queued_count() -> int:
+	return _release_sequence_queued_count
+
+
+func get_release_sequence_released_count() -> int:
+	return _release_sequence_released_count
+
+
+func is_release_sequence_active() -> bool:
+	return _release_sequence_active
 
 
 func get_aircraft_weapon_data() -> AircraftWeaponData:
@@ -552,11 +571,15 @@ func set_mission_destination(world_position: Vector3) -> void:
 	set_physics_process(true)
 
 
+func has_reached_mission_destination() -> bool:
+	return state == State.HOLDING and _loiter_initialized
+
+
 func handle_carrier_unavailable(cleanup_grace_sec: float = 2.0) -> void:
 	_owner_carrier_ref = null
-	_release_queue.clear()
+	cancel_pending_weapon_release()
 	set_player_selected(false)
-	manual_dive_state = ManualDiveCommandState.NONE
+	dive_control_source = DiveControlSource.NONE
 	_has_manual_move_target = false
 	_manual_attack_target_ref = null
 	if dive_bomb_controller != null:
@@ -625,19 +648,21 @@ func _physics_process(delta: float) -> void:
 			]:
 		mission_controller.update_mission(delta)
 	if dive_bomb_controller != null and dive_bomb_controller.is_active():
+		if dive_control_source == DiveControlSource.PLAYER:
+			_update_player_dive_target()
 		dive_bomb_controller.update_dive(delta)
-		if dive_bomb_controller.state \
-				== DiveBombAttackController.State.PULLING_OUT:
-			manual_dive_state = ManualDiveCommandState.PULLING_OUT
 		_update_selection_indicator()
 		return
-	if manual_dive_state == ManualDiveCommandState.PULLING_OUT \
+	if dive_control_source != DiveControlSource.NONE \
 			and dive_bomb_controller != null \
-			and dive_bomb_controller.state \
-				== DiveBombAttackController.State.COMPLETED:
-		manual_dive_state = ManualDiveCommandState.READY \
-			if has_any_ammunition() else ManualDiveCommandState.NONE
-		if manual_return_after_release:
+			and dive_bomb_controller.state in [
+				DiveBombAttackController.State.COMPLETED,
+				DiveBombAttackController.State.FAILED,
+			]:
+		var was_player_dive := \
+			dive_control_source == DiveControlSource.PLAYER
+		dive_control_source = DiveControlSource.NONE
+		if was_player_dive and manual_return_after_release:
 			request_return()
 			return
 	match state:
@@ -664,7 +689,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _update_weapon_release_sequence(delta: float) -> void:
-	if _release_queue.is_empty():
+	if not _release_sequence_active:
 		return
 	_release_interval_left = maxf(0.0, _release_interval_left - delta)
 	if _release_interval_left > 0.0:
@@ -679,6 +704,7 @@ func _update_weapon_release_sequence(delta: float) -> void:
 			_release_target_position,
 			_release_target_velocity
 		):
+			_release_sequence_released_count += 1
 			var data: AircraftWeaponData = \
 				aircraft.weapon_controller.weapon_data
 			_release_interval_left = maxf(
@@ -686,6 +712,49 @@ func _update_weapon_release_sequence(delta: float) -> void:
 				0.0
 			)
 			return
+	if _has_pending_aircraft_weapon_release():
+		return
+	_complete_weapon_release_sequence()
+
+
+func _start_weapon_release_sequence(
+		release_aircraft: Array[AircraftUnit],
+		next_target_position: Vector3,
+		next_target_velocity: Vector3
+) -> int:
+	if release_aircraft.is_empty():
+		return 0
+	_release_queue = release_aircraft.duplicate()
+	_release_target_position = next_target_position
+	_release_target_velocity = next_target_velocity
+	_release_interval_left = 0.0
+	_release_sequence_queued_count = _release_queue.size()
+	_release_sequence_released_count = 0
+	_release_sequence_active = true
+	return _release_sequence_queued_count
+
+
+func _has_pending_aircraft_weapon_release() -> bool:
+	for aircraft in get_alive_aircraft():
+		if aircraft.weapon_controller != null \
+				and aircraft.weapon_controller.is_release_in_progress():
+			return true
+	return false
+
+
+func _complete_weapon_release_sequence() -> void:
+	if not _release_sequence_active:
+		return
+	_release_sequence_active = false
+	var queued_count := _release_sequence_queued_count
+	var released_count := _release_sequence_released_count
+	_release_sequence_queued_count = 0
+	_release_sequence_released_count = 0
+	_release_interval_left = 0.0
+	weapon_release_sequence_completed.emit(
+		queued_count,
+		released_count
+	)
 
 
 func _spawn_aircraft() -> void:
@@ -977,8 +1046,12 @@ func get_command_debug_snapshot() -> Dictionary:
 		"has_manual_move_target": _has_manual_move_target,
 		"manual_attack_target":
 			attack_target.name if attack_target != null else "",
-		"manual_dive_state":
-			ManualDiveCommandState.keys()[int(manual_dive_state)],
+		"dive_control_source":
+			DiveControlSource.keys()[int(dive_control_source)],
+		"dive_attack_state":
+			DiveBombAttackController.State.keys()[
+				int(get_dive_attack_state())
+			],
 	}
 
 
@@ -1004,6 +1077,41 @@ func _is_valid_manual_attack_target(target: ShipUnit) -> bool:
 		and target.is_alive() \
 		and carrier != null \
 		and carrier.is_hostile_to(target)
+
+
+func _get_target_world_velocity(target: Node3D) -> Vector3:
+	if target == null or not is_instance_valid(target):
+		return Vector3.ZERO
+	if target.has_method(&"get_world_velocity"):
+		var result: Variant = target.call(&"get_world_velocity")
+		if result is Vector3:
+			return result
+	if target is CharacterBody3D:
+		return (target as CharacterBody3D).velocity
+	var value: Variant = target.get(&"velocity")
+	return value if value is Vector3 else Vector3.ZERO
+
+
+func _update_player_dive_target() -> void:
+	var target := get_manual_attack_target()
+	if target == null or dive_bomb_controller == null:
+		return
+	var target_velocity := _get_target_world_velocity(target)
+	var release_height := maxf(
+		formation_center.y - target.global_position.y,
+		1.0
+	)
+	var gravity := float(ProjectSettings.get_setting(
+		"physics/3d/default_gravity",
+		9.8
+	))
+	var fall_time := sqrt(
+		2.0 * release_height / maxf(gravity, 0.1)
+	)
+	dive_bomb_controller.update_target(
+		target.global_position + target_velocity * fall_time,
+		target_velocity
+	)
 
 
 func _get_carrier_launch_position() -> Vector3:

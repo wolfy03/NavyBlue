@@ -6,6 +6,8 @@ const STAGE: StageData = preload(
 )
 
 var _failures: Array[String] = []
+var _sequence_completed_count := 0
+var _sequence_released_count := 0
 
 
 func _initialize() -> void:
@@ -27,60 +29,87 @@ func _run() -> void:
 	squadron.set_physics_process(false)
 	for aircraft in squadron.aircraft_units:
 		aircraft.activate()
+		aircraft.set_physics_process(false)
+	squadron.weapon_release_sequence_completed.connect(
+		_on_release_sequence_completed
+	)
+	var attack_target := _find_hostile_ship(battle, carrier)
+	_check(attack_target != null, "manual dive test finds a hostile target")
+	if attack_target != null:
+		attack_target.set_physics_process(false)
+		attack_target.global_position = Vector3.ZERO
+		attack_target.velocity = Vector3(10.0, 0.0, 0.0)
 	squadron.formation_center = Vector3(0.0, 180.0, 80.0)
 	_align_aircraft_with_formation(squadron)
 	_check(
-		squadron.issue_player_move_command(Vector3.ZERO),
+		squadron.issue_player_move_command(
+			Vector3.ZERO,
+			attack_target
+		),
 		"player move prepares a manual dive"
 	)
 	squadron.formation_center = Vector3(0.0, 180.0, 80.0)
 	_align_aircraft_with_formation(squadron)
 	var ammunition_before := squadron.get_total_remaining_ammunition()
-	_check(squadron.begin_manual_dive(), "first action begins the dive")
+	_check(squadron.begin_manual_dive(), "one action begins the dive")
+	squadron._update_player_dive_target()
+	var predicted_target_once := \
+		squadron.dive_bomb_controller.target_position
+	squadron._update_player_dive_target()
+	_check(
+		squadron.dive_bomb_controller.target_position \
+			== predicted_target_once,
+		"moving target prediction is applied once per update"
+	)
+	var state_after_first_input := squadron.get_dive_attack_state()
+	_check(
+		not squadron.begin_manual_dive(),
+		"repeated input is ignored while the dive is active"
+	)
+	_check(
+		squadron.get_dive_attack_state() == state_after_first_input,
+		"repeated input does not change the controller state"
+	)
 	_check(
 		squadron.get_total_remaining_ammunition() == ammunition_before,
-		"beginning a dive does not release bombs"
+		"beginning a dive does not release bombs immediately"
 	)
-	_check(
-		not squadron.request_manual_bomb_release(),
-		"release is rejected before minimum dive time"
-	)
-	_advance_dive(squadron, 0.1)
-	_advance_dive(squadron, 0.2)
-	for aircraft in squadron.get_alive_aircraft():
+
+	var release_state_seen := false
+	var pull_out_seen := false
+	var previous_state := int(squadron.get_dive_attack_state())
+	for _index in 160:
+		_advance_dive(squadron, 0.1)
+		var current_state := int(squadron.get_dive_attack_state())
 		_check(
-			aircraft.movement.flight_mode \
-				== AircraftMovement.FlightMode.DIRECT_FLIGHT,
-			"dive switches every aircraft to direct flight"
+			current_state >= previous_state,
+			"dive state never moves backward"
 		)
-		_check(
-			aircraft.velocity.y < 0.0,
-			"dive gives every aircraft downward velocity"
-		)
+		previous_state = current_state
+		release_state_seen = release_state_seen \
+			or current_state == DiveBombAttackController.State.RELEASING
+		pull_out_seen = pull_out_seen \
+			or current_state == DiveBombAttackController.State.PULLING_OUT
+		if current_state == DiveBombAttackController.State.COMPLETED:
+			break
+
+	_check(release_state_seen, "automatic altitude starts release sequence")
 	_check(
-		not squadron.request_manual_bomb_release(),
-		"release remains blocked while the dive is too early"
+		_sequence_completed_count == 1,
+		"release sequence completion is emitted exactly once"
 	)
-	_advance_dive(squadron, 0.3)
-	if not squadron.dive_bomb_controller.can_release_bombs():
-		print(
-			"DIVE RELEASE DEBUG %s"
-			% squadron.dive_bomb_controller.get_debug_snapshot()
-		)
 	_check(
-		squadron.request_manual_bomb_release(),
-		"second valid action queues bomb release"
+		_sequence_released_count == squadron.get_alive_aircraft_count(),
+		"every release-capable survivor actually releases"
 	)
-	squadron._update_weapon_release_sequence(0.0)
 	_check(
 		squadron.get_total_remaining_ammunition() < ammunition_before,
-		"manual release consumes sortie ammunition"
+		"automatic release consumes sortie ammunition"
 	)
-	for _index in 80:
-		_advance_dive(squadron, 0.1)
-		if squadron.dive_bomb_controller.state \
-				== DiveBombAttackController.State.COMPLETED:
-			break
+	_check(
+		pull_out_seen,
+		"pull-out begins after release sequence completion"
+	)
 	_check(
 		squadron.dive_bomb_controller.state \
 			== DiveBombAttackController.State.COMPLETED,
@@ -103,16 +132,11 @@ func _advance_dive(
 		squadron: AircraftSquadron,
 		delta: float
 ) -> void:
+	squadron._update_weapon_release_sequence(delta)
 	squadron.dive_bomb_controller.update_dive(delta)
 	for aircraft in squadron.get_alive_aircraft():
-		var movement := aircraft.movement
-		if movement.flight_mode \
-				!= AircraftMovement.FlightMode.DIRECT_FLIGHT:
-			continue
-		var direction := movement.direct_flight_direction
-		var speed := movement.direct_flight_speed_mps
-		aircraft.velocity = direction * speed
-		aircraft.global_position += aircraft.velocity * delta
+		aircraft.weapon_controller.update_weapon(delta)
+		aircraft.movement.update_movement(delta)
 
 
 func _align_aircraft_with_formation(
@@ -121,6 +145,25 @@ func _align_aircraft_with_formation(
 	for aircraft in squadron.get_alive_aircraft():
 		aircraft.global_position = squadron.formation_center \
 			+ aircraft.formation_offset
+
+
+func _on_release_sequence_completed(
+		_queued_count: int,
+		released_count: int
+) -> void:
+	_sequence_completed_count += 1
+	_sequence_released_count = released_count
+
+
+func _find_hostile_ship(
+		battle: BattleScene,
+		carrier: ShipUnit
+) -> ShipUnit:
+	for value in battle.get_battle_units():
+		var ship := value as ShipUnit
+		if ship != null and carrier.is_hostile_to(ship):
+			return ship
+	return null
 
 
 func _finish(battle: BattleScene) -> void:

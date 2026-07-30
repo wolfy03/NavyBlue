@@ -20,38 +20,37 @@ func _run() -> void:
 	var squadron := carrier.carrier_air_group.launch_manual_squadron(
 		"basic_bomber_squadron"
 	)
+	_check(squadron != null, "manual bomber squadron launches")
+	if squadron == null:
+		await _finish(battle)
+		return
 	squadron.set_physics_process(false)
 	for aircraft in squadron.aircraft_units:
 		aircraft.activate()
-	var controller := squadron.dive_bomb_controller
-	controller.target_position = Vector3.ZERO
-	controller.dive_elapsed_seconds = 1.0
-	controller.state = DiveBombAttackController.State.DIVING
-	squadron.formation_center = Vector3(0.0, 100.0, 0.0)
-	for aircraft in squadron.get_alive_aircraft():
-		aircraft.global_position = Vector3(0.0, 200.0, 0.0)
-	_check(
-		not controller.can_release_bombs() \
-			and controller.release_block_reason \
-			== DiveBombAttackController.ReleaseBlockReason \
-				.NO_AIRCRAFT_IN_RELEASE_ALTITUDE,
-		"release is blocked when no aircraft is inside its altitude window"
-	)
+		aircraft.set_physics_process(false)
 	var alive := squadron.get_alive_aircraft()
-	alive[0].global_position = Vector3(100.0, 100.0, 0.0)
-	for index in range(1, alive.size()):
+	for index in alive.size():
 		alive[index].global_position = Vector3(
-			float(index) * 100.0,
-			200.0,
-			0.0
+			float(index) * 140.0,
+			70.0 + float(index) * 75.0,
+			float(index % 2) * 200.0
 		)
-	_check(
-		controller.can_release_bombs(),
-		"one aircraft inside the altitude window enables partial release"
+	var queued_count := squadron.request_weapon_release_for_dive(
+		Vector3.ZERO,
+		Vector3.ZERO
 	)
 	_check(
-		controller.release_ready_bombs() == 1,
-		"formation divergence does not block the release-ready aircraft"
+		queued_count == alive.size(),
+		"formation divergence does not filter dive release aircraft"
+	)
+	_check(
+		squadron.get_release_sequence_queued_count() == alive.size(),
+		"release sequence preserves every release-capable survivor"
+	)
+	squadron.cancel_pending_weapon_release()
+	_check(
+		not squadron.is_weapon_release_in_progress(),
+		"cancel safely clears the formation-independent queue"
 	)
 	await _finish(battle)
 
