@@ -141,8 +141,17 @@ func apply_manual_aim_command(
 
 
 func get_selected_cannon_maximum_range_m() -> float:
-	return combat.get_selected_cannon_maximum_range_m() \
+	return get_player_cannon_preview_range_m()
+
+
+func get_player_cannon_preview_range_m() -> float:
+	return combat.get_player_cannon_preview_range_m() \
 		if combat != null else 0.0
+
+
+func get_player_cannon_preview_origin() -> Vector3:
+	return combat.get_player_cannon_preview_origin() \
+		if combat != null else global_position
 
 func set_navigation_target(world_position: Vector3) -> void:
 	navigation.set_navigation_target(world_position)

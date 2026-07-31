@@ -5,12 +5,17 @@ var command_serial := 0
 var reached_serial := -1
 var command_type: StringName
 var active := false
+var command_plane_height_m := 0.0
 
 
-func begin_command(next_command_type: StringName = &"mission") -> int:
+func begin_command(
+		next_command_type: StringName = &"mission",
+		next_command_plane_height_m: float = 0.0
+) -> int:
 	command_serial += 1
 	reached_serial = -1
 	command_type = next_command_type
+	command_plane_height_m = next_command_plane_height_m
 	active = true
 	return command_serial
 
@@ -30,6 +35,7 @@ func reset() -> void:
 	reached_serial = -1
 	command_type = StringName()
 	active = false
+	command_plane_height_m = 0.0
 
 
 func clear_active_command() -> void:
@@ -44,6 +50,7 @@ func get_snapshot(
 	var snapshot := SquadronDestinationSnapshot.new()
 	snapshot.active = active
 	snapshot.destination = destination
+	snapshot.command_plane_height_m = command_plane_height_m
 	snapshot.reached = is_reached()
 	snapshot.loitering = loitering
 	snapshot.command_type = command_type

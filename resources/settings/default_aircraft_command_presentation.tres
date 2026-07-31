@@ -4,3 +4,14 @@
 
 [resource]
 script = ExtResource("1_settings")
+selection_color = Color(0.15, 1, 0.25, 0.75)
+selection_line_thickness_m = 0.6
+bounds_padding_m = Vector3(25, 12, 25)
+minimum_box_size_m = Vector3(80, 30, 80)
+bounds_refresh_interval_sec = 0.08
+bounds_shrink_speed = 6.0
+path_color = Color(0.2, 1, 0.35, 0.55)
+path_line_thickness_m = 0.4
+path_height_offset_m = 2.0
+status_offset_pixels = Vector2(8, 8)
+status_refresh_interval_sec = 0.2

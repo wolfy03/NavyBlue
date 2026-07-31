@@ -181,8 +181,9 @@ func update_weapon_mounts(next_owner_ship: Node3D, use_default_aim: bool) -> voi
 	if aim_mode == AimMode.MANUAL_RELATIVE_BEARING:
 		_update_manual_relative_aim_point()
 	elif aim_mode == AimMode.TRACK_WORLD_TARGET \
-			and target is Node3D \
-			and is_instance_valid(target):
+			and target != null \
+			and is_instance_valid(target) \
+			and target is Node3D:
 		aim_point = (target as Node3D).global_position
 	if not has_aim_point and use_default_aim and next_owner_ship != null:
 		aim_mode = AimMode.FORWARD
@@ -326,16 +327,36 @@ func get_primary_weapon_range_m() -> float:
 
 
 func get_selected_cannon_maximum_range_m() -> float:
+	return get_player_cannon_preview_range_m()
+
+
+func get_player_cannon_preview_range_m() -> float:
+	var mount := get_player_cannon_preview_mount()
+	return mount.get_runtime_maximum_range_m() \
+		if mount != null else 0.0
+
+
+func get_player_cannon_preview_mount() -> WeaponMount:
 	var maximum_range_m := 0.0
+	var selected_mount: WeaponMount
 	for mount in get_weapons_by_type(WeaponTypes.Type.CANNON):
-		if mount.weapon_data == null \
-				or mount.get_range_m() <= 0.0:
+		if not mount.is_operational():
 			continue
-		maximum_range_m = maxf(
-			maximum_range_m,
-			mount.get_range_m()
+		var runtime_range := mount.get_runtime_maximum_range_m()
+		if runtime_range > maximum_range_m:
+			maximum_range_m = runtime_range
+			selected_mount = mount
+	return selected_mount
+
+
+func get_player_cannon_preview_origin() -> Vector3:
+	var mount := get_player_cannon_preview_mount()
+	return mount.get_muzzle_position() \
+		if mount != null else (
+			owner_ship.global_position \
+			if owner_ship != null and is_instance_valid(owner_ship) \
+			else Vector3.ZERO
 		)
-	return maximum_range_m
 
 
 func get_max_weapon_range_m(type_filter: Variant = null) -> float:

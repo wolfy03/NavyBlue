@@ -84,19 +84,13 @@ func capture_post_cleanup(
 
 
 func validate_metadata() -> PackedStringArray:
-	var failures := PackedStringArray()
-	var expected_chunks := ceili(
-		float(total_executed_frames) / float(maxi(chunk_size_frames, 1))
+	return EnduranceResultMetadata.validate(
+		total_requested_frames,
+		total_executed_frames,
+		chunk_size_frames,
+		combat_chunk_count,
+		samples.size()
 	)
-	if combat_chunk_count != expected_chunks:
-		failures.append(
-			"Captured combat chunk count does not match executed frames."
-		)
-	if samples.size() != combat_chunk_count:
-		failures.append("Combat sample count does not match chunk metadata.")
-	if total_executed_frames != total_requested_frames:
-		failures.append("Endurance runner did not execute all requested frames.")
-	return failures
 
 
 func validate_bounded_growth(
@@ -136,6 +130,11 @@ func validate_cleanup() -> PackedStringArray:
 		"invalid_callback_count",
 		"pool_outstanding_count",
 		"pool_active_lease_count",
+		"active_presentation_binding_count",
+		"active_selection_box_count",
+		"active_command_path_count",
+		"active_status_overlay_count",
+		"processing_presenter_count",
 	]:
 		if int(post_cleanup_final.get(metric_name, 0)) != 0:
 			failures.append(
@@ -145,19 +144,21 @@ func validate_cleanup() -> PackedStringArray:
 
 
 func get_summary() -> Dictionary:
-	return {
-		"profile_name": profile_name,
-		"seed": seed,
-		"total_requested_frames": total_requested_frames,
-		"total_executed_frames": total_executed_frames,
-		"chunk_size_frames": chunk_size_frames,
-		"captured_chunk_count": samples.size(),
-		"combat_chunk_count": combat_chunk_count,
-		"cleanup_chunk_count": cleanup_chunk_count,
-		"initial_snapshot_count": initial_snapshot_count,
-		"final_snapshot_count": final_snapshot_count,
-		"warmup_frames": warmup_frames,
-		"cleanup_frames": cleanup_frames,
+	var summary := EnduranceResultMetadata.build_summary(
+		profile_name,
+		seed,
+		total_requested_frames,
+		total_executed_frames,
+		chunk_size_frames,
+		samples.size(),
+		combat_chunk_count,
+		cleanup_chunk_count,
+		initial_snapshot_count,
+		final_snapshot_count,
+		warmup_frames,
+		cleanup_frames
+	)
+	summary.merge({
 		"baseline": baseline,
 		"active_peak": active_peak,
 		"post_cleanup_final": post_cleanup_final,
@@ -167,7 +168,8 @@ func get_summary() -> Dictionary:
 		),
 		"maximum_chunk_average_frame_time_msec":
 			maximum_frame_time_msec,
-	}
+	})
+	return summary
 
 
 func _capture_snapshot(
@@ -214,6 +216,7 @@ func _capture_snapshot(
 		"error_count": error_count,
 	}
 	snapshot.merge(_capture_fleet_decision_metrics(tree))
+	snapshot.merge(_capture_aircraft_presentation_metrics(tree))
 	return snapshot
 
 
@@ -236,6 +239,11 @@ func _update_active_peak(sample: Dictionary) -> void:
 		"foreign_instance_release_count",
 		"factory_instance_release_count",
 		"legacy_direct_pool_release_count",
+		"active_presentation_binding_count",
+		"active_selection_box_count",
+		"active_command_path_count",
+		"active_status_overlay_count",
+		"processing_presenter_count",
 		"fleet_decision_count",
 		"perception_refresh_count",
 		"target_evaluation_count",
@@ -251,6 +259,43 @@ func _update_active_peak(sample: Dictionary) -> void:
 			int(active_peak.get(metric_name, 0)),
 			int(sample.get(metric_name, 0))
 		)
+
+
+func _capture_aircraft_presentation_metrics(
+		tree: SceneTree
+) -> Dictionary:
+	var result := {
+		"active_presentation_binding_count": 0,
+		"active_selection_box_count": 0,
+		"active_command_path_count": 0,
+		"active_status_overlay_count": 0,
+		"processing_presenter_count": 0,
+	}
+	if tree == null:
+		return result
+	for node in tree.get_nodes_in_group(
+		&"aircraft_command_presentations"
+	):
+		var presentation := node as AircraftCommandPresentation
+		if presentation == null or not is_instance_valid(presentation):
+			continue
+		var snapshot := presentation.get_debug_snapshot()
+		result["active_presentation_binding_count"] += int(
+			snapshot.get("active_binding_count", 0)
+		)
+		result["active_selection_box_count"] += int(
+			snapshot.get("active_selection_box_count", 0)
+		)
+		result["active_command_path_count"] += int(
+			snapshot.get("active_path_count", 0)
+		)
+		result["active_status_overlay_count"] += int(
+			snapshot.get("active_overlay_count", 0)
+		)
+		result["processing_presenter_count"] += int(
+			snapshot.get("processing_presenter_count", 0)
+		)
+	return result
 
 
 func _group_count(tree: SceneTree, group: StringName) -> int:

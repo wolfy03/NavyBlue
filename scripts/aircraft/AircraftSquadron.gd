@@ -187,7 +187,7 @@ func launch_to(world_position: Vector3) -> void:
 		return
 	destination = _clamp_destination_to_combat_radius(world_position)
 	_loiter_initialized = false
-	destination_tracker.begin_command()
+	destination_tracker.begin_command(&"mission", destination.y)
 	state = State.EN_ROUTE
 	_launch_elapsed_sec = 0.0
 	_next_aircraft_to_activate = 0

@@ -89,6 +89,10 @@ func get_fire_readiness_at(
 ) -> WeaponFireReadiness.State:
 	if weapon_data == null:
 		return WeaponFireReadiness.State.NO_WEAPON_DATA
+	if not runtime_state.enabled:
+		return WeaponFireReadiness.State.WEAPON_DISABLED
+	if not runtime_state.has_ammunition():
+		return WeaponFireReadiness.State.NO_AMMUNITION
 	if not has_aim_point:
 		return WeaponFireReadiness.State.NO_AIM_POINT
 	if not world_point.is_finite():
@@ -114,20 +118,15 @@ func update_traverse_toward(
 ) -> void:
 	if delta <= 0.0 or speed_degrees_per_second <= 0.0:
 		return
-	var requested_relative_yaw: Variant = _get_requested_relative_yaw_degrees(
+	var desired_local_yaw: Variant = get_target_local_yaw_for_world_point(
 		world_point
 	)
-	if requested_relative_yaw == null:
+	if desired_local_yaw == null:
 		return
-	var clamped_relative_yaw := _clamp_angle_to_traverse_limits(
-		float(requested_relative_yaw)
-	)
-	var desired_local_yaw := base_local_yaw_radians \
-		+ deg_to_rad(clamped_relative_yaw)
 	rotation.y = wrapf(
 		rotate_toward(
 			rotation.y,
-			desired_local_yaw,
+			float(desired_local_yaw),
 			deg_to_rad(speed_degrees_per_second) * delta
 		),
 		-PI,
@@ -140,9 +139,42 @@ func get_weapon_type() -> WeaponTypes.Type:
 
 
 func get_range_m() -> float:
+	return get_runtime_maximum_range_m()
+
+
+func get_runtime_maximum_range_m() -> float:
 	if weapon_data == null:
 		return 0.0
 	return weapon_data.range_meters * maxf(runtime_stats.range_multiplier, 0.0)
+
+
+func is_operational() -> bool:
+	return weapon_data != null \
+		and runtime_state.enabled \
+		and runtime_state.has_ammunition() \
+		and get_runtime_maximum_range_m() > 0.0 \
+		and _has_projectile_available()
+
+
+func get_rest_yaw_relative_to_hull() -> float:
+	return base_local_yaw_radians
+
+
+func get_target_local_yaw_for_world_point(
+		world_point: Vector3
+) -> Variant:
+	var requested_relative_yaw: Variant = \
+		_get_requested_relative_yaw_degrees(world_point)
+	if requested_relative_yaw == null:
+		return null
+	var clamped_relative_yaw := _clamp_angle_to_traverse_limits(
+		float(requested_relative_yaw)
+	)
+	return wrapf(
+		base_local_yaw_radians + deg_to_rad(clamped_relative_yaw),
+		-PI,
+		PI
+	)
 
 
 func get_minimum_range_m() -> float:

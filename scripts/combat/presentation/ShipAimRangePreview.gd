@@ -12,6 +12,7 @@ var _input_manager: PlayerInputManager
 var _ship_commands: ShipCommandController
 var _ship_ref: WeakRef
 var _command: ShipManualAimCommand
+var _runtime_material: StandardMaterial3D
 
 
 func _ready() -> void:
@@ -53,7 +54,8 @@ func setup(
 			_input_manager.input_enabled_changed.connect(
 				_on_input_enabled_changed
 			)
-	_ship_commands.refresh_manual_aim_preview()
+	if _ship_commands != null:
+		_ship_commands.refresh_manual_aim_preview()
 
 
 func shutdown() -> void:
@@ -97,9 +99,9 @@ func _process(_delta: float) -> void:
 		return
 	var direction := ship.combat.get_manual_aim_world_direction()
 	var maximum_range_m := ship \
-		.get_selected_cannon_maximum_range_m()
+		.get_player_cannon_preview_range_m()
 	show_preview(
-		ship.global_position,
+		ship.get_player_cannon_preview_origin(),
 		direction,
 		maximum_range_m
 	)
@@ -117,19 +119,23 @@ func show_preview(
 	var direction := world_direction.normalized()
 	var start := origin + Vector3.UP * settings.height_offset_m
 	var end := start + direction * maximum_range_m
-	global_position = (start + end) * 0.5
-	look_at(end, Vector3.UP)
-	line_mesh.scale = Vector3(
-		settings.line_thickness_m,
-		settings.line_thickness_m,
-		maximum_range_m
-	)
+	if not BoxLinePlacement.place_between(
+		self,
+		line_mesh,
+		start,
+		end,
+		settings.line_thickness_m
+	):
+		hide_preview()
+		return
 	visible = true
 	set_process(true)
 
 
 func hide_preview() -> void:
 	visible = false
+	if line_mesh != null:
+		line_mesh.visible = false
 	set_process(false)
 
 
@@ -191,9 +197,17 @@ func _on_input_enabled_changed(enabled: bool) -> void:
 func _apply_material() -> void:
 	if line_mesh == null:
 		return
-	var material := StandardMaterial3D.new()
-	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	material.albedo_color = settings.line_color
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.no_depth_test = false
-	line_mesh.material_override = material
+	if _runtime_material == null:
+		var source_material := line_mesh.material_override \
+			as StandardMaterial3D
+		if source_material != null:
+			_runtime_material = source_material.duplicate() \
+				as StandardMaterial3D
+	if _runtime_material == null:
+		return
+	_runtime_material.albedo_color = settings.line_color
+	line_mesh.material_override = _runtime_material
+
+
+func get_runtime_material() -> StandardMaterial3D:
+	return _runtime_material

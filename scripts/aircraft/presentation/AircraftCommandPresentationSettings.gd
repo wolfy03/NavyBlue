@@ -7,6 +7,7 @@ class_name AircraftCommandPresentationSettings
 @export var bounds_padding_m := Vector3(25.0, 12.0, 25.0)
 @export var minimum_box_size_m := Vector3(80.0, 30.0, 80.0)
 @export var bounds_refresh_interval_sec := 0.08
+@export var bounds_shrink_speed := 6.0
 
 @export_category("Command Path")
 @export var path_color := Color(0.2, 1.0, 0.35, 0.55)

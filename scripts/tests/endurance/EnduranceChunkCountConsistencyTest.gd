@@ -4,18 +4,46 @@ var _failures := PackedStringArray()
 
 
 func _initialize() -> void:
-	var metrics := BattleEnduranceMetrics.new()
-	metrics.configure(&"extended_smoke", 7, 120, 180)
-	metrics.total_requested_frames = 1800
-	metrics.total_executed_frames = 1800
-	metrics.chunk_size_frames = 600
-	metrics.combat_chunk_count = 3
-	metrics.samples.assign([{}, {}, {}])
+	call_deferred(&"_run")
+
+
+func _run() -> void:
+	_run_checks()
+	await process_frame
+	await process_frame
+	print(
+		"ENDURANCE_CHUNK_COUNT_CONSISTENCY_TEST failures=%d"
+		% _failures.size()
+	)
+	quit(0 if _failures.is_empty() else 1)
+
+
+func _run_checks() -> void:
+	var validation := EnduranceResultMetadata.validate(
+		1800,
+		1800,
+		600,
+		3,
+		3
+	)
 	_check(
-		metrics.validate_metadata().is_empty(),
+		validation.is_empty(),
 		"1800 frames at 600 frames per chunk produces three chunks"
 	)
-	var summary := metrics.get_summary()
+	var summary := EnduranceResultMetadata.build_summary(
+		&"extended_smoke",
+		7,
+		1800,
+		1800,
+		600,
+		3,
+		3,
+		0,
+		0,
+		0,
+		120,
+		180
+	)
 	_check(
 		int(summary.get("captured_chunk_count", 0)) == 3
 			and int(summary.get("warmup_frames", 0)) == 120
@@ -23,16 +51,17 @@ func _initialize() -> void:
 		"result metadata preserves chunk and phase counts"
 	)
 
-	metrics.combat_chunk_count = 15
+	validation = EnduranceResultMetadata.validate(
+		1800,
+		1800,
+		600,
+		15,
+		3
+	)
 	_check(
-		not metrics.validate_metadata().is_empty(),
+		not validation.is_empty(),
 		"mismatched documented chunk counts are rejected"
 	)
-	print(
-		"ENDURANCE_CHUNK_COUNT_CONSISTENCY_TEST failures=%d"
-		% _failures.size()
-	)
-	quit(0 if _failures.is_empty() else 1)
 
 
 func _check(condition: bool, label: String) -> void:

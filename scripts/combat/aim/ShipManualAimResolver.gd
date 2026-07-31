@@ -25,5 +25,5 @@ func create_command(
 	)
 	command.clicked_world_point = world_point
 	command.maximum_range_m = ship \
-		.get_selected_cannon_maximum_range_m()
+		.get_player_cannon_preview_range_m()
 	return command

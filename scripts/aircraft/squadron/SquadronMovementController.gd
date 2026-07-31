@@ -42,7 +42,10 @@ func set_destination(
 				AircraftSquadron.State.HOLDING,
 			]:
 		return destination_tracker.command_serial
-	var command_serial := destination_tracker.begin_command(command_type)
+	var command_serial := destination_tracker.begin_command(
+		command_type,
+		next_destination.y
+	)
 	owner_squadron._loiter_initialized = false
 	owner_squadron.destination = next_destination
 	owner_squadron.state = AircraftSquadron.State.EN_ROUTE
