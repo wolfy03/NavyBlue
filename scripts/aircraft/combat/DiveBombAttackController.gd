@@ -63,12 +63,14 @@ var target_position := Vector3.ZERO
 var target_velocity := Vector3.ZERO
 var dive_elapsed_seconds := 0.0
 var release_block_reason: ReleaseBlockReason = ReleaseBlockReason.NONE
+var dispersion_radius_m := 0.0
 
 var _pull_out_forward := Vector3.FORWARD
 var _aircraft_release_states: Dictionary = {}
 var _aircraft_release_attempts: Dictionary = {}
 var _aircraft_release_retry_left: Dictionary = {}
 var _previous_aircraft_altitudes: Dictionary = {}
+var _aircraft_scatter_offsets: Dictionary = {}
 var _released_aircraft_count := 0
 var _failed_aircraft_count := 0
 var _pending_aircraft_count := 0
@@ -125,11 +127,13 @@ func reset() -> void:
 	target_velocity = Vector3.ZERO
 	dive_elapsed_seconds = 0.0
 	release_block_reason = ReleaseBlockReason.NONE
+	dispersion_radius_m = 0.0
 	_pull_out_forward = Vector3.FORWARD
 	_aircraft_release_states.clear()
 	_aircraft_release_attempts.clear()
 	_aircraft_release_retry_left.clear()
 	_previous_aircraft_altitudes.clear()
+	_aircraft_scatter_offsets.clear()
 	_released_aircraft_count = 0
 	_failed_aircraft_count = 0
 	_pending_aircraft_count = 0
@@ -145,7 +149,8 @@ func reset() -> void:
 func begin_dive_with_source(
 		next_target_position: Vector3,
 		next_target_velocity: Vector3,
-		source: AircraftSquadron.DiveControlSource
+		source: AircraftSquadron.DiveControlSource,
+		next_dispersion_radius_m: float = 0.0
 ) -> BeginDiveResult:
 	if source == AircraftSquadron.DiveControlSource.NONE:
 		return BeginDiveResult.INVALID_CONFIGURATION
@@ -175,6 +180,7 @@ func begin_dive_with_source(
 		reset()
 	target_position = next_target_position
 	target_velocity = next_target_velocity
+	dispersion_radius_m = maxf(next_dispersion_radius_m, 0.0)
 	dive_elapsed_seconds = 0.0
 	release_block_reason = ReleaseBlockReason.TOO_EARLY
 	owner_squadron.dive_control_source = source
@@ -473,8 +479,12 @@ func _update_individual_aircraft_release() -> void:
 
 func _attempt_individual_release(aircraft: AircraftUnit) -> void:
 	var aircraft_id := aircraft.get_instance_id()
+	var scatter_offset := _aircraft_scatter_offsets.get(
+		aircraft_id,
+		Vector3.ZERO
+	) as Vector3
 	var context := AircraftPayloadReleaseContext.create(
-		target_position,
+		target_position + scatter_offset,
 		target_velocity
 	)
 	var result := owner_squadron.request_aircraft_payload_release(
@@ -536,8 +546,10 @@ func _initialize_aircraft_release_states() -> void:
 	_aircraft_release_attempts.clear()
 	_aircraft_release_retry_left.clear()
 	_previous_aircraft_altitudes.clear()
+	_aircraft_scatter_offsets.clear()
 	for aircraft in owner_squadron.get_alive_aircraft():
 		var aircraft_id := aircraft.get_instance_id()
+		_aircraft_scatter_offsets[aircraft_id] = _random_scatter_offset()
 		var release_state := AircraftReleaseState.PENDING
 		if aircraft.weapon_controller == null:
 			release_state = AircraftReleaseState.FAILED
@@ -810,3 +822,11 @@ func _is_valid_dive_squadron() -> bool:
 			== AircraftData.AircraftRole.DIVE_BOMBER \
 		and dive_data != null \
 		and dive_data.validate().is_empty()
+
+
+func _random_scatter_offset() -> Vector3:
+	if dispersion_radius_m <= 0.0:
+		return Vector3.ZERO
+	var angle := randf() * TAU
+	var distance := sqrt(randf()) * dispersion_radius_m
+	return Vector3(cos(angle) * distance, 0.0, sin(angle) * distance)

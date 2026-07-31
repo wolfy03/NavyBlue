@@ -24,6 +24,9 @@ func build(mount: WeaponMount) -> TurretPreviewSnapshot:
 		return snapshot
 	snapshot.origin = mount.get_preview_muzzle_position()
 	snapshot.direction = mount.get_projectile_launch_direction_world()
+	# The range preview only shows horizontal bearing (where the turret points
+	# on the X/Z plane), not the barrel pitch, so flatten out the elevation.
+	snapshot.direction.y = 0.0
 	if not snapshot.origin.is_finite() \
 			or not snapshot.direction.is_finite() \
 			or snapshot.direction.length_squared() <= 0.0001:

@@ -195,14 +195,10 @@ func update_weapon_mounts(next_owner_ship: Node3D, use_default_aim: bool) -> voi
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
 		if mount != null:
-			if aim_mode == AimMode.MANUAL_RELATIVE_BEARING:
-				var direction := get_manual_aim_world_direction()
-				mount.aim_at(
-					mount.global_position \
-					+ direction * mount.get_range_m()
-				)
-			else:
-				mount.aim_at(aim_point)
+			# All aim modes fire at the shared aim point: for manual bearing it
+			# already reflects the clicked distance (clamped to range), so mounts
+			# no longer force their own maximum range here.
+			mount.aim_at(aim_point)
 
 
 func _update_manual_relative_aim_point() -> void:
@@ -212,9 +208,13 @@ func _update_manual_relative_aim_point() -> void:
 			or not is_instance_valid(owner_ship):
 		has_aim_point = false
 		return
-	var range_m := get_selected_cannon_maximum_range_m()
-	if range_m <= 0.0 and _manual_aim_command != null:
-		range_m = _manual_aim_command.maximum_range_m
+	var range_m := 0.0
+	if _manual_aim_command != null and _manual_aim_command.range_m > 0.0:
+		range_m = _manual_aim_command.range_m
+	else:
+		range_m = get_selected_cannon_maximum_range_m()
+		if range_m <= 0.0 and _manual_aim_command != null:
+			range_m = _manual_aim_command.maximum_range_m
 	aim_point = owner_ship.global_position \
 		+ direction * maxf(range_m, 60.0)
 	has_aim_point = true

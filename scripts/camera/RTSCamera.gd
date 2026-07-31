@@ -67,6 +67,9 @@ func setup(
 		boundary_padding_m = settings.camera_boundary_padding_m
 		min_move_speed_mps = settings.camera_min_move_speed_mps
 		max_move_speed_mps = settings.camera_max_move_speed_mps
+	# Double the top-end pan speed (WASD / edge-scroll) regardless of whether it
+	# came from the exported default or the battlefield settings.
+	max_move_speed_mps *= 2.0
 	current_height_m = clampf(default_height_m, min_height_m, max_height_m)
 	target_height_m = current_height_m
 	_yaw_rad = deg_to_rad(default_yaw_deg)
@@ -99,6 +102,9 @@ func _process(delta: float) -> void:
 	var has_manual_motion := input_direction.length_squared() > 0.001 or _dragging
 	if has_manual_motion:
 		_focus_transition_active = false
+		# Release any active zoom-to-cursor anchor so manual panning is not
+		# cancelled out by the anchor re-centring the view every frame.
+		_zoom_anchor_world = null
 
 	var zoom_ratio := clampf(inverse_lerp(min_height_m, max_height_m, current_height_m), 0.0, 1.0)
 	current_move_speed_mps = lerpf(min_move_speed_mps, max_move_speed_mps, zoom_ratio)

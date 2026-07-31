@@ -163,6 +163,17 @@ func setup_torpedo_targeting(
 	)
 
 
+func setup_dive_targeting(
+		session: DiveBombTargetingSession
+) -> void:
+	aircraft_command_controller.setup_dive_targeting(
+		session,
+		world_pointer_resolver,
+		camera,
+		battle_environment
+	)
+
+
 func _physics_process(_delta: float) -> void:
 	_prune_selection()
 	if controlled_ship == null or not is_instance_valid(controlled_ship):
@@ -202,7 +213,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if command_mode == CommandMode.AIRCRAFT \
 			and aircraft_command_controller \
-				.handle_torpedo_targeting_input(event):
+				.handle_targeting_input(event):
 		get_viewport().set_input_as_handled()
 		return
 	if _handle_pointer_input(event):

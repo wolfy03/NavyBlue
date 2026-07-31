@@ -4,6 +4,7 @@ class_name AircraftCommandController
 var selection_controller: AircraftSelectionController
 var carrier_controller: CarrierCommandController
 var torpedo_targeting_session: TorpedoAttackTargetingSession
+var dive_targeting_session: DiveBombTargetingSession
 var world_pointer_resolver: WorldPointerResolver
 var camera: RTSCamera
 var battle_environment: BattleEnvironment
@@ -20,6 +21,7 @@ func setup(
 
 func shutdown() -> void:
 	cancel_torpedo_targeting(&"shutdown")
+	cancel_dive_targeting(&"shutdown")
 	if selection_controller != null:
 		_disconnect_selection_changed()
 		selection_controller.set_input_enabled(false)
@@ -29,6 +31,7 @@ func shutdown() -> void:
 	selection_controller = null
 	carrier_controller = null
 	torpedo_targeting_session = null
+	dive_targeting_session = null
 	world_pointer_resolver = null
 	camera = null
 	battle_environment = null
@@ -53,11 +56,34 @@ func setup_torpedo_targeting(
 		)
 
 
+func setup_dive_targeting(
+		session: DiveBombTargetingSession,
+		pointer_resolver: WorldPointerResolver,
+		view_camera: Camera3D,
+		environment: BattleEnvironment
+) -> void:
+	dive_targeting_session = session
+	if world_pointer_resolver == null:
+		world_pointer_resolver = pointer_resolver
+	if camera == null:
+		camera = view_camera as RTSCamera
+	if battle_environment == null:
+		battle_environment = environment
+	if selection_controller != null \
+			and not selection_controller.selection_changed.is_connected(
+				_on_aircraft_selection_changed
+			):
+		selection_controller.selection_changed.connect(
+			_on_aircraft_selection_changed
+		)
+
+
 func set_input_enabled(enabled: bool) -> void:
 	if selection_controller != null:
 		selection_controller.set_input_enabled(enabled)
 	if not enabled:
 		cancel_torpedo_targeting(&"input_disabled")
+		cancel_dive_targeting(&"input_disabled")
 
 
 func has_selection() -> bool:
@@ -85,10 +111,11 @@ func execute_special_action() -> bool:
 			AircraftData.AircraftRole.DIVE_BOMBER:
 				dive_count += 1
 	if torpedo_count == squadrons.size():
+		cancel_dive_targeting(&"other_attack")
 		return _begin_torpedo_targeting(squadrons)
 	if dive_count == squadrons.size():
 		cancel_torpedo_targeting(&"other_attack")
-		return selection_controller.execute_special_action()
+		return _begin_dive_targeting(squadrons)
 	selection_controller.command_feedback.emit(
 		"Manual attacks require squadrons of the same attack role."
 	)
@@ -97,6 +124,8 @@ func execute_special_action() -> bool:
 
 func cancel_targeting() -> bool:
 	if cancel_torpedo_targeting(&"command_cancel"):
+		return true
+	if cancel_dive_targeting(&"command_cancel"):
 		return true
 	if carrier_controller == null or not carrier_controller.is_targeting():
 		return false
@@ -112,9 +141,27 @@ func cancel_torpedo_targeting(reason: StringName) -> bool:
 	return true
 
 
+func cancel_dive_targeting(reason: StringName) -> bool:
+	if dive_targeting_session == null \
+			or not dive_targeting_session.is_active():
+		return false
+	dive_targeting_session.cancel(reason)
+	return true
+
+
 func is_torpedo_targeting_active() -> bool:
 	return torpedo_targeting_session != null \
 		and torpedo_targeting_session.is_active()
+
+
+func is_dive_targeting_active() -> bool:
+	return dive_targeting_session != null \
+		and dive_targeting_session.is_active()
+
+
+func handle_targeting_input(event: InputEvent) -> bool:
+	return handle_torpedo_targeting_input(event) \
+		or handle_dive_targeting_input(event)
 
 
 func handle_torpedo_targeting_input(event: InputEvent) -> bool:
@@ -155,16 +202,93 @@ func handle_torpedo_targeting_input(event: InputEvent) -> bool:
 			camera,
 			mouse_event.position
 		)
-	var commands := torpedo_targeting_session.complete_drag(
+	var commands := torpedo_targeting_session.resolve_drag_commands(
 		point as Vector3,
 		target_ship
 	)
+	if commands.is_empty():
+		# Resolve failed: the session already reverted to ARMED so the player
+		# can drag again. Nothing to apply.
+		return true
 	var issued_count := mini(squadrons.size(), commands.size())
+	# Atomic apply: every selected squadron must be able to accept its command
+	# before any command is issued, so a multi-squadron order never lands on
+	# only some of the squadrons.
+	var all_applicable := issued_count == squadrons.size() \
+		and issued_count == commands.size()
+	if all_applicable:
+		for index in issued_count:
+			if not squadrons[index].can_apply_torpedo_attack(commands[index]):
+				all_applicable = false
+				break
+	if not all_applicable:
+		torpedo_targeting_session.return_to_armed(&"apply_rejected")
+		if selection_controller != null:
+			selection_controller.command_feedback.emit(
+				"Torpedo attack could not be ordered for every squadron."
+			)
+		return true
+	torpedo_targeting_session.confirm_completed(commands)
 	for index in issued_count:
 		squadrons[index].issue_player_torpedo_attack(commands[index])
-	if issued_count > 0 and selection_controller != null:
+	if selection_controller != null:
 		selection_controller.command_feedback.emit(
 			"Torpedo attack ordered for %d squadron(s)." % issued_count
+		)
+	return true
+
+
+func handle_dive_targeting_input(event: InputEvent) -> bool:
+	if not is_dive_targeting_active():
+		return false
+	if event is InputEventMouseMotion:
+		var motion_point: Variant = _screen_to_command_plane(
+			(event as InputEventMouseMotion).position
+		)
+		if motion_point != null:
+			dive_targeting_session.update_cursor(motion_point as Vector3)
+		return true
+	if not event is InputEventMouseButton:
+		return false
+	var mouse_event := event as InputEventMouseButton
+	if mouse_event.button_index == MOUSE_BUTTON_RIGHT \
+			and mouse_event.pressed:
+		cancel_dive_targeting(&"right_click")
+		return true
+	if mouse_event.button_index != MOUSE_BUTTON_LEFT:
+		return false
+	if not mouse_event.pressed:
+		# Consume the release so it does not start a selection drag.
+		return true
+	var point: Variant = _screen_to_command_plane(mouse_event.position)
+	if point == null:
+		return true
+	var squadrons := dive_targeting_session.get_active_squadrons()
+	# Atomic apply: only order the run if every selected squadron can still dive.
+	var all_applicable := not squadrons.is_empty()
+	for squadron in squadrons:
+		if not squadron.can_begin_manual_dive():
+			all_applicable = false
+			break
+	if not all_applicable:
+		dive_targeting_session.cancel(&"apply_rejected")
+		if selection_controller != null:
+			selection_controller.command_feedback.emit(
+				"Dive attack could not be ordered."
+			)
+		return true
+	var commands := dive_targeting_session.confirm(point as Vector3)
+	var issued_count := mini(squadrons.size(), commands.size())
+	var ordered := 0
+	for index in issued_count:
+		if squadrons[index].begin_manual_dive_at(
+			commands[index].target_point,
+			commands[index].dispersion_radius_m
+		):
+			ordered += 1
+	if selection_controller != null:
+		selection_controller.command_feedback.emit(
+			"Dive attack ordered for %d squadron(s)." % ordered
 		)
 	return true
 
@@ -203,6 +327,40 @@ func _begin_torpedo_targeting(
 	return true
 
 
+func _begin_dive_targeting(
+		squadrons: Array[AircraftSquadron]
+) -> bool:
+	if dive_targeting_session == null:
+		selection_controller.command_feedback.emit(
+			"Dive targeting is unavailable."
+		)
+		return true
+	if dive_targeting_session.is_active():
+		return true
+	var cursor_point: Variant = _screen_to_command_plane(
+		camera.get_viewport().get_mouse_position() \
+			if camera != null else Vector2.ZERO
+	)
+	if cursor_point == null:
+		selection_controller.command_feedback.emit(
+			"Dive targeting requires a valid battle position."
+		)
+		return true
+	if not dive_targeting_session.begin(
+		squadrons,
+		cursor_point as Vector3
+	):
+		selection_controller.command_feedback.emit(
+			"Selected squadrons cannot begin a dive attack."
+		)
+		return true
+	selection_controller.cancel_drag()
+	selection_controller.command_feedback.emit(
+		"Dive targeting: left-click the bomb point."
+	)
+	return true
+
+
 func _screen_to_command_plane(screen_position: Vector2) -> Variant:
 	if world_pointer_resolver == null or camera == null:
 		return null
@@ -218,6 +376,7 @@ func _on_aircraft_selection_changed(
 		_squadrons: Array[AircraftSquadron]
 ) -> void:
 	cancel_torpedo_targeting(&"selection_changed")
+	cancel_dive_targeting(&"selection_changed")
 
 
 func _disconnect_selection_changed() -> void:

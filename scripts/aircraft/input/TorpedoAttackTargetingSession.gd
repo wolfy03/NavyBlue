@@ -130,10 +130,15 @@ func update_drag(world_point: Vector3) -> void:
 	_refresh_preview()
 
 
-func complete_drag(
+func resolve_drag_commands(
 		world_point: Vector3,
 		target_ship: ShipUnit = null
 ) -> Array[TorpedoAttackCommand]:
+	# Builds the per-squadron commands without finalizing the session. On any
+	# resolve failure the session falls back to ARMED (invalid preview shown)
+	# so the player can re-drag; the caller receives an empty array. On success
+	# the session stays DRAGGING and the caller must call confirm_completed()
+	# once it has verified every squadron can apply its command atomically.
 	var commands: Array[TorpedoAttackCommand] = []
 	if state != State.DRAGGING:
 		return commands
@@ -151,7 +156,7 @@ func complete_drag(
 		target_ship
 	)
 	if not base_result.success:
-		cancel(base_result.failure_reason)
+		_return_to_armed(base_result.failure_reason)
 		return commands
 	for index in squadrons.size():
 		var centered_index := float(index) \
@@ -163,12 +168,18 @@ func complete_drag(
 			_battle_environment
 		)
 		if not offset_result.success:
-			cancel(offset_result.failure_reason)
 			commands.clear()
+			_return_to_armed(offset_result.failure_reason)
 			return commands
 		offset_result.command.target_ship = target_ship \
 			if target_ship != null and is_instance_valid(target_ship) else null
 		commands.append(offset_result.command)
+	return commands
+
+
+func confirm_completed(commands: Array[TorpedoAttackCommand]) -> void:
+	if state != State.DRAGGING:
+		return
 	state = State.INACTIVE
 	set_process(false)
 	_disconnect_squadron_callbacks()
@@ -176,6 +187,19 @@ func complete_drag(
 	_current_preview = null
 	_profile = null
 	targeting_completed.emit(commands)
+
+
+func return_to_armed(reason: StringName) -> void:
+	_return_to_armed(reason)
+
+
+func complete_drag(
+		world_point: Vector3,
+		target_ship: ShipUnit = null
+) -> Array[TorpedoAttackCommand]:
+	var commands := resolve_drag_commands(world_point, target_ship)
+	if not commands.is_empty():
+		confirm_completed(commands)
 	return commands
 
 
@@ -189,6 +213,17 @@ func cancel(reason: StringName) -> void:
 	_current_preview = null
 	_profile = null
 	targeting_cancelled.emit(reason)
+
+
+func _return_to_armed(_reason: StringName) -> void:
+	# A failed release keeps the session alive: end the drag, revert to ARMED,
+	# and refresh the (now invalid) preview so the player can drag again. The
+	# active mission is untouched and only right-click / ESC fully cancels.
+	if state == State.INACTIVE:
+		return
+	state = State.ARMED
+	set_process(true)
+	_refresh_preview()
 
 
 func is_active() -> bool:

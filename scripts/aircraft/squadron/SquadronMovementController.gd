@@ -6,6 +6,8 @@ const EPSILON := 0.0001
 var owner_squadron: AircraftSquadron
 var destination_tracker: SquadronDestinationTracker
 
+var _speed_overrides: Dictionary = {}
+
 
 func setup(
 		squadron: AircraftSquadron,
@@ -19,6 +21,27 @@ func setup(
 func shutdown() -> void:
 	owner_squadron = null
 	destination_tracker = null
+	_speed_overrides.clear()
+
+
+func set_speed_override(key: StringName, speed_mps: float) -> void:
+	_speed_overrides[key] = maxf(speed_mps, 0.0)
+
+
+func clear_speed_override(key: StringName) -> void:
+	_speed_overrides.erase(key)
+
+
+func get_effective_speed() -> float:
+	# Formation stepping speed. Active named overrides (e.g. the torpedo attack
+	# run) cap the squadron below its cruise speed; the smallest override wins.
+	var base_speed := owner_squadron._get_aircraft_speed()
+	if _speed_overrides.is_empty():
+		return base_speed
+	var capped := base_speed
+	for value in _speed_overrides.values():
+		capped = minf(capped, float(value))
+	return capped
 
 
 func set_destination(
@@ -102,7 +125,7 @@ func advance_formation_center(target: Vector3, delta: float) -> void:
 		owner_squadron._formation_forward = owner_squadron \
 			._formation_forward.slerp(desired_forward, weight).normalized()
 		var travel_distance := minf(
-			owner_squadron._get_aircraft_speed() * delta,
+			get_effective_speed() * delta,
 			horizontal_offset.length()
 		)
 		owner_squadron.formation_center += owner_squadron \
@@ -110,7 +133,7 @@ func advance_formation_center(target: Vector3, delta: float) -> void:
 	owner_squadron.formation_center.y = move_toward(
 		owner_squadron.formation_center.y,
 		target.y,
-		owner_squadron._get_aircraft_speed() * 0.35 * delta
+		get_effective_speed() * 0.35 * delta
 	)
 
 

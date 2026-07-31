@@ -52,6 +52,11 @@ func validate() -> PackedStringArray:
 	if minimum_release_speed_mps <= 0.0 \
 			or maximum_release_speed_mps < minimum_release_speed_mps:
 		errors.append("release speed range is invalid.")
+	if attack_run_speed_mps < minimum_release_speed_mps \
+			or attack_run_speed_mps > maximum_release_speed_mps:
+		errors.append(
+			"attack_run_speed_mps must lie within the release speed range."
+		)
 	if alignment_tolerance_deg <= 0.0:
 		errors.append("alignment_tolerance_deg must be positive.")
 	if release_point_tolerance_m <= 0.0:

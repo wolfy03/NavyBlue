@@ -50,6 +50,8 @@ const DEFAULT_DEBUG_SETTINGS: BattleDebugSettings = preload(
 	as TorpedoAttackTargetingSession
 @onready var torpedo_attack_arrow: TorpedoAttackArrowPresenter = \
 	get_node_or_null("TorpedoAttackArrow") as TorpedoAttackArrowPresenter
+var dive_bomb_targeting_session: DiveBombTargetingSession
+var dive_bomb_target_preview: DiveBombTargetPreview
 @onready var impact_marker: MeshInstance3D = get_node_or_null("ImpactMarker") as MeshInstance3D
 @onready var hud: Node = get_node_or_null("HUD")
 @onready var carrier_air_group_panel: CarrierAirGroupPanel = get_node_or_null(
@@ -151,6 +153,10 @@ func shutdown() -> void:
 		torpedo_attack_arrow.shutdown()
 	if torpedo_targeting_session != null:
 		torpedo_targeting_session.shutdown()
+	if dive_bomb_target_preview != null:
+		dive_bomb_target_preview.shutdown()
+	if dive_bomb_targeting_session != null:
+		dive_bomb_targeting_session.shutdown()
 	if aircraft_selection_controller != null:
 		aircraft_selection_controller.set_input_enabled(false)
 	if aircraft_command_presentation != null:
@@ -618,6 +624,17 @@ func _setup_camera_and_ui() -> void:
 			)
 			if torpedo_attack_arrow != null:
 				torpedo_attack_arrow.setup(torpedo_targeting_session)
+		var dive_session := DiveBombTargetingSession.new()
+		dive_session.name = "DiveBombTargetingSession"
+		add_child(dive_session)
+		dive_session.setup(battle_environment)
+		input_manager.setup_dive_targeting(dive_session)
+		var dive_preview := DiveBombTargetPreview.new()
+		dive_preview.name = "DiveBombTargetPreview"
+		add_child(dive_preview)
+		dive_preview.setup(dive_session)
+		dive_bomb_targeting_session = dive_session
+		dive_bomb_target_preview = dive_preview
 	else:
 		push_warning("PlayerInputManager is missing or does not support setup().")
 	if hud != null and hud.has_method("setup"):

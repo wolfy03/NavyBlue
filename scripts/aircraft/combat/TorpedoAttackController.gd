@@ -31,6 +31,8 @@ var abort_reason: StringName
 var _released_aircraft_ids: Dictionary = {}
 var _resolved_aircraft_ids: Dictionary = {}
 var _last_state_name: StringName
+var _flight_evaluator := TorpedoAttackFlightEvaluator.new()
+var _release_service := AircraftTorpedoReleaseService.new()
 
 
 func setup(
@@ -50,6 +52,7 @@ func setup(
 func shutdown() -> void:
 	if is_active():
 		abort(&"shutdown", false)
+	_clear_attack_run_speed_override()
 	owner_squadron = null
 	movement = null
 	battle_services = null
@@ -87,6 +90,13 @@ func can_begin_attack(next_command: TorpedoAttackCommand) -> bool:
 
 func begin_attack(next_command: TorpedoAttackCommand) -> bool:
 	if not can_begin_attack(next_command):
+		return false
+	var measured_run_distance := Vector2(
+		next_command.entry_point.x - next_command.actual_release_point.x,
+		next_command.entry_point.z - next_command.actual_release_point.z
+	).length()
+	if measured_run_distance + 0.01 < next_command.minimum_run_distance_m:
+		abort_reason = &"insufficient_measured_run_distance"
 		return false
 	command = next_command.duplicate_command()
 	command.attack_direction.y = 0.0
@@ -180,6 +190,9 @@ func _update_approaching(delta: float) -> void:
 			_with_altitude(command.entry_point, attack_profile.attack_entry_altitude_m),
 			&"torpedo_entry"
 		)
+		# From alignment onward the squadron must fly the attack run speed so it
+		# can actually reach the release envelope; escaping restores cruise.
+		_apply_attack_run_speed_override()
 		_set_state(State.ALIGNING)
 
 
@@ -189,11 +202,11 @@ func _update_aligning(delta: float) -> void:
 		attack_profile.attack_entry_altitude_m
 	)
 	_advance_formation(entry_target, delta)
-	var forward := owner_squadron.get_formation_forward()
-	forward.y = 0.0
-	var angle := rad_to_deg(forward.angle_to(command.attack_direction)) \
-		if forward.length_squared() > EPSILON else 180.0
-	if angle <= attack_profile.alignment_tolerance_deg:
+	if _flight_evaluator.is_heading_aligned(
+		owner_squadron.get_formation_forward(),
+		command.attack_direction,
+		attack_profile.alignment_tolerance_deg
+	):
 		_set_state(State.DESCENDING)
 
 
@@ -225,10 +238,11 @@ func _update_attack_run(delta: float) -> void:
 		delta,
 		release_target.y
 	)
-	var remaining_along := (
-		release_target - owner_squadron.formation_center
-	).dot(command.attack_direction)
-	if remaining_along <= attack_profile.release_point_tolerance_m:
+	if _flight_evaluator.has_reached_release_line(
+		owner_squadron.formation_center,
+		command,
+		attack_profile.release_point_tolerance_m
+	):
 		_set_state(State.RELEASING)
 
 
@@ -245,67 +259,32 @@ func _update_releasing(delta: float) -> void:
 			abort_reason = &"no_releasable_payload"
 		_begin_escape()
 		return
-	var along_after_release := (
-		owner_squadron.formation_center - command.actual_release_point
-	).dot(command.attack_direction)
-	if along_after_release >= attack_profile.release_grace_distance_m:
+	if _flight_evaluator.is_release_window_missed(
+		owner_squadron.formation_center,
+		command.actual_release_point,
+		command.attack_direction,
+		attack_profile.release_grace_distance_m
+	):
 		abort_reason = &"release_window_missed"
 		_begin_escape()
 
 
 func _release_ready_aircraft() -> void:
-	for aircraft in owner_squadron.get_alive_aircraft():
-		var id := aircraft.get_instance_id()
-		if _resolved_aircraft_ids.has(id):
+	var pass_result := _release_service.release_ready_aircraft(
+		owner_squadron,
+		command,
+		attack_profile,
+		_flight_evaluator,
+		_resolved_aircraft_ids
+	)
+	for resolved_id in pass_result.resolved_aircraft_ids:
+		_resolved_aircraft_ids[resolved_id] = true
+	for released_id in pass_result.released_aircraft_ids:
+		if _released_aircraft_ids.has(released_id):
 			continue
-		var weapon := aircraft.weapon_controller
-		if weapon == null or weapon.weapon_data == null \
-				or weapon.weapon_data.weapon_type \
-					!= AircraftWeaponData.WeaponType.TORPEDO \
-				or not weapon.has_ammunition():
-			_resolved_aircraft_ids[id] = true
-			continue
-		if not _aircraft_meets_release_envelope(aircraft):
-			continue
-		var request := AirDroppedTorpedoLaunchRequest.new()
-		request.source_aircraft = aircraft
-		request.source_squadron = owner_squadron
-		request.launch_position = aircraft \
-			.get_payload_release_transform().origin
-		request.launch_direction = command.attack_direction
-		request.aircraft_velocity = aircraft.get_world_velocity()
-		request.target_point = command.escape_point
-		request.target_ship = command.target_ship
-		request.torpedo_data = weapon.weapon_data.projectile_data \
-			as TorpedoProjectileData
-		request.command_id = command.command_id
-		var release_result := weapon.release_air_dropped_torpedo(request)
-		if release_result.success:
-			_released_aircraft_ids[id] = true
-			_resolved_aircraft_ids[id] = true
-			released_aircraft_count += 1
-			torpedo_released.emit(id, released_aircraft_count)
-
-
-func _aircraft_meets_release_envelope(aircraft: AircraftUnit) -> bool:
-	var altitude := aircraft.global_position.y - command.command_plane_height_m
-	if altitude < attack_profile.release_altitude_m - 2.0 \
-			or altitude > attack_profile.maximum_release_altitude_m:
-		return false
-	var speed := aircraft.get_world_velocity().length()
-	if speed < attack_profile.minimum_release_speed_mps \
-			or speed > attack_profile.maximum_release_speed_mps:
-		return false
-	var forward := aircraft.get_forward_direction()
-	forward.y = 0.0
-	if forward.length_squared() <= EPSILON \
-			or rad_to_deg(forward.angle_to(command.attack_direction)) \
-				> attack_profile.alignment_tolerance_deg:
-		return false
-	var release_offset := aircraft.global_position - command.actual_release_point
-	release_offset.y = 0.0
-	return absf(release_offset.dot(command.attack_direction)) \
-		<= attack_profile.release_point_tolerance_m
+		_released_aircraft_ids[released_id] = true
+		released_aircraft_count += 1
+		torpedo_released.emit(released_id, released_aircraft_count)
 
 
 func _all_surviving_aircraft_resolved() -> bool:
@@ -321,6 +300,7 @@ func _all_surviving_aircraft_resolved() -> bool:
 func _begin_escape() -> void:
 	if state == State.ESCAPING:
 		return
+	_clear_attack_run_speed_override()
 	owner_squadron.restore_formation_flight()
 	_set_attack_destination(
 		_with_altitude(command.escape_point, attack_profile.escape_altitude_m),
@@ -356,6 +336,7 @@ func _with_altitude(point: Vector3, altitude_m: float) -> Vector3:
 
 
 func _finish(aborted: bool) -> void:
+	_clear_attack_run_speed_override()
 	if owner_squadron != null and is_instance_valid(owner_squadron):
 		owner_squadron.set_combat_formation_enabled(false)
 		owner_squadron.restore_formation_flight()
@@ -370,3 +351,16 @@ func _set_state(next_state: State) -> void:
 	state = next_state
 	_last_state_name = StringName(State.keys()[int(state)])
 	state_changed.emit(state)
+
+
+func _apply_attack_run_speed_override() -> void:
+	if movement != null and attack_profile != null:
+		movement.set_speed_override(
+			&"torpedo_attack",
+			attack_profile.attack_run_speed_mps
+		)
+
+
+func _clear_attack_run_speed_override() -> void:
+	if movement != null:
+		movement.clear_speed_override(&"torpedo_attack")

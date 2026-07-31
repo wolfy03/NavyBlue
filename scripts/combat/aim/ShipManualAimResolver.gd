@@ -26,4 +26,12 @@ func create_command(
 	command.clicked_world_point = world_point
 	command.maximum_range_m = ship \
 		.get_player_cannon_preview_range_m()
+	# Fire at the clicked distance (horizontal), clamped so it never exceeds the
+	# turrets' reachable range. This replaces always firing at maximum range.
+	var requested_range := Vector2(local_point.x, local_point.z).length()
+	command.range_m = clampf(
+		requested_range,
+		0.0,
+		command.maximum_range_m
+	) if command.maximum_range_m > 0.0 else requested_range
 	return command

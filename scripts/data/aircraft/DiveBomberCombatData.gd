@@ -31,6 +31,14 @@ var pull_out_aircraft_ratio: float = 0.5
 @export var dive_entry_distance_m: float = 900.0
 @export var automatic_release_distance_m: float = 180.0
 
+@export_category("Bombing Accuracy")
+# Dispersion radius (metres) bombs scatter within, resolved through
+# DiveBombAccuracyResolver. base_dispersion_radius_m is a lone bomber's spread;
+# it tightens toward minimum_dispersion_radius_m as more aircraft survive.
+@export var base_dispersion_radius_m: float = 95.0
+@export var minimum_dispersion_radius_m: float = 28.0
+@export var dispersion_reduction_per_extra_aircraft_m: float = 14.0
+
 
 func validate() -> PackedStringArray:
 	var errors := PackedStringArray()
@@ -93,4 +101,16 @@ func validate() -> PackedStringArray:
 		errors.append("dive_entry_distance_m must be positive.")
 	if automatic_release_distance_m <= 0.0:
 		errors.append("automatic_release_distance_m must be positive.")
+	if base_dispersion_radius_m <= 0.0:
+		errors.append("base_dispersion_radius_m must be positive.")
+	if minimum_dispersion_radius_m < 0.0 \
+			or minimum_dispersion_radius_m > base_dispersion_radius_m:
+		errors.append(
+			"minimum_dispersion_radius_m must be within "
+			+ "[0, base_dispersion_radius_m]."
+		)
+	if dispersion_reduction_per_extra_aircraft_m < 0.0:
+		errors.append(
+			"dispersion_reduction_per_extra_aircraft_m must not be negative."
+		)
 	return errors

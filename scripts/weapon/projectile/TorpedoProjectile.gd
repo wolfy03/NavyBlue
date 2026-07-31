@@ -219,10 +219,18 @@ func _enter_water() -> void:
 	armed = false
 	launch_phase = LaunchPhase.ARMING
 	if battle_services != null:
-		battle_services.events.emit_projectile_water_impact(
-			running_transform.origin,
-			torpedo_data.water_entry_effect_strength
-		)
+		# Route the entry splash through the standard projectile-impact effect
+		# path so CombatEffectPresenter spawns exactly one water splash. This is
+		# emitted directly (not via emit_impact) so it does not consume the
+		# projectile's one-shot impact reserved for the eventual ship hit.
+		var water_impact := ProjectileImpactResult.new()
+		water_impact.projectile = self
+		water_impact.surface_type = ProjectileImpactResult.SurfaceType.WATER
+		water_impact.hit_position = running_transform.origin
+		water_impact.hit_normal = Vector3.UP
+		water_impact.incoming_velocity = intended_launch_direction
+		water_impact.impact_strength = torpedo_data.water_entry_effect_strength
+		battle_services.events.emit_projectile_impact(water_impact)
 	_start_wake()
 
 

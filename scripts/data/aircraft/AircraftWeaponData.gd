@@ -28,6 +28,11 @@ enum ReleaseMode {
 @export var release_mode: ReleaseMode = ReleaseMode.SINGLE
 @export_range(1, 16, 1) var projectiles_per_release: int = 1
 @export var release_interval_sec: float = 0.2
+# Legacy release-envelope fields below are consumed only by BOMB / dive-bomber
+# weapons (see supports_release()). Torpedo bombers do NOT read them: their
+# release altitude/distance envelope lives on TorpedoAttackProfile, which is the
+# authoritative source for all torpedo attack-run geometry. Do not reference
+# these from torpedo controllers or resolvers.
 @export var minimum_release_distance_m: float = 80.0
 @export var maximum_release_distance_m: float = 350.0
 @export var minimum_release_altitude_m: float = 50.0
@@ -35,6 +40,9 @@ enum ReleaseMode {
 @export var downward_release_speed_mps: float = 20.0
 
 @export_category("Mission")
+# Legacy dive-bomb approach/egress distances. Torpedo bombers use
+# TorpedoAttackProfile.approach_distance_m / escape_distance_m instead; these two
+# fields are retained for BOMB weapons and must not be used by the torpedo path.
 @export var attack_approach_distance_m: float = 1000.0
 @export var attack_egress_distance_m: float = 700.0
 @export var return_after_ammunition_depleted: bool = true
