@@ -1,0 +1,87 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/aircraft/presentation/SquadronSelectionBox.gd" id="1_box"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_edge"]
+size = Vector3(1, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_edge"]
+transparency = 1
+albedo_color = Color(0.15, 1, 0.25, 0.75)
+shading_mode = 0
+
+[node name="SquadronSelectionBox" type="Node3D"]
+visible = false
+script = ExtResource("1_box")
+
+[node name="EdgeX1" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeX2" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeX3" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeX4" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeY1" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeY2" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeY3" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeY4" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeZ1" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeZ2" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeZ3" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")
+
+[node name="EdgeZ4" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_edge")
+material_override = SubResource("StandardMaterial3D_edge")

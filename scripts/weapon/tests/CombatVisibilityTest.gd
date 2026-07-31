@@ -34,7 +34,7 @@ func _run() -> void:
 		_test_ballistic_configuration(player)
 		_test_maximum_range_pitch(player)
 		_test_impact_marker(scene, player)
-		_test_cannon_range_preview(player)
+		_test_cannon_range_preview(scene, player)
 		_test_shell_trail(scene, player)
 		_check(destroyer != null, "battle contains a destroyer")
 		if destroyer != null:
@@ -127,22 +127,29 @@ func _test_ballistic_configuration(player: ShipUnit) -> void:
 		)
 
 
-func _test_cannon_range_preview(player: ShipUnit) -> void:
-	var preview := player.get_node_or_null("CannonAimPreview") \
-		as CannonAimPreview
-	_check(preview != null, "player includes a cannon range preview")
+func _test_cannon_range_preview(
+		scene: BattleScene,
+		player: ShipUnit
+) -> void:
+	var preview := scene.ship_aim_range_preview
+	_check(preview != null, "battle includes a cannon range preview")
 	if preview == null:
 		return
-	player.combat.set_aim_point(
+	scene.input_manager.ship_command_controller.set_aim_point(
 		player.global_position + Vector3(0.0, 0.0, -3000.0)
 	)
-	preview.call(&"_refresh_preview")
-	var preview_mesh := preview.mesh as ImmediateMesh
+	preview.call(&"_process", 0.0)
+	var preview_mesh := preview.line_mesh.mesh as BoxMesh
+	var maximum_range := player \
+		.get_selected_cannon_maximum_range_m()
 	_check(
 		preview.visible
 			and preview_mesh != null
-			and preview_mesh.get_surface_count() > 0,
-		"cannon maximum-range circle and aim line are visible"
+			and is_equal_approx(
+				preview.line_mesh.scale.z,
+				maximum_range
+			),
+		"solid cannon aim line uses the runtime maximum range"
 	)
 
 

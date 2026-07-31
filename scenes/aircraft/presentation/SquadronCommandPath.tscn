@@ -1,0 +1,33 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/aircraft/presentation/SquadronCommandPathPresenter.gd" id="1_path"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_path"]
+size = Vector3(1, 1, 1)
+
+[sub_resource type="TorusMesh" id="TorusMesh_destination"]
+inner_radius = 10.0
+outer_radius = 13.0
+rings = 12
+ring_segments = 24
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_path"]
+transparency = 1
+albedo_color = Color(0.2, 1, 0.35, 0.55)
+shading_mode = 0
+
+[node name="SquadronCommandPath" type="Node3D"]
+visible = false
+script = ExtResource("1_path")
+
+[node name="PathLine" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_path")
+material_override = SubResource("StandardMaterial3D_path")
+
+[node name="DestinationMarker" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("TorusMesh_destination")
+material_override = SubResource("StandardMaterial3D_path")

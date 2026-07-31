@@ -133,6 +133,17 @@ func suspend_player_combat_input(
 func set_aim_point(world_point: Vector3) -> void:
 	combat.set_aim_point(world_point)
 
+
+func apply_manual_aim_command(
+		command: ShipManualAimCommand
+) -> void:
+	combat.apply_manual_aim_command(command)
+
+
+func get_selected_cannon_maximum_range_m() -> float:
+	return combat.get_selected_cannon_maximum_range_m() \
+		if combat != null else 0.0
+
 func set_navigation_target(world_position: Vector3) -> void:
 	navigation.set_navigation_target(world_position)
 
@@ -515,6 +526,8 @@ func _rebuild_weapon_mounts() -> void:
 	var previous_target = combat.target
 	var previous_aim_point := combat.aim_point
 	var previous_has_aim_point := combat.has_aim_point
+	var previous_aim_mode := combat.aim_mode
+	var previous_manual_command := combat.get_manual_aim_command()
 	_capture_runtime_stats_from_mounts()
 	_repair_weapon_loadout()
 	var built_mounts: Array[WeaponMount] = visual_builder.build(
@@ -527,9 +540,14 @@ func _rebuild_weapon_mounts() -> void:
 	)
 	_apply_runtime_stats_to_mounts(built_mounts)
 	combat.setup(self, built_mounts)
-	if is_instance_valid(previous_target):
+	if previous_aim_mode \
+			== ShipCombat.AimMode.MANUAL_RELATIVE_BEARING \
+			and previous_manual_command != null:
+		combat.apply_manual_aim_command(previous_manual_command)
+	elif is_instance_valid(previous_target):
 		combat.set_target(previous_target)
-	if previous_has_aim_point:
+		combat.set_aim_point(previous_aim_point)
+	elif previous_has_aim_point:
 		combat.set_aim_point(previous_aim_point)
 
 

@@ -4,6 +4,7 @@ class_name PlayerInputManager
 signal selection_changed(selected_ships: Array[ShipUnit])
 signal move_command_issued(target: Vector3, ships: Array[ShipUnit])
 signal command_mode_changed(mode: CommandMode)
+signal input_enabled_changed(enabled: bool)
 
 enum CommandMode {
 	SHIP,
@@ -108,6 +109,7 @@ func set_input_enabled(enabled: bool) -> void:
 	if not enabled:
 		ship_command_controller.suspend_combat_input()
 		aircraft_command_controller.cancel_targeting()
+	input_enabled_changed.emit(enabled)
 
 
 func is_input_enabled() -> bool:
@@ -175,6 +177,7 @@ func _input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed(&"toggle_command_mode") \
 			and not event.is_echo():
+		_release_non_text_ui_focus()
 		toggle_command_mode()
 		get_viewport().set_input_as_handled()
 		return
@@ -366,6 +369,15 @@ func _is_text_input_focused() -> bool:
 		or focused is SpinBox
 
 
+func _release_non_text_ui_focus() -> void:
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused == null or focused is LineEdit \
+			or focused is TextEdit \
+			or focused is SpinBox:
+		return
+	focused.release_focus()
+
+
 func _sync_carrier_selection() -> void:
 	if carrier_command_controller == null:
 		return
@@ -393,6 +405,7 @@ func _on_ship_selection_changed(
 		next_selected_ships: Array[ShipUnit]
 ) -> void:
 	selection_changed.emit(next_selected_ships)
+	ship_command_controller.refresh_manual_aim_preview()
 	_sync_carrier_selection()
 
 

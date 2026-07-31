@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/aircraft/presentation/AircraftCommandPresentation.gd" id="1_presentation"]
+[ext_resource type="PackedScene" path="res://scenes/aircraft/presentation/SquadronSelectionBox.tscn" id="2_box"]
+[ext_resource type="PackedScene" path="res://scenes/aircraft/presentation/SquadronCommandPath.tscn" id="3_path"]
+[ext_resource type="PackedScene" path="res://scenes/aircraft/presentation/SquadronStatusOverlay.tscn" id="4_overlay"]
+
+[node name="AircraftCommandPresentation" type="Node"]
+script = ExtResource("1_presentation")
+selection_box_scene = ExtResource("2_box")
+command_path_scene = ExtResource("3_path")
+status_overlay_scene = ExtResource("4_overlay")
+
+[node name="SelectionBoxRoot" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="CommandPathRoot" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="StatusOverlayLayer" type="CanvasLayer" parent="."]
+layer = 20
+
+[node name="StatusOverlayRoot" type="Control" parent="StatusOverlayLayer"]
+unique_name_in_owner = true
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2

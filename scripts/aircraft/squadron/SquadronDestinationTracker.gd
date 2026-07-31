@@ -3,11 +3,15 @@ class_name SquadronDestinationTracker
 
 var command_serial := 0
 var reached_serial := -1
+var command_type: StringName
+var active := false
 
 
-func begin_command() -> int:
+func begin_command(next_command_type: StringName = &"mission") -> int:
 	command_serial += 1
 	reached_serial = -1
+	command_type = next_command_type
+	active = true
 	return command_serial
 
 
@@ -24,6 +28,27 @@ func is_reached(serial: int = -1) -> bool:
 func reset() -> void:
 	command_serial = 0
 	reached_serial = -1
+	command_type = StringName()
+	active = false
+
+
+func clear_active_command() -> void:
+	active = false
+	command_type = StringName()
+
+
+func get_snapshot(
+		destination: Vector3,
+		loitering: bool
+) -> SquadronDestinationSnapshot:
+	var snapshot := SquadronDestinationSnapshot.new()
+	snapshot.active = active
+	snapshot.destination = destination
+	snapshot.reached = is_reached()
+	snapshot.loitering = loitering
+	snapshot.command_type = command_type
+	snapshot.command_serial = command_serial
+	return snapshot
 
 
 func shutdown() -> void:

@@ -23,7 +23,8 @@ func shutdown() -> void:
 
 func set_destination(
 		world_position: Vector3,
-		force_new_command: bool = false
+		force_new_command: bool = false,
+		command_type: StringName = &"mission"
 ) -> int:
 	if owner_squadron.state in [
 		AircraftSquadron.State.RETURNING,
@@ -41,11 +42,12 @@ func set_destination(
 				AircraftSquadron.State.HOLDING,
 			]:
 		return destination_tracker.command_serial
-	var command_serial := destination_tracker.begin_command()
+	var command_serial := destination_tracker.begin_command(command_type)
 	owner_squadron._loiter_initialized = false
 	owner_squadron.destination = next_destination
 	owner_squadron.state = AircraftSquadron.State.EN_ROUTE
 	owner_squadron.set_physics_process(true)
+	owner_squadron._on_destination_command_changed()
 	return command_serial
 
 
@@ -58,6 +60,7 @@ func update_standard_movement(delta: float) -> void:
 					destination_tracker.command_serial
 				)
 				begin_loiter()
+				owner_squadron._on_destination_command_reached()
 		AircraftSquadron.State.HOLDING:
 			update_loiter(delta)
 		AircraftSquadron.State.RETURNING:

@@ -1,9 +1,19 @@
 extends Node
 class_name ShipCombat
 
+enum AimMode {
+	FORWARD,
+	MANUAL_RELATIVE_BEARING,
+	TRACK_WORLD_TARGET,
+}
+
 var target
 var aim_point := Vector3.ZERO
 var has_aim_point := false
+var aim_mode: AimMode = AimMode.FORWARD
+var manual_azimuth_rad := 0.0
+var manual_elevation_rad := 0.0
+var _manual_aim_command: ShipManualAimCommand
 var weapon_mounts: Array[WeaponMount] = []
 # Deprecated: compatibility only. Do not use in new code.
 var turrets: Array = []
@@ -24,11 +34,15 @@ func setup(next_owner_ship: ShipUnit, next_weapon_mounts: Array) -> void:
 
 func set_target(next_target) -> void:
 	target = next_target
+	if next_target != null:
+		aim_mode = AimMode.TRACK_WORLD_TARGET
 
 
 func clear_target() -> void:
 	target = null
 	has_aim_point = false
+	aim_mode = AimMode.FORWARD
+	_manual_aim_command = null
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
 		if mount != null:
@@ -38,10 +52,47 @@ func clear_target() -> void:
 func set_aim_point(world_point: Vector3) -> void:
 	aim_point = world_point
 	has_aim_point = true
+	aim_mode = AimMode.TRACK_WORLD_TARGET
+	_manual_aim_command = null
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
 		if mount != null:
 			mount.aim_at(world_point)
+
+
+func apply_manual_aim_command(command: ShipManualAimCommand) -> void:
+	if command == null:
+		return
+	_manual_aim_command = command.duplicate_command()
+	manual_azimuth_rad = command.local_azimuth_rad
+	manual_elevation_rad = command.elevation_rad
+	target = null
+	aim_mode = AimMode.MANUAL_RELATIVE_BEARING
+	has_aim_point = true
+	_update_manual_relative_aim_point()
+
+
+func get_manual_aim_command() -> ShipManualAimCommand:
+	return _manual_aim_command.duplicate_command() \
+		if aim_mode == AimMode.MANUAL_RELATIVE_BEARING \
+		and _manual_aim_command != null else null
+
+
+func is_manual_relative_aim_active() -> bool:
+	return aim_mode == AimMode.MANUAL_RELATIVE_BEARING \
+		and _manual_aim_command != null
+
+
+func get_manual_aim_world_direction() -> Vector3:
+	if owner_ship == null or not is_instance_valid(owner_ship):
+		return Vector3.ZERO
+	var local_direction := Vector3(
+		sin(manual_azimuth_rad) * cos(manual_elevation_rad),
+		sin(manual_elevation_rad),
+		-cos(manual_azimuth_rad) * cos(manual_elevation_rad)
+	).normalized()
+	return (owner_ship.global_transform.basis * local_direction) \
+		.normalized()
 
 
 func adjust_turret_pitch(delta_degrees: float) -> void:
@@ -127,17 +178,45 @@ func fire_all() -> void:
 
 
 func update_weapon_mounts(next_owner_ship: Node3D, use_default_aim: bool) -> void:
+	if aim_mode == AimMode.MANUAL_RELATIVE_BEARING:
+		_update_manual_relative_aim_point()
+	elif aim_mode == AimMode.TRACK_WORLD_TARGET \
+			and target is Node3D \
+			and is_instance_valid(target):
+		aim_point = (target as Node3D).global_position
 	if not has_aim_point and use_default_aim and next_owner_ship != null:
-		set_aim_point(
-			next_owner_ship.global_position
+		aim_mode = AimMode.FORWARD
+		aim_point = next_owner_ship.global_position \
 			+ -next_owner_ship.global_transform.basis.z * 60.0
-		)
+		has_aim_point = true
 	if not has_aim_point:
 		return
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
 		if mount != null:
-			mount.aim_at(aim_point)
+			if aim_mode == AimMode.MANUAL_RELATIVE_BEARING:
+				var direction := get_manual_aim_world_direction()
+				mount.aim_at(
+					mount.global_position \
+					+ direction * mount.get_range_m()
+				)
+			else:
+				mount.aim_at(aim_point)
+
+
+func _update_manual_relative_aim_point() -> void:
+	var direction := get_manual_aim_world_direction()
+	if direction.length_squared() <= 0.0001 \
+			or owner_ship == null \
+			or not is_instance_valid(owner_ship):
+		has_aim_point = false
+		return
+	var range_m := get_selected_cannon_maximum_range_m()
+	if range_m <= 0.0 and _manual_aim_command != null:
+		range_m = _manual_aim_command.maximum_range_m
+	aim_point = owner_ship.global_position \
+		+ direction * maxf(range_m, 60.0)
+	has_aim_point = true
 
 
 func update_turrets(next_owner_ship: Node3D, use_default_aim: bool) -> void:
@@ -244,6 +323,19 @@ func get_primary_weapon_range_m() -> float:
 		if mount != null:
 			return mount.get_range_m()
 	return 0.0
+
+
+func get_selected_cannon_maximum_range_m() -> float:
+	var maximum_range_m := 0.0
+	for mount in get_weapons_by_type(WeaponTypes.Type.CANNON):
+		if mount.weapon_data == null \
+				or mount.get_range_m() <= 0.0:
+			continue
+		maximum_range_m = maxf(
+			maximum_range_m,
+			mount.get_range_m()
+		)
+	return maximum_range_m
 
 
 func get_max_weapon_range_m(type_filter: Variant = null) -> float:

@@ -24,6 +24,7 @@ func _run() -> void:
 		),
 		"collaborator setup failure is reported"
 	)
+	invalid_pool.free()
 	_check(
 		not services.is_configured()
 			and not services.events.is_configured()

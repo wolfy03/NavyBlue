@@ -14,7 +14,6 @@
 [ext_resource type="Script" path="res://scripts/unit/ShipDamageStatus.gd" id="12_damage_status"]
 [ext_resource type="Script" path="res://scripts/weapon/TorpedoAimPreview.gd" id="13_torpedo_preview"]
 [ext_resource type="Script" path="res://scripts/unit/ShipWakeEmitter.gd" id="14_ship_wake"]
-[ext_resource type="Script" path="res://scripts/weapon/CannonAimPreview.gd" id="15_cannon_preview"]
 [ext_resource type="Script" path="res://scripts/aircraft/CarrierAirGroup.gd" id="16_air_group"]
 [ext_resource type="Script" path="res://scripts/aircraft/CarrierAirGroupAI.gd" id="17_air_group_ai"]
 
@@ -66,9 +65,6 @@ surface_material_override/0 = SubResource("StandardMaterial3D_deck")
 
 [node name="TorpedoAimPreview" type="MeshInstance3D" parent="."]
 script = ExtResource("13_torpedo_preview")
-
-[node name="CannonAimPreview" type="MeshInstance3D" parent="."]
-script = ExtResource("15_cannon_preview")
 
 [node name="ShipWakeEmitter" type="GPUParticles3D" parent="."]
 emitting = false

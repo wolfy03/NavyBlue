@@ -2,6 +2,11 @@ extends RefCounted
 class_name ShipCommandController
 
 signal move_command_issued(target: Vector3, ships: Array[ShipUnit])
+signal manual_aim_changed(
+	ship: ShipUnit,
+	command: ShipManualAimCommand
+)
+signal manual_aim_cleared(ship: ShipUnit)
 
 var selection: SelectionCoordinator
 var battlefield_bounds: BattlefieldBounds
@@ -9,6 +14,7 @@ var rules: BattlefieldRules
 var formation_data: FleetFormationData
 var formation_planner: FleetFormationPlanner
 var movement_marker: Node3D
+var manual_aim_resolver := ShipManualAimResolver.new()
 
 
 func setup(
@@ -64,7 +70,37 @@ func set_aim_point(point: Vector3) -> void:
 	if selection == null:
 		return
 	for ship in selection.get_selected_ships():
-		ship.set_aim_point(point)
+		var command := manual_aim_resolver.create_command(
+			ship,
+			point
+		)
+		ship.apply_manual_aim_command(command)
+	var controlled_ship := selection.controlled_ship
+	if controlled_ship != null \
+			and is_instance_valid(controlled_ship) \
+			and controlled_ship.combat != null:
+		var preview_command := controlled_ship.combat \
+			.get_manual_aim_command()
+		if preview_command != null:
+			manual_aim_changed.emit(
+				controlled_ship,
+				preview_command
+			)
+
+
+func refresh_manual_aim_preview() -> void:
+	var controlled_ship := selection.controlled_ship \
+		if selection != null else null
+	if controlled_ship == null \
+			or not is_instance_valid(controlled_ship) \
+			or controlled_ship.combat == null:
+		manual_aim_cleared.emit(null)
+		return
+	var command := controlled_ship.combat.get_manual_aim_command()
+	if command == null:
+		manual_aim_cleared.emit(controlled_ship)
+		return
+	manual_aim_changed.emit(controlled_ship, command)
 
 
 func adjust_turret_pitch(delta_degrees: float) -> void:

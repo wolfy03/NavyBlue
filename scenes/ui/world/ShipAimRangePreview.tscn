@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/presentation/ShipAimRangePreview.gd" id="1_preview"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_line"]
+size = Vector3(1, 1, 1)
+
+[node name="ShipAimRangePreview" type="Node3D"]
+visible = false
+script = ExtResource("1_preview")
+
+[node name="LineMesh" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_line")

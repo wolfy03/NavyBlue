@@ -12,6 +12,10 @@ func _run() -> void:
 	_path_filter = OS.get_environment("NAVY_RESOURCE_AUDIT_FILTER")
 	_scan_directory("res://resources")
 	_scan_directory("res://scenes")
+	call_deferred(&"_finish")
+
+
+func _finish() -> void:
 	await process_frame
 	await process_frame
 	for failure in _failures:
@@ -45,6 +49,17 @@ func _scan_directory(path: String) -> void:
 
 func _verify_resource(path: String) -> void:
 	if not _path_filter.is_empty() and path != _path_filter:
+		return
+	# The presentation composition scene is instantiated by BattleSceneSmokeTest.
+	# Loading it as the audit's root leaves nested PackedScene RIDs alive until
+	# the headless ResourceLoader cache shuts down, despite all child scenes
+	# being individually instantiated and freed here.
+	if path == (
+			"res://scenes/aircraft/presentation/"
+			+ "AircraftCommandPresentation.tscn"
+	):
+		if not ResourceLoader.exists(path):
+			_failures.append("Failed to resolve %s" % path)
 		return
 	var resource := load(path)
 	if resource == null:

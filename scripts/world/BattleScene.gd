@@ -38,6 +38,12 @@ const DEFAULT_DEBUG_SETTINGS: BattleDebugSettings = preload(
 @onready var aircraft_selection_controller: AircraftSelectionController = \
 	get_node_or_null("AircraftSelectionController") \
 	as AircraftSelectionController
+@onready var ship_aim_range_preview: ShipAimRangePreview = get_node_or_null(
+	"ShipAimRangePreview"
+) as ShipAimRangePreview
+@onready var aircraft_command_presentation: AircraftCommandPresentation = \
+	get_node_or_null("AircraftCommandPresentation") \
+	as AircraftCommandPresentation
 @onready var impact_marker: MeshInstance3D = get_node_or_null("ImpactMarker") as MeshInstance3D
 @onready var hud: Node = get_node_or_null("HUD")
 @onready var carrier_air_group_panel: CarrierAirGroupPanel = get_node_or_null(
@@ -137,6 +143,10 @@ func shutdown() -> void:
 		input_manager.set_input_enabled(false)
 	if aircraft_selection_controller != null:
 		aircraft_selection_controller.set_input_enabled(false)
+	if aircraft_command_presentation != null:
+		aircraft_command_presentation.shutdown()
+	if ship_aim_range_preview != null:
+		ship_aim_range_preview.shutdown()
 	if battle_state_controller != null:
 		battle_state_controller.stop_battle()
 	for controller_value in _fleet_controllers.values():
@@ -561,6 +571,11 @@ func _setup_camera_and_ui() -> void:
 			camera,
 			battle_environment
 		)
+		if ship_aim_range_preview != null:
+			ship_aim_range_preview.setup(
+				input_manager,
+				input_manager.ship_command_controller
+			)
 		if aircraft_selection_controller != null:
 			aircraft_selection_controller.setup(
 				camera,
@@ -571,6 +586,12 @@ func _setup_camera_and_ui() -> void:
 			input_manager.set_aircraft_selection_controller(
 				aircraft_selection_controller
 			)
+			if aircraft_command_presentation != null:
+				aircraft_command_presentation.setup(
+					aircraft_selection_controller,
+					camera,
+					battle_environment
+				)
 		if carrier_command_controller != null:
 			carrier_command_controller.setup(
 				camera,

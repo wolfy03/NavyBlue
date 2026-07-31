@@ -26,6 +26,7 @@ var _missing_data_warnings: Dictionary = {}
 
 
 func _ready() -> void:
+	UIFocusPolicy.make_mouse_only(self)
 	visible = false
 	strike_button.pressed.connect(_on_strike_pressed)
 	manual_launch_button.pressed.connect(_on_manual_launch_pressed)

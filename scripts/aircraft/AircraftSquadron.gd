@@ -7,6 +7,8 @@ signal aircraft_lost(squadron, aircraft: AircraftUnit)
 signal formation_activated(squadron)
 signal return_requested(squadron)
 signal player_selection_changed(selected: bool)
+signal player_destination_changed(snapshot: SquadronDestinationSnapshot)
+signal player_destination_reached
 signal aircraft_weapon_release_finished(
 	aircraft_id: int,
 	aircraft: AircraftUnit,
@@ -47,8 +49,6 @@ const EPSILON := 0.0001
 ) as AircraftMissionController
 @onready var dive_bomb_controller: DiveBombAttackController = \
 	get_node_or_null("DiveBombAttackController") as DiveBombAttackController
-@onready var selection_indicator: MeshInstance3D = \
-	get_node_or_null("SelectionIndicator") as MeshInstance3D
 
 @export var manual_return_after_release := false
 @export var destination_change_epsilon_m := 5.0
@@ -204,7 +204,8 @@ func request_return() -> void:
 	clear_fighter_targets()
 	cancel_pending_weapon_release()
 	_loiter_initialized = false
-	destination_tracker.reached_serial = -1
+	destination_tracker.clear_active_command()
+	_on_destination_command_changed()
 	set_combat_formation_enabled(false)
 	set_player_selected(false)
 	dive_control_source = DiveControlSource.NONE
@@ -309,9 +310,6 @@ func set_player_selected(selected: bool) -> void:
 	if player_selected == selected:
 		return
 	player_selected = selected
-	if selection_indicator != null:
-		selection_indicator.visible = selected
-		_update_selection_indicator()
 	player_selection_changed.emit(selected)
 
 
@@ -349,7 +347,11 @@ func issue_player_move_command(
 		_manual_move_target
 	)
 	_has_manual_move_target = true
-	set_mission_destination(_manual_move_target)
+	set_mission_destination(
+		_manual_move_target,
+		true,
+		&"player_move"
+	)
 	return true
 
 
@@ -384,6 +386,8 @@ func begin_manual_dive() -> bool:
 	)
 	if begin_result != DiveBombAttackController.BeginDiveResult.STARTED:
 		return false
+	destination_tracker.clear_active_command()
+	_on_destination_command_changed()
 	return true
 
 
@@ -499,6 +503,14 @@ func get_total_remaining_ammunition() -> int:
 	return result
 
 
+func get_sortie_aircraft_count() -> int:
+	if _requested_aircraft_count >= 0:
+		return _requested_aircraft_count
+	if squadron_data != null:
+		return squadron_data.aircraft_count
+	return aircraft_units.size()
+
+
 func has_any_ammunition() -> bool:
 	for aircraft in get_alive_aircraft():
 		if aircraft.weapon_controller != null \
@@ -586,16 +598,40 @@ func get_release_debug_snapshot() -> Dictionary:
 
 func set_mission_destination(
 		world_position: Vector3,
-		force_new_command: bool = false
+		force_new_command: bool = false,
+		command_type: StringName = &"mission"
 ) -> int:
 	return movement_controller.set_destination(
 		world_position,
-		force_new_command
+		force_new_command,
+		command_type
 	)
 
 
 func has_reached_mission_destination(command_serial: int = -1) -> bool:
 	return destination_tracker.is_reached(command_serial)
+
+
+func get_destination_snapshot() -> SquadronDestinationSnapshot:
+	return destination_tracker.get_snapshot(
+		destination,
+		state == State.HOLDING and _loiter_initialized
+	)
+
+
+func _on_destination_command_changed() -> void:
+	if destination_tracker.command_type == &"player_move" \
+			or not destination_tracker.active:
+		player_destination_changed.emit(
+			get_destination_snapshot()
+		)
+
+
+func _on_destination_command_reached() -> void:
+	if destination_tracker.command_type != &"player_move":
+		return
+	player_destination_changed.emit(get_destination_snapshot())
+	player_destination_reached.emit()
 
 
 func handle_carrier_unavailable(cleanup_grace_sec: float = 2.0) -> void:
@@ -682,10 +718,8 @@ func _physics_process(delta: float) -> void:
 			request_return()
 			return
 	if dive_bomb_controller != null and dive_bomb_controller.is_active():
-		_update_selection_indicator()
 		return
 	movement_controller.update_standard_movement(delta)
-	_update_selection_indicator()
 
 
 func _on_aircraft_payload_release_finished(
@@ -813,15 +847,6 @@ func get_formation_alignment_errors() -> PackedFloat32Array:
 
 func _update_aircraft_formation_targets() -> void:
 	movement_controller.update_formation_targets()
-
-
-func _update_selection_indicator() -> void:
-	if selection_indicator == null \
-			or not is_inside_tree() \
-			or not selection_indicator.is_inside_tree():
-		return
-	selection_indicator.global_position = formation_center \
-		+ Vector3.DOWN * 8.0
 
 
 func _has_formation_arrived(target: Vector3) -> bool:
