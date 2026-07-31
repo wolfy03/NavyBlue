@@ -47,24 +47,33 @@ func _run() -> void:
 		is_zero_approx(ship.get_player_cannon_preview_range_m()),
 		"disabled cannon mounts are excluded"
 	)
+	_check(
+		ship.get_player_cannon_preview_mounts().size() \
+			== cannons.size(),
+		"disabled cannon mounts remain available for red previews"
+	)
 	for index in cannons.size():
 		cannons[index].runtime_state.enabled = enabled_states[index]
-	var preview := battle.ship_aim_range_preview
-	var material_before := preview.get_runtime_material()
-	preview.show_preview(
-		ship.get_player_cannon_preview_origin(),
-		-ship.global_basis.z,
-		ship.get_player_cannon_preview_range_m()
-	)
-	preview.show_preview(
-		ship.get_player_cannon_preview_origin(),
-		ship.global_basis.x,
-		ship.get_player_cannon_preview_range_m()
-	)
+	var presentation := battle.ship_weapon_preview_presentation
+	presentation.refresh_now()
+	var presentation_snapshot := presentation.get_debug_snapshot()
 	_check(
-		material_before != null \
-			and material_before == preview.get_runtime_material(),
-		"aim preview reuses one runtime material"
+		int(presentation_snapshot.get("active_preview_count", 0)) \
+			== cannons.size(),
+		"controlled ship receives one preview per cannon mount"
+	)
+	var ready_material := presentation.get_runtime_ready_material()
+	var blocked_material := presentation.get_runtime_blocked_material()
+	var materials_are_shared := ready_material != null \
+		and blocked_material != null
+	for preview in presentation.get_active_previews():
+		var material := preview.line_mesh.material_override
+		materials_are_shared = materials_are_shared and (
+			material == ready_material or material == blocked_material
+		)
+	_check(
+		materials_are_shared,
+		"turret previews share the two presentation runtime materials"
 	)
 	_verify_mount_rest_contract(ship)
 	await _finish(battle)

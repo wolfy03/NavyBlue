@@ -5,6 +5,7 @@ signal selection_changed(selected_ships: Array[ShipUnit])
 signal move_command_issued(target: Vector3, ships: Array[ShipUnit])
 signal command_mode_changed(mode: CommandMode)
 signal input_enabled_changed(enabled: bool)
+signal controlled_ship_changed(ship: ShipUnit)
 
 enum CommandMode {
 	SHIP,
@@ -44,7 +45,10 @@ var controlled_ship: ShipUnit:
 	get:
 		return selection_coordinator.controlled_ship
 	set(value):
+		if selection_coordinator.controlled_ship == value:
+			return
 		selection_coordinator.controlled_ship = value
+		controlled_ship_changed.emit(value)
 
 var selected_ships: Array[ShipUnit]:
 	get:
@@ -82,6 +86,7 @@ func setup(
 		if environment != null else null
 	world_pointer_resolver.setup(pointer_settings)
 	selection_coordinator.setup(ship)
+	controlled_ship_changed.emit(ship)
 	ship_command_controller.setup(
 		selection_coordinator,
 		battlefield_bounds,

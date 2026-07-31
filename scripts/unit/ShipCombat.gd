@@ -331,32 +331,23 @@ func get_selected_cannon_maximum_range_m() -> float:
 
 
 func get_player_cannon_preview_range_m() -> float:
-	var mount := get_player_cannon_preview_mount()
-	return mount.get_runtime_maximum_range_m() \
-		if mount != null else 0.0
-
-
-func get_player_cannon_preview_mount() -> WeaponMount:
 	var maximum_range_m := 0.0
-	var selected_mount: WeaponMount
 	for mount in get_weapons_by_type(WeaponTypes.Type.CANNON):
 		if not mount.is_operational():
 			continue
-		var runtime_range := mount.get_runtime_maximum_range_m()
-		if runtime_range > maximum_range_m:
-			maximum_range_m = runtime_range
-			selected_mount = mount
-	return selected_mount
-
-
-func get_player_cannon_preview_origin() -> Vector3:
-	var mount := get_player_cannon_preview_mount()
-	return mount.get_muzzle_position() \
-		if mount != null else (
-			owner_ship.global_position \
-			if owner_ship != null and is_instance_valid(owner_ship) \
-			else Vector3.ZERO
+		maximum_range_m = maxf(
+			maximum_range_m,
+			mount.get_runtime_maximum_range_m()
 		)
+	return maximum_range_m
+
+
+func get_player_cannon_preview_mounts() -> Array[WeaponMount]:
+	var result: Array[WeaponMount] = []
+	for mount in get_weapons_by_type(WeaponTypes.Type.CANNON):
+		if mount.is_available_for_range_preview():
+			result.append(mount)
+	return result
 
 
 func get_max_weapon_range_m(type_filter: Variant = null) -> float:

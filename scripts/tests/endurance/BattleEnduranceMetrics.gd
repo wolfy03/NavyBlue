@@ -135,6 +135,9 @@ func validate_cleanup() -> PackedStringArray:
 		"active_command_path_count",
 		"active_status_overlay_count",
 		"processing_presenter_count",
+		"active_turret_preview_count",
+		"turret_preview_binding_count",
+		"processing_turret_preview_count",
 	]:
 		if int(post_cleanup_final.get(metric_name, 0)) != 0:
 			failures.append(
@@ -217,6 +220,7 @@ func _capture_snapshot(
 	}
 	snapshot.merge(_capture_fleet_decision_metrics(tree))
 	snapshot.merge(_capture_aircraft_presentation_metrics(tree))
+	snapshot.merge(_capture_ship_weapon_preview_metrics(tree))
 	return snapshot
 
 
@@ -244,6 +248,9 @@ func _update_active_peak(sample: Dictionary) -> void:
 		"active_command_path_count",
 		"active_status_overlay_count",
 		"processing_presenter_count",
+		"active_turret_preview_count",
+		"turret_preview_binding_count",
+		"processing_turret_preview_count",
 		"fleet_decision_count",
 		"perception_refresh_count",
 		"target_evaluation_count",
@@ -294,6 +301,35 @@ func _capture_aircraft_presentation_metrics(
 		)
 		result["processing_presenter_count"] += int(
 			snapshot.get("processing_presenter_count", 0)
+		)
+	return result
+
+
+func _capture_ship_weapon_preview_metrics(
+		tree: SceneTree
+) -> Dictionary:
+	var result := {
+		"active_turret_preview_count": 0,
+		"turret_preview_binding_count": 0,
+		"processing_turret_preview_count": 0,
+	}
+	if tree == null:
+		return result
+	for node in tree.get_nodes_in_group(
+		&"ship_weapon_preview_presentations"
+	):
+		var presentation := node as ShipWeaponPreviewPresentation
+		if presentation == null or not is_instance_valid(presentation):
+			continue
+		var snapshot := presentation.get_debug_snapshot()
+		result["active_turret_preview_count"] += int(
+			snapshot.get("active_preview_count", 0)
+		)
+		result["turret_preview_binding_count"] += int(
+			snapshot.get("mount_binding_count", 0)
+		)
+		result["processing_turret_preview_count"] += int(
+			snapshot.get("processing_preview_count", 0)
 		)
 	return result
 

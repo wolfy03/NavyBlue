@@ -2,31 +2,33 @@
 
 ## Cannon range
 
-The player cannon preview uses the maximum runtime range among operational
-cannon mounts. A mount is operational when it has weapon data, remains enabled,
-has ammunition when ammunition is finite, has a projectile source, and has a
-positive runtime range.
+The player cannon preview renders one line for every preview-available cannon
+mount on the controlled player ship. Each line uses the mount's
+`WeaponMount.get_runtime_maximum_range_m()`, so runtime range upgrades remain
+authoritative.
 
-`WeaponMount.get_runtime_maximum_range_m()` is shared by fire readiness and the
-preview. Runtime range upgrades therefore affect both paths. Reloading does not
-hide a mount from the preview because it does not change the weapon's range.
+Disabled, empty, reloading, unaligned, and projectile-blocked mounts remain
+visible in red. A mount is green only when its existing current fire readiness
+is `READY`. Mounts without cannon data, a positive runtime range, or a valid
+muzzle are not rendered.
 
-The project does not currently expose player-selectable cannon groups. If that
-feature is added, `ShipCombat.get_player_cannon_preview_mount()` is the boundary
-that must be narrowed to the selected group.
+The aggregate maximum range accessor remains available for manual aim command
+compatibility, but presentation code does not use it.
 
 ## Relative bearing
 
 Player manual aim stores one hull-relative bearing per ship. Weapon mounts
 continue to resolve that world direction through their initial
-`base_local_yaw_radians`, traverse arc, and rotation speed. AI world-target
-tracking remains a separate aim mode.
+`base_local_yaw_radians`, traverse arc, and rotation speed. Every preview line
+uses the current muzzle transform rather than the requested direction. AI
+world-target tracking remains a separate aim mode.
 
 ## Presentation lines
 
-The cannon range preview and aircraft command path use a centered unit
-`BoxMesh`. `BoxLinePlacement` points local `-Z` at the endpoint, places the root
-at the segment midpoint, and scales local Z to the requested world length.
+Turret range previews and aircraft command paths use a centered unit `BoxMesh`.
+`BoxLinePlacement` points local `-Z` at the endpoint, places the root at the
+segment midpoint, and scales local Z to the requested world length. The turret
+presentation updates at 20 Hz and pools preview scenes by mount instance ID.
 
 Aircraft command paths are command-plane indicators, not predicted flight
 trajectories. Both their line and destination marker use the destination

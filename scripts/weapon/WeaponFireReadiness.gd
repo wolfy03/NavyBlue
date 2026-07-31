@@ -20,3 +20,10 @@ enum State {
 	NOT_ELEVATION_ALIGNED,
 	WEAPON_DISABLED,
 }
+
+
+static func get_state_name(state: State) -> StringName:
+	var index := int(state)
+	if index < 0 or index >= State.size():
+		return &"unknown"
+	return StringName(String(State.keys()[index]).to_lower())

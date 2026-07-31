@@ -149,9 +149,9 @@ func get_player_cannon_preview_range_m() -> float:
 		if combat != null else 0.0
 
 
-func get_player_cannon_preview_origin() -> Vector3:
-	return combat.get_player_cannon_preview_origin() \
-		if combat != null else global_position
+func get_player_cannon_preview_mounts() -> Array[WeaponMount]:
+	return combat.get_player_cannon_preview_mounts() \
+		if combat != null else []
 
 func set_navigation_target(world_position: Vector3) -> void:
 	navigation.set_navigation_target(world_position)

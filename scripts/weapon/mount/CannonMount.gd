@@ -149,14 +149,34 @@ func _launch_shell(index: int, total_count: int) -> bool:
 
 
 func get_muzzle_velocity_vector() -> Vector3:
-	if muzzle == null:
-		return Vector3.ZERO
-	return -muzzle.global_transform.basis.z.normalized() \
+	return get_projectile_launch_direction_world() \
 		* get_modified_projectile_speed(muzzle_velocity)
 
 
 func get_muzzle_position() -> Vector3:
 	return muzzle.global_position if muzzle != null else global_position
+
+
+func has_valid_preview_muzzle() -> bool:
+	return muzzle != null \
+		and is_instance_valid(muzzle) \
+		and muzzle.is_inside_tree() \
+		and muzzle.global_position.is_finite()
+
+
+func get_preview_muzzle_position() -> Vector3:
+	return muzzle.global_position \
+		if has_valid_preview_muzzle() else Vector3.ZERO
+
+
+func get_projectile_launch_direction_world() -> Vector3:
+	if not has_valid_preview_muzzle():
+		return Vector3.ZERO
+	var direction := -muzzle.global_transform.basis.z
+	return direction.normalized() \
+		if direction.is_finite() \
+		and direction.length_squared() > 0.0001 \
+		else Vector3.ZERO
 
 
 func _get_projectile_scene() -> PackedScene:

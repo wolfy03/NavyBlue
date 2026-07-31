@@ -84,6 +84,10 @@ func can_fire_at(world_point: Vector3) -> bool:
 		== WeaponFireReadiness.State.READY
 
 
+func get_current_fire_readiness() -> WeaponFireReadiness.State:
+	return get_fire_readiness_at(aim_point)
+
+
 func get_fire_readiness_at(
 		world_point: Vector3
 ) -> WeaponFireReadiness.State:
@@ -154,6 +158,40 @@ func is_operational() -> bool:
 		and runtime_state.has_ammunition() \
 		and get_runtime_maximum_range_m() > 0.0 \
 		and _has_projectile_available()
+
+
+func is_available_for_range_preview() -> bool:
+	return weapon_data != null \
+		and get_weapon_type() == WeaponTypes.Type.CANNON \
+		and get_runtime_maximum_range_m() > 0.0 \
+		and has_valid_preview_muzzle()
+
+
+func has_valid_preview_muzzle() -> bool:
+	return is_inside_tree() \
+		and get_preview_muzzle_position().is_finite()
+
+
+func get_preview_muzzle_position() -> Vector3:
+	return get_muzzle_position()
+
+
+func get_projectile_launch_direction_world() -> Vector3:
+	var direction := -global_transform.basis.z
+	return direction.normalized() \
+		if direction.is_finite() \
+		and direction.length_squared() > 0.0001 \
+		else Vector3.ZERO
+
+
+func has_projectile_source() -> bool:
+	return _has_projectile_available()
+
+
+func is_current_target_within_traverse_arc() -> bool:
+	return has_aim_point \
+		and aim_point.is_finite() \
+		and _is_inside_traverse_arc(aim_point)
 
 
 func get_rest_yaw_relative_to_hull() -> float:

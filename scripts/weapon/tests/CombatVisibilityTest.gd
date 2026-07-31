@@ -131,26 +131,35 @@ func _test_cannon_range_preview(
 		scene: BattleScene,
 		player: ShipUnit
 ) -> void:
-	var preview := scene.ship_aim_range_preview
-	_check(preview != null, "battle includes a cannon range preview")
-	if preview == null:
+	var presentation: ShipWeaponPreviewPresentation = \
+		scene.ship_weapon_preview_presentation
+	_check(
+		presentation != null,
+		"battle includes per-turret cannon range previews"
+	)
+	if presentation == null:
 		return
 	scene.input_manager.ship_command_controller.set_aim_point(
 		player.global_position + Vector3(0.0, 0.0, -3000.0)
 	)
-	preview.call(&"_process", 0.0)
-	var preview_mesh := preview.line_mesh.mesh as BoxMesh
-	var maximum_range := player \
-		.get_selected_cannon_maximum_range_m()
+	presentation.refresh_now()
+	var previews := presentation.get_active_previews()
+	var mounts := player.get_player_cannon_preview_mounts()
 	_check(
-		preview.visible
-			and preview_mesh != null
-			and is_equal_approx(
-				preview.line_mesh.scale.z,
-				maximum_range
-			),
-		"solid cannon aim line uses the runtime maximum range"
+		previews.size() == mounts.size(),
+		"battle renders one solid range line per cannon"
 	)
+	for preview in previews:
+		var mount := preview.get_bound_mount()
+		_check(
+			mount != null \
+				and preview.line_mesh.mesh is BoxMesh \
+				and is_equal_approx(
+					preview.line_mesh.scale.z,
+					mount.get_runtime_maximum_range_m()
+				),
+			"solid cannon line uses its mount runtime range"
+		)
 
 
 func _test_maximum_range_pitch(player: ShipUnit) -> void:

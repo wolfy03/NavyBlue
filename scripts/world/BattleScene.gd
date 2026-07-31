@@ -38,9 +38,10 @@ const DEFAULT_DEBUG_SETTINGS: BattleDebugSettings = preload(
 @onready var aircraft_selection_controller: AircraftSelectionController = \
 	get_node_or_null("AircraftSelectionController") \
 	as AircraftSelectionController
-@onready var ship_aim_range_preview: ShipAimRangePreview = get_node_or_null(
-	"ShipAimRangePreview"
-) as ShipAimRangePreview
+@onready var ship_weapon_preview_presentation: \
+	ShipWeaponPreviewPresentation = get_node_or_null(
+		"ShipWeaponPreviewPresentation"
+	) as ShipWeaponPreviewPresentation
 @onready var aircraft_command_presentation: AircraftCommandPresentation = \
 	get_node_or_null("AircraftCommandPresentation") \
 	as AircraftCommandPresentation
@@ -145,8 +146,8 @@ func shutdown() -> void:
 		aircraft_selection_controller.set_input_enabled(false)
 	if aircraft_command_presentation != null:
 		aircraft_command_presentation.shutdown()
-	if ship_aim_range_preview != null:
-		ship_aim_range_preview.shutdown()
+	if ship_weapon_preview_presentation != null:
+		ship_weapon_preview_presentation.shutdown()
 	if battle_state_controller != null:
 		battle_state_controller.stop_battle()
 	for controller_value in _fleet_controllers.values():
@@ -571,11 +572,8 @@ func _setup_camera_and_ui() -> void:
 			camera,
 			battle_environment
 		)
-		if ship_aim_range_preview != null:
-			ship_aim_range_preview.setup(
-				input_manager,
-				input_manager.ship_command_controller
-			)
+		if ship_weapon_preview_presentation != null:
+			ship_weapon_preview_presentation.setup(input_manager)
 		if aircraft_selection_controller != null:
 			aircraft_selection_controller.setup(
 				camera,

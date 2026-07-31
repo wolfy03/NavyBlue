@@ -8,6 +8,14 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	_run_checks()
+	await process_frame
+	await process_frame
+	print("ENDURANCE_PROFILE_DEFINITION_TEST failures=%d" % _failures.size())
+	quit(0 if _failures.is_empty() else 1)
+
+
+func _run_checks() -> void:
 	_check(EnduranceProfile.validate().is_empty(), "profiles validate")
 	_check(
 		EnduranceProfile.get_default_frames(EnduranceProfile.SMOKE) == 600,
@@ -31,18 +39,16 @@ func _run() -> void:
 		) == 36000,
 		"nightly endurance uses 36000 frames"
 	)
-	var metrics := BattleEnduranceMetrics.new()
-	metrics.total_requested_frames = 1800
-	metrics.total_executed_frames = 1800
-	metrics.chunk_size_frames = 600
-	metrics.combat_chunk_count = 3
-	metrics.samples = [{}, {}, {}]
 	_check(
-		metrics.validate_metadata().is_empty(),
+		EnduranceResultMetadata.validate(
+			1800,
+			1800,
+			600,
+			3,
+			3
+		).is_empty(),
 		"1800 frames with 600-frame chunks captures three chunks"
 	)
-	print("ENDURANCE_PROFILE_DEFINITION_TEST failures=%d" % _failures.size())
-	quit(0 if _failures.is_empty() else 1)
 
 
 func _check(condition: bool, label: String) -> void:

@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="TurretPreviewSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/presentation/TurretPreviewSettings.gd" id="1_settings"]
+
+[resource]
+script = ExtResource("1_settings")
+ready_color = Color(0.15, 1, 0.25, 0.78)
+blocked_color = Color(1, 0.12, 0.08, 0.78)
+line_thickness_m = 0.7
+height_offset_m = 0.0
+refresh_interval_sec = 0.05
+preview_mount_warning_threshold = 32

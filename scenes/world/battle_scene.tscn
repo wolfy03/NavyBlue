@@ -18,7 +18,7 @@
 [ext_resource type="Script" path="res://scripts/input/AircraftSelectionController.gd" id="16_air_selection"]
 [ext_resource type="Script" path="res://scripts/battle/BattleEnvironment.gd" id="17_environment"]
 [ext_resource type="Script" path="res://scripts/effects/CombatEffectPresenter.gd" id="18_effect_presenter"]
-[ext_resource type="PackedScene" path="res://scenes/ui/world/ShipAimRangePreview.tscn" id="19_ship_aim_preview"]
+[ext_resource type="PackedScene" path="res://scenes/ui/world/ShipWeaponPreviewPresentation.tscn" id="19_ship_weapon_preview"]
 [ext_resource type="PackedScene" path="res://scenes/aircraft/presentation/AircraftCommandPresentation.tscn" id="20_aircraft_presentation"]
 
 [sub_resource type="Environment" id="Environment_battle"]
@@ -149,7 +149,7 @@ script = ExtResource("13_carrier_command")
 [node name="AircraftSelectionController" type="Node" parent="."]
 script = ExtResource("16_air_selection")
 
-[node name="ShipAimRangePreview" parent="." instance=ExtResource("19_ship_aim_preview")]
+[node name="ShipWeaponPreviewPresentation" parent="." instance=ExtResource("19_ship_weapon_preview")]
 
 [node name="AircraftCommandPresentation" parent="." instance=ExtResource("20_aircraft_presentation")]
 

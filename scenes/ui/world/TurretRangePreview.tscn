@@ -1,12 +1,12 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scripts/combat/presentation/ShipAimRangePreview.gd" id="1_preview"]
-[ext_resource type="Material" path="res://resources/materials/ship_aim_preview_material.tres" id="2_material"]
+[ext_resource type="Script" path="res://scripts/combat/presentation/TurretRangePreview.gd" id="1_preview"]
+[ext_resource type="Material" path="res://resources/materials/turret_preview_blocked_material.tres" id="2_material"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_line"]
 size = Vector3(1, 1, 1)
 
-[node name="ShipAimRangePreview" type="Node3D"]
+[node name="TurretRangePreview" type="Node3D"]
 visible = false
 script = ExtResource("1_preview")
 

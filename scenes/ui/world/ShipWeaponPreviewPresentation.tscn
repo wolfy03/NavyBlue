@@ -1,0 +1,17 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/presentation/ShipWeaponPreviewPresentation.gd" id="1_presentation"]
+[ext_resource type="PackedScene" path="res://scenes/ui/world/TurretRangePreview.tscn" id="2_preview"]
+[ext_resource type="Resource" path="res://resources/settings/default_turret_preview_settings.tres" id="3_settings"]
+[ext_resource type="StandardMaterial3D" path="res://resources/materials/turret_preview_ready_material.tres" id="4_ready"]
+[ext_resource type="StandardMaterial3D" path="res://resources/materials/turret_preview_blocked_material.tres" id="5_blocked"]
+
+[node name="ShipWeaponPreviewPresentation" type="Node3D"]
+script = ExtResource("1_presentation")
+settings = ExtResource("3_settings")
+preview_scene = ExtResource("2_preview")
+ready_material = ExtResource("4_ready")
+blocked_material = ExtResource("5_blocked")
+
+[node name="PreviewRoot" type="Node3D" parent="."]
+unique_name_in_owner = true
