@@ -3,6 +3,15 @@ class_name TorpedoProjectile
 
 signal hit_resolved(result: DamageResult)
 
+enum LaunchPhase {
+	AIRBORNE,
+	WATER_ENTRY,
+	ARMING,
+	RUNNING,
+	IMPACTED,
+	EXPIRED,
+}
+
 @export_category("Visual Wake")
 @export var wake_enabled := true
 @export_range(1.0, 12.0, 0.1, "or_greater") var wake_lifetime_sec := 5.5
@@ -22,6 +31,12 @@ var impact_processed := false
 var target_ref: WeakRef
 var previous_position := Vector3.ZERO
 var desired_yaw_radians := 0.0
+var launch_mode: TorpedoLaunchMode.Type = TorpedoLaunchMode.Type.SURFACE
+var launch_phase: LaunchPhase = LaunchPhase.ARMING
+var intended_launch_direction := Vector3.ZERO
+var airborne_age_seconds := 0.0
+var _running_collision_layer := 0
+var _running_collision_mask := 0
 @onready var wake_particles: GPUParticles3D = get_node_or_null("WakeParticles") \
 	as GPUParticles3D
 
@@ -56,6 +71,18 @@ func _on_launched(context: ProjectileLaunchContext) -> void:
 			and is_instance_valid(context.target):
 		target_ref = weakref(context.target)
 	water_height_m = _resolve_water_height()
+	launch_mode = context.torpedo_launch_mode
+	intended_launch_direction = context.intended_launch_direction
+	intended_launch_direction.y = 0.0
+	_running_collision_layer = collision_layer
+	_running_collision_mask = collision_mask
+	if launch_mode == TorpedoLaunchMode.Type.AIR_DROPPED:
+		_begin_airborne_launch(context)
+		return
+	_begin_surface_launch()
+
+
+func _begin_surface_launch() -> void:
 	var launch_transform := global_transform
 	launch_transform.origin.y = water_height_m - torpedo_data.running_depth_m
 	global_transform = launch_transform
@@ -68,6 +95,8 @@ func _on_launched(context: ProjectileLaunchContext) -> void:
 	age_seconds = 0.0
 	armed = false
 	impact_processed = false
+	launch_phase = LaunchPhase.ARMING
+	airborne_age_seconds = 0.0
 	previous_position = launch_transform.origin
 	var launch_direction := -launch_transform.basis.z
 	launch_direction.y = 0.0
@@ -80,8 +109,29 @@ func _on_launched(context: ProjectileLaunchContext) -> void:
 	_start_wake()
 
 
+func _begin_airborne_launch(context: ProjectileLaunchContext) -> void:
+	launch_phase = LaunchPhase.AIRBORNE
+	launch_position = global_position
+	speed_mps = 0.0
+	travelled_distance_m = 0.0
+	age_seconds = 0.0
+	airborne_age_seconds = 0.0
+	armed = false
+	impact_processed = false
+	previous_position = global_position
+	gravity_scale = 1.0
+	linear_velocity = context.initial_velocity
+	angular_velocity = Vector3.ZERO
+	collision_layer = 0
+	collision_mask = 0
+	_stop_wake()
+
+
 func _physics_process(delta: float) -> void:
 	if impact_processed or torpedo_data == null:
+		return
+	if launch_phase == LaunchPhase.AIRBORNE:
+		_update_airborne(delta)
 		return
 	var segment_start := previous_position
 	var segment_end := global_position
@@ -102,6 +152,7 @@ func _physics_process(delta: float) -> void:
 	_update_guidance(delta)
 	if not armed and travelled_distance_m >= torpedo_data.arming_distance_m:
 		armed = true
+		launch_phase = LaunchPhase.RUNNING
 	if travelled_this_frame > 0.0001 \
 			and _try_process_ship_proximity(segment_start, segment_end):
 		return
@@ -112,11 +163,73 @@ func _physics_process(delta: float) -> void:
 	)
 	if age_seconds >= torpedo_data.lifetime_seconds \
 			or (maximum_range > 0.0 and travelled_distance_m >= maximum_range):
+		launch_phase = LaunchPhase.EXPIRED
 		despawn()
+
+
+func _update_airborne(delta: float) -> void:
+	airborne_age_seconds += delta
+	if global_position.y <= water_height_m:
+		_enter_water()
+		return
+	if airborne_age_seconds >= maxf(
+		torpedo_data.airborne_timeout_sec,
+		0.1
+	):
+		launch_phase = LaunchPhase.EXPIRED
+		despawn()
+
+
+func _enter_water() -> void:
+	if launch_phase != LaunchPhase.AIRBORNE:
+		return
+	launch_phase = LaunchPhase.WATER_ENTRY
+	var direction := intended_launch_direction
+	if direction.length_squared() <= 0.0001:
+		direction = linear_velocity
+		direction.y = 0.0
+	if direction.length_squared() <= 0.0001:
+		direction = -global_basis.z
+		direction.y = 0.0
+	if direction.length_squared() <= 0.0001:
+		launch_phase = LaunchPhase.EXPIRED
+		despawn()
+		return
+	direction = direction.normalized()
+	desired_yaw_radians = atan2(-direction.x, -direction.z)
+	var running_transform := global_transform
+	running_transform.origin.y = water_height_m - torpedo_data.running_depth_m
+	running_transform.basis = Basis.from_euler(
+		Vector3(0.0, desired_yaw_radians, 0.0)
+	)
+	global_transform = running_transform
+	launch_position = running_transform.origin
+	previous_position = running_transform.origin
+	gravity_scale = 0.0
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	collision_layer = _running_collision_layer
+	collision_mask = _running_collision_mask
+	speed_mps = torpedo_data.launch_speed_mps * maxf(
+		projectile_runtime_stats.projectile_speed_multiplier,
+		0.0
+	)
+	travelled_distance_m = 0.0
+	age_seconds = 0.0
+	armed = false
+	launch_phase = LaunchPhase.ARMING
+	if battle_services != null:
+		battle_services.events.emit_projectile_water_impact(
+			running_transform.origin,
+			torpedo_data.water_entry_effect_strength
+		)
+	_start_wake()
 
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if impact_processed or torpedo_data == null:
+		return
+	if launch_phase == LaunchPhase.AIRBORNE:
 		return
 	var next_transform := state.transform
 	next_transform.origin.y = water_height_m - torpedo_data.running_depth_m
@@ -177,6 +290,9 @@ func _update_guidance(delta: float) -> void:
 func _on_body_entered(body: Node) -> void:
 	if impact_processed or torpedo_data == null:
 		return
+	if launch_phase == LaunchPhase.AIRBORNE \
+			or launch_phase == LaunchPhase.WATER_ENTRY:
+		return
 	var target_ship := _find_ship_target(body)
 	if not _is_valid_torpedo_target(target_ship):
 		return
@@ -235,6 +351,7 @@ func _resolve_ship_hit(
 	if impact_processed or target_ship == null:
 		return
 	impact_processed = true
+	launch_phase = LaunchPhase.IMPACTED
 	var direction := -global_transform.basis.z
 	direction.y = 0.0
 	if direction.length_squared() < 0.0001:
@@ -359,6 +476,12 @@ func on_spawned_from_pool() -> void:
 	target_ref = null
 	previous_position = global_position
 	desired_yaw_radians = 0.0
+	launch_mode = TorpedoLaunchMode.Type.SURFACE
+	launch_phase = LaunchPhase.ARMING
+	intended_launch_direction = Vector3.ZERO
+	airborne_age_seconds = 0.0
+	_running_collision_layer = collision_layer
+	_running_collision_mask = collision_mask
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	gravity_scale = 0.0
@@ -380,6 +503,12 @@ func on_recycled_to_pool() -> void:
 	target_ref = null
 	previous_position = Vector3.ZERO
 	desired_yaw_radians = 0.0
+	launch_mode = TorpedoLaunchMode.Type.SURFACE
+	launch_phase = LaunchPhase.EXPIRED
+	intended_launch_direction = Vector3.ZERO
+	airborne_age_seconds = 0.0
+	_running_collision_layer = 0
+	_running_collision_mask = 0
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	super.on_recycled_to_pool()
@@ -397,6 +526,12 @@ func _on_reset_for_pool() -> void:
 	target_ref = null
 	previous_position = Vector3.ZERO
 	desired_yaw_radians = 0.0
+	launch_mode = TorpedoLaunchMode.Type.SURFACE
+	launch_phase = LaunchPhase.EXPIRED
+	intended_launch_direction = Vector3.ZERO
+	airborne_age_seconds = 0.0
+	_running_collision_layer = 0
+	_running_collision_mask = 0
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	_stop_wake()

@@ -32,5 +32,8 @@ enum AircraftRole {
 @export_category("Dive Bomber")
 @export var dive_bomber_combat_data: DiveBomberCombatData
 
+@export_category("Torpedo Bomber")
+@export var torpedo_attack_profile: TorpedoAttackProfile
+
 @export_category("Visual")
 @export var aircraft_scene: PackedScene

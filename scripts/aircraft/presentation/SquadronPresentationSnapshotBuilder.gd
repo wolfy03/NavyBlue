@@ -58,6 +58,21 @@ func build_from_aggregate(
 		and not weapon_data.display_name.is_empty() else "Unarmed"
 	snapshot.ammunition_count = squadron \
 		.get_total_remaining_ammunition()
+	snapshot.ammunition_capacity = snapshot.total_count * (
+		weapon_data.ammunition_per_sortie if weapon_data != null else 0
+	)
+	if weapon_data != null:
+		snapshot.payload_role = StringName(
+			AircraftWeaponData.WeaponType.keys()[
+				int(weapon_data.weapon_type)
+			].to_snake_case()
+		)
+	if squadron.torpedo_attack_controller != null \
+			and squadron.torpedo_attack_controller.is_active():
+		snapshot.attack_state_name = \
+			TorpedoAttackController.State.keys()[
+				int(squadron.torpedo_attack_controller.state)
+			]
 	snapshot.mission_name = _resolve_mission_name(
 		squadron,
 		destination
@@ -70,6 +85,9 @@ func _resolve_mission_name(
 		destination: SquadronDestinationSnapshot
 ) -> String:
 	var mission_id := squadron.get_current_mission_id()
+	if squadron.torpedo_attack_controller != null \
+			and squadron.torpedo_attack_controller.is_active():
+		return "Torpedo attack"
 	if not mission_id.is_empty():
 		return mission_id
 	if destination != null and destination.command_type == &"player_move":

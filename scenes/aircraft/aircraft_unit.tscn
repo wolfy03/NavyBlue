@@ -23,6 +23,9 @@ mesh = SubResource("PrismMesh_aircraft")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_aircraft")
 
+[node name="PayloadHardpoint" type="Marker3D" parent="."]
+position = Vector3(0, -2, 0)
+
 [node name="AircraftMovement" type="Node" parent="."]
 script = ExtResource("2_movement")
 

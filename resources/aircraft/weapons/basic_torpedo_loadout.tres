@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="AircraftWeaponData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/AircraftWeaponData.gd" id="1_weapon"]
+[ext_resource type="Resource" path="res://resources/projectiles/aircraft_torpedo.tres" id="2_projectile"]
+[ext_resource type="PackedScene" path="res://scenes/weapon/projectiles/torpedo_projectile.tscn" id="3_scene"]
+
+[resource]
+script = ExtResource("1_weapon")
+id = "basic_torpedo_loadout"
+display_name = "Aerial Torpedo"
+weapon_type = 1
+projectile_data = ExtResource("2_projectile")
+projectile_scene = ExtResource("3_scene")
+ammunition_per_sortie = 1
+release_mode = 0
+projectiles_per_release = 1
+release_interval_sec = 0.1
+minimum_release_distance_m = 0.0
+maximum_release_distance_m = 120.0
+minimum_release_altitude_m = 0.0
+maximum_release_altitude_m = 40.0
+downward_release_speed_mps = 4.0
+attack_approach_distance_m = 1200.0
+attack_egress_distance_m = 650.0
+return_after_ammunition_depleted = true

@@ -1,4 +1,4 @@
-[gd_scene load_steps=25 format=3 uid="uid://c346y3o6qqqhd"]
+[gd_scene load_steps=27 format=3 uid="uid://c346y3o6qqqhd"]
 
 [ext_resource type="Script" uid="uid://cj802p5ep0lqm" path="res://scripts/world/BattleScene.gd" id="1_battle"]
 [ext_resource type="Script" uid="uid://bqtoaaf4qto5a" path="res://scripts/camera/RTSCamera.gd" id="2_camera"]
@@ -20,6 +20,8 @@
 [ext_resource type="Script" path="res://scripts/effects/CombatEffectPresenter.gd" id="18_effect_presenter"]
 [ext_resource type="PackedScene" path="res://scenes/ui/world/ShipWeaponPreviewPresentation.tscn" id="19_ship_weapon_preview"]
 [ext_resource type="PackedScene" path="res://scenes/aircraft/presentation/AircraftCommandPresentation.tscn" id="20_aircraft_presentation"]
+[ext_resource type="Script" path="res://scripts/aircraft/input/TorpedoAttackTargetingSession.gd" id="21_torpedo_targeting"]
+[ext_resource type="PackedScene" path="res://scenes/aircraft/presentation/TorpedoAttackArrow.tscn" id="22_torpedo_arrow"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -152,6 +154,11 @@ script = ExtResource("16_air_selection")
 [node name="ShipWeaponPreviewPresentation" parent="." instance=ExtResource("19_ship_weapon_preview")]
 
 [node name="AircraftCommandPresentation" parent="." instance=ExtResource("20_aircraft_presentation")]
+
+[node name="TorpedoAttackTargetingSession" type="Node" parent="."]
+script = ExtResource("21_torpedo_targeting")
+
+[node name="TorpedoAttackArrow" parent="." instance=ExtResource("22_torpedo_arrow")]
 
 [node name="HUD" type="CanvasLayer" parent="." unique_id=1555648183]
 script = ExtResource("4_hud")

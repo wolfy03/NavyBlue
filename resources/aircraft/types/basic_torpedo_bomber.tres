@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="AircraftData" load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/AircraftData.gd" id="1_aircraft"]
+[ext_resource type="PackedScene" path="res://scenes/aircraft/aircraft_unit.tscn" id="2_scene"]
+[ext_resource type="Resource" path="res://resources/aircraft/weapons/basic_torpedo_loadout.tres" id="3_weapon"]
+[ext_resource type="Resource" path="res://resources/aircraft/torpedo/default_torpedo_attack_profile.tres" id="4_profile"]
+
+[resource]
+script = ExtResource("1_aircraft")
+id = "basic_torpedo_bomber"
+display_name = "Basic Torpedo Bomber"
+role = 2
+cruise_speed_mps = 120.0
+maximum_speed_mps = 170.0
+turn_rate_deg_sec = 45.0
+operating_altitude_m = 180.0
+combat_radius_m = 8000.0
+arrival_distance_m = 40.0
+maximum_hp = 30.0
+weapon_data = ExtResource("3_weapon")
+torpedo_attack_profile = ExtResource("4_profile")
+aircraft_scene = ExtResource("2_scene")

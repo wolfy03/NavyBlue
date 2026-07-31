@@ -1,0 +1,57 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/aircraft/presentation/TorpedoAttackArrowPresenter.gd" id="1"]
+[ext_resource type="Resource" path="res://resources/settings/default_torpedo_attack_presentation.tres" id="2"]
+[ext_resource type="Material" path="res://resources/materials/torpedo_attack_valid_material.tres" id="3"]
+[ext_resource type="Material" path="res://resources/materials/torpedo_attack_short_material.tres" id="4"]
+[ext_resource type="Material" path="res://resources/materials/torpedo_attack_invalid_material.tres" id="5"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_line"]
+size = Vector3(1, 1, 1)
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_marker"]
+top_radius = 1.0
+bottom_radius = 1.0
+height = 0.12
+radial_segments = 24
+
+[node name="TorpedoAttackArrowPresenter" type="Node3D"]
+script = ExtResource("1")
+settings = ExtResource("2")
+valid_material = ExtResource("3")
+short_drag_material = ExtResource("4")
+invalid_material = ExtResource("5")
+
+[node name="ShaftRoot" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="Shaft" type="MeshInstance3D" parent="ShaftRoot"]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_line")
+
+[node name="HeadLeftRoot" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="HeadLeft" type="MeshInstance3D" parent="HeadLeftRoot"]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_line")
+
+[node name="HeadRightRoot" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="HeadRight" type="MeshInstance3D" parent="HeadRightRoot"]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("BoxMesh_line")
+
+[node name="EntryMarker" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_marker")
+
+[node name="ReleaseMarker" type="MeshInstance3D" parent="."]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("CylinderMesh_marker")

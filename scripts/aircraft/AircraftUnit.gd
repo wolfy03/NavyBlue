@@ -20,6 +20,9 @@ signal destroyed(aircraft: AircraftUnit)
 ) as AircraftWeaponController
 @onready var fighter_combat_controller: FighterCombatController = \
 	get_node_or_null("FighterCombatController") as FighterCombatController
+@onready var payload_hardpoint: Marker3D = get_node_or_null(
+	"PayloadHardpoint"
+) as Marker3D
 
 var aircraft_data: AircraftData
 var team: StringName = &"neutral"
@@ -129,6 +132,11 @@ func get_forward_direction() -> Vector3:
 	var forward := -global_transform.basis.z
 	return forward.normalized() \
 		if forward.length_squared() > 0.0001 else Vector3.FORWARD
+
+
+func get_payload_release_transform() -> Transform3D:
+	return payload_hardpoint.global_transform \
+		if payload_hardpoint != null else global_transform
 
 
 func get_fighter_combat_data() -> FighterCombatData:

@@ -31,3 +31,5 @@ enum GuidanceType {
 
 @export_category("Safety")
 @export var arming_distance_m := 50.0
+@export var airborne_timeout_sec := 8.0
+@export var water_entry_effect_strength := 1.0

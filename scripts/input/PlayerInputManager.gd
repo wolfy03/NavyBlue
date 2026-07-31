@@ -142,7 +142,7 @@ func set_carrier_command_controller(
 
 
 func set_aircraft_selection_controller(
-		controller: AircraftSelectionController
+	controller: AircraftSelectionController
 ) -> void:
 	aircraft_selection_controller = controller
 	aircraft_command_controller.setup(
@@ -150,6 +150,17 @@ func set_aircraft_selection_controller(
 		carrier_command_controller
 	)
 	_apply_command_mode()
+
+
+func setup_torpedo_targeting(
+		session: TorpedoAttackTargetingSession
+) -> void:
+	aircraft_command_controller.setup_torpedo_targeting(
+		session,
+		world_pointer_resolver,
+		camera,
+		battle_environment
+	)
 
 
 func _physics_process(_delta: float) -> void:
@@ -187,6 +198,11 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		return
 	if _handle_aircraft_special_action(event):
+		get_viewport().set_input_as_handled()
+		return
+	if command_mode == CommandMode.AIRCRAFT \
+			and aircraft_command_controller \
+				.handle_torpedo_targeting_input(event):
 		get_viewport().set_input_as_handled()
 		return
 	if _handle_pointer_input(event):

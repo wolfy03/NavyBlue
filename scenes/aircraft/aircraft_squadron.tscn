@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/aircraft/AircraftSquadron.gd" id="1_squadron"]
 [ext_resource type="Script" path="res://scripts/aircraft/AircraftMissionController.gd" id="2_mission"]
 [ext_resource type="Script" path="res://scripts/aircraft/combat/DiveBombAttackController.gd" id="3_dive"]
+[ext_resource type="Script" path="res://scripts/aircraft/combat/TorpedoAttackController.gd" id="4_torpedo"]
 
 [node name="AircraftSquadron" type="Node3D"]
 script = ExtResource("1_squadron")
@@ -12,3 +13,6 @@ script = ExtResource("2_mission")
 
 [node name="DiveBombAttackController" type="Node" parent="."]
 script = ExtResource("3_dive")
+
+[node name="TorpedoAttackController" type="Node" parent="."]
+script = ExtResource("4_torpedo")

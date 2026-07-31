@@ -227,7 +227,7 @@ func can_launch_strike(squadron_id: String = "") -> bool:
 	if squadron_id.is_empty():
 		return not _resolve_strike_squadron_id("").is_empty()
 	return can_launch_squadron(squadron_id) \
-		and _template_has_bomb_payload(get_squadron_data(squadron_id)) \
+		and _template_has_strike_payload(get_squadron_data(squadron_id)) \
 		and get_default_strike_mission(squadron_id) != null
 
 
@@ -351,8 +351,10 @@ func get_launchable_strike_squadron_ids() -> Array[String]:
 	for squadron_id in get_launchable_squadron_ids():
 		var mission_data := get_default_mission(squadron_id)
 		if mission_data != null \
-				and mission_data.mission_type \
-					== AirMissionData.MissionType.STRIKE_SHIP:
+				and mission_data.mission_type in [
+					AirMissionData.MissionType.STRIKE_SHIP,
+					AirMissionData.MissionType.TORPEDO_ATTACK,
+				]:
 			result.append(squadron_id)
 	return result
 
@@ -400,8 +402,10 @@ func get_default_strike_mission(
 	var mission := get_default_mission(squadron_id)
 	return mission \
 		if mission != null \
-		and mission.mission_type \
-			== AirMissionData.MissionType.STRIKE_SHIP else null
+		and mission.mission_type in [
+			AirMissionData.MissionType.STRIKE_SHIP,
+			AirMissionData.MissionType.TORPEDO_ATTACK,
+		] else null
 
 
 func get_default_mission(
@@ -867,11 +871,11 @@ func _resolve_strike_squadron_id(requested_id: String) -> String:
 	if not requested_id.is_empty():
 		return requested_id \
 			if can_launch_squadron(requested_id) \
-			and _template_has_bomb_payload(
+			and _template_has_strike_payload(
 				get_squadron_data(requested_id)
 			) else ""
 	for candidate_id in get_launchable_squadron_ids():
-		if _template_has_bomb_payload(get_squadron_data(candidate_id)) \
+		if _template_has_strike_payload(get_squadron_data(candidate_id)) \
 				and get_default_strike_mission(candidate_id) != null:
 			return candidate_id
 	return ""
@@ -888,12 +892,15 @@ func _resolve_fighter_squadron_id(requested_id: String) -> String:
 	return launchable[0] if not launchable.is_empty() else ""
 
 
-func _template_has_bomb_payload(template: SquadronData) -> bool:
+func _template_has_strike_payload(template: SquadronData) -> bool:
 	if template == null or template.aircraft_data == null:
 		return false
 	var weapon_data := template.aircraft_data.weapon_data
 	return weapon_data != null \
-		and weapon_data.weapon_type == AircraftWeaponData.WeaponType.BOMB \
+		and weapon_data.weapon_type in [
+			AircraftWeaponData.WeaponType.BOMB,
+			AircraftWeaponData.WeaponType.TORPEDO,
+		] \
 		and weapon_data.is_valid_configuration()
 
 
@@ -995,6 +1002,14 @@ func _template_validation_errors(
 			for error in template.aircraft_data \
 					.dive_bomber_combat_data.validate():
 				errors.append("dive bomber combat data: %s" % error)
+	if template.aircraft_data.role \
+			== AircraftData.AircraftRole.TORPEDO_BOMBER:
+		if template.aircraft_data.torpedo_attack_profile == null:
+			errors.append("torpedo_attack_profile must be assigned.")
+		else:
+			for error in template.aircraft_data \
+					.torpedo_attack_profile.validate():
+				errors.append("torpedo attack profile: %s" % error)
 	if template.rearm_duration_sec < 0.0:
 		errors.append("rearm_duration_sec cannot be negative.")
 	return errors

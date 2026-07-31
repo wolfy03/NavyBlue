@@ -27,6 +27,7 @@ var _approach_initialized := false
 var _move_destination := Vector3.ZERO
 var intercept_behavior: InterceptMissionBehavior
 var dive_bomb_behavior: DiveBombMissionBehavior
+var torpedo_attack_planner := TorpedoAttackPlanner.new()
 var battle_services: BattleServices
 
 
@@ -45,6 +46,7 @@ func setup(
 	_move_destination = Vector3.ZERO
 	intercept_behavior = null
 	dive_bomb_behavior = null
+	torpedo_attack_planner = TorpedoAttackPlanner.new()
 
 
 func shutdown() -> void:
@@ -58,6 +60,7 @@ func shutdown() -> void:
 	_move_destination = Vector3.ZERO
 	intercept_behavior = null
 	dive_bomb_behavior = null
+	torpedo_attack_planner = TorpedoAttackPlanner.new()
 
 
 func assign_ship_strike(
@@ -68,9 +71,17 @@ func assign_ship_strike(
 			or not is_instance_valid(owner_squadron) \
 			or not _is_valid_target(target_ship) \
 			or next_mission_data == null \
-			or next_mission_data.mission_type \
-				!= AirMissionData.MissionType.STRIKE_SHIP:
+			or next_mission_data.mission_type not in [
+				AirMissionData.MissionType.STRIKE_SHIP,
+				AirMissionData.MissionType.TORPEDO_ATTACK,
+			]:
 		return false
+	if next_mission_data.mission_type \
+			== AirMissionData.MissionType.TORPEDO_ATTACK:
+		return _assign_torpedo_strike(
+			target_ship as ShipUnit,
+			next_mission_data
+		)
 	var behavior := DiveBombMissionBehavior.new()
 	if not behavior.setup(
 		owner_squadron,
@@ -194,6 +205,11 @@ func update_mission(_delta: float) -> void:
 			_finish_dive_bomb_event(dive_bomb_behavior.successful)
 		return
 	if mission_data != null \
+			and mission_data.mission_type \
+				== AirMissionData.MissionType.TORPEDO_ATTACK:
+		_update_torpedo_attack_mission()
+		return
+	if mission_data != null \
 			and mission_data.mission_type == AirMissionData.MissionType.MOVE:
 		_update_move_mission()
 		return
@@ -221,6 +237,16 @@ func cancel_and_return() -> void:
 		dive_bomb_behavior.cancel_and_return()
 		_finish_dive_bomb_event(false)
 		return
+	if mission_data != null \
+			and mission_data.mission_type \
+				== AirMissionData.MissionType.TORPEDO_ATTACK:
+		if owner_squadron != null \
+				and owner_squadron.torpedo_attack_controller != null:
+			owner_squadron.torpedo_attack_controller.abort(
+				&"mission_cancelled"
+			)
+		_fail_and_return()
+		return
 	_fail_and_return()
 
 
@@ -231,6 +257,13 @@ func fail_without_return() -> void:
 		intercept_behavior.cancel_without_return()
 	if dive_bomb_behavior != null:
 		dive_bomb_behavior.cancel_without_return()
+	if owner_squadron != null \
+			and owner_squadron.torpedo_attack_controller != null \
+			and owner_squadron.torpedo_attack_controller.is_active():
+		owner_squadron.torpedo_attack_controller.abort(
+			&"mission_failed",
+			false
+		)
 	_event_finished = true
 	state = MissionState.FAILED
 	mission_failed.emit()
@@ -253,6 +286,13 @@ func cancel_current_mission_for_player_command() -> void:
 		intercept_behavior.cancel_without_return()
 	if dive_bomb_behavior != null:
 		dive_bomb_behavior.cancel_without_return()
+	if owner_squadron != null \
+			and owner_squadron.torpedo_attack_controller != null \
+			and owner_squadron.torpedo_attack_controller.is_active():
+		owner_squadron.torpedo_attack_controller.abort(
+			&"player_override",
+			false
+		)
 	intercept_behavior = null
 	dive_bomb_behavior = null
 	mission_data = null
@@ -296,6 +336,59 @@ func _finish_dive_bomb_event(success: bool) -> void:
 	else:
 		mission_failed.emit()
 		_publish_mission_event(&"air_mission_failed")
+
+
+func _assign_torpedo_strike(
+		target_ship: ShipUnit,
+		next_mission_data: AirMissionData
+) -> bool:
+	if owner_squadron.get_aircraft_role() \
+			!= AircraftData.AircraftRole.TORPEDO_BOMBER \
+			or owner_squadron.torpedo_attack_controller == null:
+		return false
+	var plan := torpedo_attack_planner.plan_attack(
+		owner_squadron,
+		target_ship
+	)
+	if not plan.success:
+		return false
+	owner_squadron.set_command_authority(
+		AircraftSquadron.CommandAuthority.AI
+	)
+	if not owner_squadron.torpedo_attack_controller.begin_attack(
+		plan.command
+	):
+		return false
+	mission_data = next_mission_data
+	_target_ref = weakref(target_ship)
+	state = MissionState.ATTACK_RUN
+	_event_finished = false
+	_approach_initialized = true
+	_publish_mission_event(&"air_mission_started", target_ship)
+	return true
+
+
+func _update_torpedo_attack_mission() -> void:
+	if _event_finished or owner_squadron == null \
+			or owner_squadron.torpedo_attack_controller == null:
+		return
+	var controller := owner_squadron.torpedo_attack_controller
+	if controller.is_active():
+		return
+	var success := controller.state \
+		== TorpedoAttackController.State.COMPLETED \
+		and controller.get_released_aircraft_count() > 0
+	_event_finished = true
+	state = MissionState.COMPLETED if success else MissionState.FAILED
+	if success:
+		mission_completed.emit()
+		_publish_mission_event(&"air_mission_completed")
+	else:
+		mission_failed.emit()
+		_publish_mission_event(&"air_mission_failed")
+	if mission_data != null and mission_data.return_after_attack:
+		owner_squadron.request_return()
+		state = MissionState.RETURNING
 
 
 func _update_move_mission() -> void:

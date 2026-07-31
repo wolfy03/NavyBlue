@@ -73,4 +73,18 @@ func validate() -> PackedStringArray:
 				errors.append(
 					"dive bomber squadrons require a STRIKE_SHIP mission."
 				)
+		AircraftData.AircraftRole.TORPEDO_BOMBER:
+			if aircraft_data.weapon_data != null \
+					and aircraft_data.weapon_data.weapon_type \
+					!= AircraftWeaponData.WeaponType.TORPEDO:
+				errors.append("torpedo bomber squadrons require a TORPEDO.")
+			if aircraft_data.torpedo_attack_profile == null:
+				errors.append("torpedo bombers require a TorpedoAttackProfile.")
+			elif not aircraft_data.torpedo_attack_profile.validate().is_empty():
+				errors.append("torpedo attack profile is invalid.")
+			if default_mission_data.mission_type \
+					!= AirMissionData.MissionType.TORPEDO_ATTACK:
+				errors.append(
+					"torpedo bomber squadrons require a TORPEDO_ATTACK mission."
+				)
 	return errors

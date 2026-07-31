@@ -156,8 +156,10 @@ func _refresh_status() -> void:
 		int(snapshot.get("ammunition_per_aircraft", 0)),
 	]
 	var role := int(snapshot.get("aircraft_role", -1))
-	strike_button.visible = role \
-		== AircraftData.AircraftRole.DIVE_BOMBER
+	strike_button.visible = role in [
+		AircraftData.AircraftRole.DIVE_BOMBER,
+		AircraftData.AircraftRole.TORPEDO_BOMBER,
+	]
 	strike_button.disabled = _targeting \
 		or not air_group.can_launch_strike(_selected_squadron_id)
 	manual_launch_button.disabled = _targeting \

@@ -45,6 +45,11 @@ const DEFAULT_DEBUG_SETTINGS: BattleDebugSettings = preload(
 @onready var aircraft_command_presentation: AircraftCommandPresentation = \
 	get_node_or_null("AircraftCommandPresentation") \
 	as AircraftCommandPresentation
+@onready var torpedo_targeting_session: TorpedoAttackTargetingSession = \
+	get_node_or_null("TorpedoAttackTargetingSession") \
+	as TorpedoAttackTargetingSession
+@onready var torpedo_attack_arrow: TorpedoAttackArrowPresenter = \
+	get_node_or_null("TorpedoAttackArrow") as TorpedoAttackArrowPresenter
 @onready var impact_marker: MeshInstance3D = get_node_or_null("ImpactMarker") as MeshInstance3D
 @onready var hud: Node = get_node_or_null("HUD")
 @onready var carrier_air_group_panel: CarrierAirGroupPanel = get_node_or_null(
@@ -142,6 +147,10 @@ func shutdown() -> void:
 	set_physics_process(false)
 	if input_manager != null:
 		input_manager.set_input_enabled(false)
+	if torpedo_attack_arrow != null:
+		torpedo_attack_arrow.shutdown()
+	if torpedo_targeting_session != null:
+		torpedo_targeting_session.shutdown()
 	if aircraft_selection_controller != null:
 		aircraft_selection_controller.set_input_enabled(false)
 	if aircraft_command_presentation != null:
@@ -599,6 +608,16 @@ func _setup_camera_and_ui() -> void:
 			input_manager.set_carrier_command_controller(
 				carrier_command_controller
 			)
+		if torpedo_targeting_session != null:
+			torpedo_targeting_session.setup(
+				input_manager.world_pointer_resolver,
+				battle_environment
+			)
+			input_manager.setup_torpedo_targeting(
+				torpedo_targeting_session
+			)
+			if torpedo_attack_arrow != null:
+				torpedo_attack_arrow.setup(torpedo_targeting_session)
 	else:
 		push_warning("PlayerInputManager is missing or does not support setup().")
 	if hud != null and hud.has_method("setup"):

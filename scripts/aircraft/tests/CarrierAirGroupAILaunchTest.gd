@@ -5,6 +5,7 @@ const CARRIER_AI_STAGE: StageData = preload(
 	"res://resources/stages/tests/carrier_ai_test.tres"
 )
 const SQUADRON_ID := "basic_bomber_squadron"
+const TORPEDO_SQUADRON_ID := "basic_torpedo_squadron"
 
 var _failures: Array[String] = []
 
@@ -37,12 +38,16 @@ func _run() -> void:
 	ai.setup(carrier, group)
 	var launchable := group.get_launchable_strike_squadron_ids()
 	_check(
-		launchable == [SQUADRON_ID],
-		"AI resolves the concrete launchable squadron id"
+		launchable == [SQUADRON_ID, TORPEDO_SQUADRON_ID],
+		"AI resolves both concrete strike squadron ids"
 	)
 	_check(
 		group.get_default_strike_mission(SQUADRON_ID) != null,
 		"default strike mission is data-driven and available"
+	)
+	_check(
+		group.get_default_strike_mission(TORPEDO_SQUADRON_ID) != null,
+		"torpedo strike mission is data-driven and available"
 	)
 	var target := ai.select_strike_target()
 	_check(

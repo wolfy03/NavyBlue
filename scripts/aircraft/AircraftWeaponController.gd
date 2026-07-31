@@ -44,6 +44,8 @@ var _active_release_request_id := -1
 var _pending_release_count := 0
 var _pending_target_position := Vector3.ZERO
 var _pending_target_velocity := Vector3.ZERO
+var _pending_attack_command_id := 0
+var _pending_launch_direction := Vector3.ZERO
 var _last_spawned_projectile: Node3D
 var _configuration_warning_emitted := false
 var _depletion_emitted := false
@@ -203,7 +205,9 @@ func emit_gun_burst_result(
 
 func request_release(
 		target_position: Vector3,
-		target_velocity: Vector3 = Vector3.ZERO
+		target_velocity: Vector3 = Vector3.ZERO,
+		attack_command_id: int = 0,
+		launch_direction: Vector3 = Vector3.ZERO
 ) -> int:
 	if not can_release():
 		return -1
@@ -211,6 +215,8 @@ func request_release(
 	_active_release_request_id = request_id
 	_pending_target_position = target_position
 	_pending_target_velocity = target_velocity
+	_pending_attack_command_id = attack_command_id
+	_pending_launch_direction = launch_direction
 	_pending_release_count = mini(
 		_get_projectiles_for_release(),
 		remaining_ammunition
@@ -224,14 +230,46 @@ func request_release(
 
 func release(
 		target_position: Vector3,
-		target_velocity: Vector3 = Vector3.ZERO
+		target_velocity: Vector3 = Vector3.ZERO,
+		attack_command_id: int = 0,
+		launch_direction: Vector3 = Vector3.ZERO
 ) -> bool:
 	var ammunition_before := remaining_ammunition
-	var request_id := request_release(target_position, target_velocity)
+	var request_id := request_release(
+		target_position,
+		target_velocity,
+		attack_command_id,
+		launch_direction
+	)
 	if request_id < 0:
 		return false
 	_process_payload_release()
 	return remaining_ammunition < ammunition_before
+
+
+func release_air_dropped_torpedo(
+		request: AirDroppedTorpedoLaunchRequest
+) -> AirDroppedTorpedoCreateResult:
+	if request == null \
+			or request.source_aircraft != owner_aircraft \
+			or weapon_data == null \
+			or weapon_data.weapon_type \
+				!= AircraftWeaponData.WeaponType.TORPEDO:
+		return AirDroppedTorpedoCreateResult.failed(&"invalid_request")
+	if not can_release():
+		return AirDroppedTorpedoCreateResult.failed(&"release_unavailable")
+	var projectile := _spawn_projectile(
+		request.target_point,
+		Vector3.ZERO,
+		request.command_id,
+		request.launch_direction,
+		true
+	)
+	var torpedo := projectile as TorpedoProjectile
+	if torpedo == null:
+		return AirDroppedTorpedoCreateResult.failed(&"spawn_failed")
+	release_cooldown_left = maxf(weapon_data.release_interval_sec, 0.0)
+	return AirDroppedTorpedoCreateResult.completed(torpedo)
 
 
 func is_release_in_progress() -> bool:
@@ -275,7 +313,9 @@ func _process_payload_release() -> void:
 		return
 	var projectile := _spawn_projectile(
 		_pending_target_position,
-		_pending_target_velocity
+		_pending_target_velocity,
+		_pending_attack_command_id,
+		_pending_launch_direction
 	)
 	if projectile == null:
 		_emit_release_failed(ReleaseFailureReason.SPAWN_FAILED)
@@ -307,7 +347,10 @@ func _get_projectiles_for_release() -> int:
 
 func _spawn_projectile(
 		target_position: Vector3,
-		_target_velocity: Vector3
+		_target_velocity: Vector3,
+		attack_command_id: int = 0,
+		launch_direction: Vector3 = Vector3.ZERO,
+		require_torpedo_root: bool = false
 ) -> Node3D:
 	if weapon_data == null or weapon_data.projectile_scene == null \
 			or weapon_data.projectile_data == null:
@@ -324,14 +367,26 @@ func _spawn_projectile(
 	context.source_team = owner_aircraft.team
 	context.source_weapon_id = StringName(weapon_data.id)
 	context.source_projectile_data = weapon_data.projectile_data
-	context.initial_transform = owner_aircraft.global_transform
-	context.initial_transform.origin += Vector3.DOWN * 2.0
+	context.initial_transform = owner_aircraft.get_payload_release_transform()
 	context.initial_velocity = owner_aircraft.get_world_velocity()
 	context.initial_velocity.y = minf(
 		context.initial_velocity.y,
 		-maxf(weapon_data.downward_release_speed_mps, 0.0)
 	)
 	context.aim_point = target_position
+	if weapon_data.weapon_type \
+			== AircraftWeaponData.WeaponType.TORPEDO:
+		context.torpedo_launch_mode = TorpedoLaunchMode.Type.AIR_DROPPED
+		context.attack_command_id = attack_command_id
+		context.intended_launch_direction = launch_direction
+		if context.intended_launch_direction.length_squared() <= 0.0001:
+			context.intended_launch_direction = target_position \
+				- owner_aircraft.global_position
+		context.intended_launch_direction.y = 0.0
+		if context.intended_launch_direction.length_squared() <= 0.0001:
+			context.intended_launch_direction = \
+				-owner_aircraft.global_basis.z
+			context.intended_launch_direction.y = 0.0
 	var creation := battle_services.projectile_factory.create_result(
 		weapon_data.projectile_scene,
 		projectile_parent,
@@ -340,6 +395,16 @@ func _spawn_projectile(
 	)
 	var projectile := creation.projectile
 	if projectile == null:
+		return null
+	if require_torpedo_root and not projectile is TorpedoProjectile:
+		var simple_projectile := projectile as ProjectileBase
+		var rigid_projectile := projectile as WeaponProjectileBase
+		if simple_projectile != null:
+			simple_projectile.recycle_projectile()
+		elif rigid_projectile != null:
+			rigid_projectile.recycle_projectile()
+		else:
+			projectile.queue_free()
 		return null
 	remaining_ammunition = maxi(remaining_ammunition - 1, 0)
 	weapon_released.emit(owner_aircraft, projectile)
@@ -371,6 +436,8 @@ func _clear_active_release_request() -> void:
 	_pending_release_count = 0
 	_pending_target_position = Vector3.ZERO
 	_pending_target_velocity = Vector3.ZERO
+	_pending_attack_command_id = 0
+	_pending_launch_direction = Vector3.ZERO
 	_last_spawned_projectile = null
 
 

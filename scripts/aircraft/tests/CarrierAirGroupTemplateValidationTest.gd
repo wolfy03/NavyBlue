@@ -9,8 +9,8 @@ var _failures: Array[String] = []
 
 func _initialize() -> void:
 	_check(
-		AIR_GROUP.squadron_templates.size() == 2,
-		"Seabastion has two squadron templates"
+		AIR_GROUP.squadron_templates.size() == 3,
+		"Seabastion has three squadron templates"
 	)
 	var ids: Array[String] = []
 	for template in AIR_GROUP.squadron_templates:
@@ -28,6 +28,7 @@ func _initialize() -> void:
 		ids.append(template.id)
 	_check(ids.has("basic_bomber_squadron"), "bomber template exists")
 	_check(ids.has("basic_fighter_squadron"), "fighter template exists")
+	_check(ids.has("basic_torpedo_squadron"), "torpedo bomber template exists")
 	_finish()
 
 

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="AirMissionData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/AirMissionData.gd" id="1_mission"]
+
+[resource]
+script = ExtResource("1_mission")
+id = "basic_torpedo_attack"
+mission_type = 4
+attack_altitude_m = 45.0
+attack_pass_count = 1
+target_prediction_enabled = true
+return_after_attack = true
+approach_repath_interval_sec = 0.5
+approach_repath_threshold_m = 150.0

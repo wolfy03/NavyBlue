@@ -23,7 +23,7 @@ func _run() -> void:
 	var ids: Array[String] = []
 	for index in selector.item_count:
 		ids.append(str(selector.get_item_metadata(index)))
-	_check(selector.item_count == 2, "carrier panel has two squadron rows")
+	_check(selector.item_count == 3, "carrier panel has three squadron rows")
 	_check(
 		ids.has("basic_bomber_squadron"),
 		"carrier panel lists the dive bomber squadron"
@@ -32,6 +32,24 @@ func _run() -> void:
 		ids.has("basic_fighter_squadron"),
 		"carrier panel lists the fighter squadron"
 	)
+	_check(
+		ids.has("basic_torpedo_squadron"),
+		"carrier panel lists the torpedo bomber squadron"
+	)
+	var torpedo_index := ids.find("basic_torpedo_squadron")
+	if torpedo_index >= 0:
+		panel.squadron_selector.select(torpedo_index)
+		panel._on_squadron_selected(torpedo_index)
+		_check(
+			"Torpedo Bomber" in panel.squadron_selector.get_item_text(
+				torpedo_index
+			),
+			"torpedo bomber row displays its role"
+		)
+		_check(
+			panel.strike_button.visible,
+			"torpedo bomber selection exposes Auto Strike"
+		)
 	var fighter_index := ids.find("basic_fighter_squadron")
 	if fighter_index >= 0:
 		panel.squadron_selector.select(fighter_index)

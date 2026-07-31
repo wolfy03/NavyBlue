@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="TorpedoAttackProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/aircraft/torpedo/TorpedoAttackProfile.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+minimum_attack_run_distance_m = 700.0
+approach_distance_m = 500.0
+escape_distance_m = 650.0
+minimum_direction_drag_m = 15.0
+multi_squadron_attack_spacing_m = 180.0
+release_grace_distance_m = 120.0
+attack_entry_altitude_m = 45.0
+release_altitude_m = 25.0
+maximum_release_altitude_m = 40.0
+escape_altitude_m = 120.0
+attack_run_speed_mps = 65.0
+minimum_release_speed_mps = 45.0
+maximum_release_speed_mps = 90.0
+alignment_tolerance_deg = 5.0
+release_point_tolerance_m = 20.0
+preview_height_offset_m = 3.0
+targeting_refresh_interval_sec = 0.0

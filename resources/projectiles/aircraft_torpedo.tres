@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="TorpedoProjectileData" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/TorpedoProjectileData.gd" id="1_data"]
+
+[resource]
+script = ExtResource("1_data")
+id = "aircraft_torpedo"
+display_name = "Aerial Torpedo"
+damage = 260.0
+lifetime_seconds = 180.0
+explosion_radius = 12.0
+splash_strength = 2.5
+launch_speed_mps = 18.0
+max_speed_mps = 34.0
+acceleration_mps2 = 4.0
+running_depth_m = 2.0
+max_turn_rate_deg_sec = 0.0
+maximum_range_m = 6500.0
+guidance_type = 0
+direct_damage = 180.0
+explosion_damage = 80.0
+flooding_chance = 0.4
+flooding_duration_seconds = 14.0
+flooding_damage_per_second = 3.5
+arming_distance_m = 120.0
+airborne_timeout_sec = 8.0
+water_entry_effect_strength = 1.0

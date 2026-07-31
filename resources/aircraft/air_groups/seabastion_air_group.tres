@@ -1,15 +1,16 @@
-[gd_resource type="Resource" script_class="CarrierAirGroupData" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="CarrierAirGroupData" load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/aircraft/CarrierAirGroupData.gd" id="1_group"]
 [ext_resource type="Resource" path="res://resources/aircraft/squadrons/basic_bomber_squadron.tres" id="2_squadron"]
 [ext_resource type="Script" path="res://scripts/data/aircraft/SquadronData.gd" id="3_squadron_script"]
 [ext_resource type="Resource" path="res://resources/aircraft/ai/seabastion_air_group_ai.tres" id="4_ai"]
 [ext_resource type="Resource" path="res://resources/aircraft/squadrons/basic_fighter_squadron.tres" id="5_fighter"]
+[ext_resource type="Resource" path="res://resources/aircraft/squadrons/basic_torpedo_squadron.tres" id="6_torpedo"]
 
 [resource]
 script = ExtResource("1_group")
 id = "seabastion_air_group"
-squadron_templates = Array[ExtResource("3_squadron_script")]([ExtResource("2_squadron"), ExtResource("5_fighter")])
+squadron_templates = Array[ExtResource("3_squadron_script")]([ExtResource("2_squadron"), ExtResource("5_fighter"), ExtResource("6_torpedo")])
 maximum_active_squadrons = 2
 launch_cooldown_sec = 6.0
 recovery_cooldown_sec = 8.0
