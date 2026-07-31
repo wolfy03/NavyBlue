@@ -4,12 +4,17 @@ class_name RunSessionReader
 var _run_manager: Node
 
 
-func setup(run_manager: Node) -> void:
+func setup(run_manager: Node) -> bool:
 	_run_manager = run_manager
+	return _run_manager == null or is_instance_valid(_run_manager)
 
 
 func shutdown() -> void:
 	_run_manager = null
+
+
+func is_configured() -> bool:
+	return _run_manager != null and is_instance_valid(_run_manager)
 
 
 func is_run_active() -> bool:

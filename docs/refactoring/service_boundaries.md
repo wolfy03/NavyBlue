@@ -27,9 +27,10 @@ Optional dependencies:
 - `GameManager`
 - `BattleDebugSettings`
 
-`BattleServices.setup()` returns `false` before any collaborator is configured
-when a required dependency or faction palette is invalid. `BattleScene`
-aborts battle initialization on that result.
+`BattleServices.setup()` validates every required dependency before setup.
+Collaborator setup is transactional: any intermediate failure calls
+`shutdown()` and leaves the aggregate fully unconfigured. `BattleScene`
+aborts spawning, AI, input, HUD, and effect binding on that result.
 
 Projectile creation is exposed by the typed `ProjectileFactory`. Damage and
 impact presentation travel through `BattleEventPublisher` to
@@ -38,6 +39,10 @@ impact presentation travel through `BattleEventPublisher` to
 Internal shell, torpedo, and fighter tracer effects inherit
 `PooledEffectBase`. Ocean interaction remains a documented behavioral boundary
 because the ocean subsystem owns its ripple and splash implementation.
+
+Water splash/ripple, ship wake, muzzle presentation owned by weapon scenes,
+ship/aircraft destruction presentation, and UI effects are not acquired by
+`ReusableEffectPool`; they remain outside the typed internal effect pool.
 
 ## Allowed Dynamic Calls
 

@@ -93,7 +93,8 @@ func update_targeting(delta: float) -> void:
 	current_target_lock_sec += delta
 	_debug_elapsed_sec += delta
 
-	if not _is_valid_candidate(_current_target):
+	if _current_target != null \
+			and not _is_valid_candidate(_current_target):
 		if is_instance_valid(_current_target):
 			_change_target(null)
 		else:
@@ -259,6 +260,8 @@ func _should_switch_target(current_breakdown: Dictionary) -> bool:
 
 
 func _change_target(next_target: ShipUnit) -> void:
+	if _current_target == null and next_target == null:
+		return
 	if is_instance_valid(_current_target) and _current_target == next_target:
 		return
 	var previous_target: ShipUnit = _current_target \

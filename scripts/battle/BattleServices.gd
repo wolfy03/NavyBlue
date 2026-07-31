@@ -8,6 +8,7 @@ var run_session := RunSessionReader.new()
 var game_flow := GameFlowService.new()
 var faction_palette: FactionPalette
 var debug_settings: BattleDebugSettings
+var _configured := false
 
 
 func setup(
@@ -28,13 +29,24 @@ func setup(
 		for dependency_error in dependency_errors:
 			push_error("BattleServices setup failed: %s" % dependency_error)
 		return false
-	events.setup(next_event_bus)
-	projectile_pool.setup(next_object_pool)
-	projectile_factory.setup(projectile_pool, self)
-	run_session.setup(next_run_manager)
-	game_flow.setup(next_game_manager)
+	if not events.setup(next_event_bus):
+		shutdown()
+		return false
+	if not projectile_pool.setup(next_object_pool):
+		shutdown()
+		return false
+	if not projectile_factory.setup(projectile_pool, self):
+		shutdown()
+		return false
+	if not run_session.setup(next_run_manager):
+		shutdown()
+		return false
+	if not game_flow.setup(next_game_manager):
+		shutdown()
+		return false
 	faction_palette = next_faction_palette
 	debug_settings = next_debug_settings
+	_configured = true
 	return true
 
 
@@ -57,6 +69,7 @@ func validate_dependencies(
 
 
 func shutdown() -> void:
+	_configured = false
 	events.shutdown()
 	projectile_factory.shutdown()
 	projectile_pool.shutdown()
@@ -64,6 +77,14 @@ func shutdown() -> void:
 	game_flow.shutdown()
 	faction_palette = null
 	debug_settings = null
+
+
+func is_configured() -> bool:
+	return _configured \
+		and events.is_configured() \
+		and projectile_pool.is_configured() \
+		and projectile_factory.is_configured() \
+		and faction_palette != null
 
 
 func get_faction_color(team: StringName, fallback: Color) -> Color:

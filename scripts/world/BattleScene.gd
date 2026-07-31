@@ -60,6 +60,8 @@ var _fleet_controllers: Dictionary = {}
 var _validated_stage_ids: Dictionary = {}
 var battle_services := BattleServices.new()
 var _shutdown_started := false
+var _shutdown_completed := false
+var initialization_result := BattleInitializationResult.new()
 
 func _ready() -> void:
 	BattleInputActions.ensure_defaults()
@@ -73,6 +75,12 @@ func _ready() -> void:
 	):
 		push_error("Battle initialization stopped: required services are missing.")
 		set_process(false)
+		set_physics_process(false)
+		if input_manager != null:
+			input_manager.set_input_enabled(false)
+		initialization_result = BattleInitializationResult.failed(
+			&"battle_services_setup_failed"
+		)
 		return
 	if combat_effect_presenter != null:
 		var typed_effect_controller := combat_effect_controller \
@@ -113,6 +121,7 @@ func _ready() -> void:
 	_setup_camera_and_ui()
 	if has_node("/root/RunManager") and player_ship != null:
 		get_node("/root/RunManager").capture_player_ship(player_ship)
+	initialization_result = BattleInitializationResult.completed()
 
 func _process(_delta: float) -> void:
 	_update_impact_marker()
@@ -123,6 +132,13 @@ func shutdown() -> void:
 		return
 	_shutdown_started = true
 	set_process(false)
+	set_physics_process(false)
+	if input_manager != null:
+		input_manager.set_input_enabled(false)
+	if aircraft_selection_controller != null:
+		aircraft_selection_controller.set_input_enabled(false)
+	if battle_state_controller != null:
+		battle_state_controller.stop_battle()
 	for controller_value in _fleet_controllers.values():
 		var controller := controller_value as FleetAIController
 		if controller != null and is_instance_valid(controller):
@@ -130,8 +146,8 @@ func shutdown() -> void:
 	_fleet_controllers.clear()
 	friendly_fleet_ai = null
 	enemy_fleet_ai = null
-	if spawn_system != null:
-		spawn_system.shutdown()
+	_shutdown_aircraft()
+	_shutdown_projectiles()
 	if combat_effect_presenter != null:
 		combat_effect_presenter.shutdown()
 	var typed_effect_controller := \
@@ -139,7 +155,44 @@ func shutdown() -> void:
 	if typed_effect_controller != null:
 		typed_effect_controller.shutdown()
 		typed_effect_controller.clear_pools()
+	if spawn_system != null:
+		spawn_system.shutdown()
 	battle_services.shutdown()
+	_shutdown_completed = true
+
+
+func is_shutdown_completed() -> bool:
+	return _shutdown_completed
+
+
+func _shutdown_aircraft() -> void:
+	var tree := get_tree()
+	if tree == null:
+		return
+	for node in tree.get_nodes_in_group(&"aircraft_squadrons"):
+		var squadron := node as AircraftSquadron
+		if squadron != null \
+				and is_instance_valid(squadron) \
+				and is_ancestor_of(squadron):
+			squadron.shutdown()
+
+
+func _shutdown_projectiles() -> void:
+	if projectiles_root == null:
+		return
+	for child in projectiles_root.get_children():
+		var projectile := child as ProjectileBase
+		if projectile != null:
+			projectile.recycle_projectile()
+			continue
+		var rigid_projectile := child as WeaponProjectileBase
+		if rigid_projectile != null:
+			rigid_projectile.recycle_projectile()
+			continue
+		if child.has_method(&"despawn"):
+			child.call(&"despawn")
+		else:
+			child.queue_free()
 
 
 func _exit_tree() -> void:

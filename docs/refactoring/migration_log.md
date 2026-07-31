@@ -106,8 +106,8 @@
   typed projectile roots to preserve their established physics contracts.
 - Some optional effect and ocean integrations retain documented behavioral
   calls at external presentation boundaries.
-- The full 36,000-frame 10v10 and battle AI endurance tests exceed the current
-  validation window and remain required before a performance-focused release.
+- The 36,000-frame nightly gate is now executable per profile and seed through
+  the PowerShell runner; artifacts remain ignored release outputs.
 
 ## Stabilization Pass
 
@@ -161,7 +161,33 @@
   now flow through `CombatEffectController` and `EffectFactory`.
 - Updated the 10v10 endurance fixture to inject `BattleServices` and register
   projectile and aircraft roots before creating combat units.
-- Completed 1,800-frame smoke and 6v6 validation, two 9,000-frame 10v10 seeds,
-  and one 9,000-frame BattleAI validation with zero reported failures.
-- The final 83-entry extended validation run completed without ObjectDB leaks,
-  Resource-in-use warnings, or unexpected errors.
+- Completed 600-frame smoke, 1,800-frame extended smoke, two 9,000-frame
+  10v10 seeds, and 9,000-frame BattleAI and carrier-inclusive 6v6 validation
+  with zero reported failures.
+- The final 93-entry extended validation and 15 standalone regression
+  entrypoints completed without ObjectDB leaks, Resource-in-use warnings, or
+  unexpected errors.
+
+## Endurance And Lifecycle Stabilization
+
+- Split smoke (600), extended smoke (1,800), seeded (9,000), and nightly
+  (36,000) profile definitions behind `EnduranceProfile`.
+- Fixed the 15-chunk documentation mismatch: the smoke test had passed a
+  hard-coded 120-frame chunk despite the runner's 600-frame default.
+- Added baseline, active peak, and post-cleanup endurance snapshots plus
+  explicit pool lease/failure/fallback metrics.
+- Added `ProjectileCreationOwnership` and one-way `ProjectileLifecycle` state.
+- Made projectile factory failure cleanup atomic and prevented fallback
+  instances from entering ObjectPool.
+- Made `BattleServices.setup()` transactional and expanded ordered,
+  idempotent `BattleScene.shutdown()`.
+- Extracted role suitability and emergency interceptor composition from
+  `FleetAIController` into typed policies without changing scores or limits.
+- Audited internal reusable effects; shell impact, torpedo impact, and fighter
+  tracer remain the complete `ReusableEffectPool` set.
+- Fixed targetless FleetAI evaluation and null-to-null target changes after
+  the 36,000-frame 10v10 gate exposed runaway target/navigation updates.
+- Completed 36,000-frame 10v10 seeds 1 and 2, BattleAI seed 1, and
+  carrier-inclusive 6v6 seed 1 with zero final failures.
+- Updated the nightly runner result contract so missing `FLEET_AI_*` summaries
+  fail instead of producing an empty metrics object.

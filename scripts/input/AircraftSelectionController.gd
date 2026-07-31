@@ -83,7 +83,8 @@ func clear_selection() -> void:
 	if selected_squadrons.is_empty():
 		return
 	for squadron in selected_squadrons:
-		if is_instance_valid(squadron):
+		if is_instance_valid(squadron) \
+				and squadron.is_inside_tree():
 			squadron.set_player_selected(false)
 	selected_squadrons.clear()
 	var empty_selection: Array[AircraftSquadron] = []

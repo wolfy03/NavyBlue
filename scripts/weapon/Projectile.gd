@@ -122,8 +122,8 @@ func _begin_flight(
 	despawn_reason = DespawnReason.NONE
 	last_despawn_reason = DespawnReason.NONE
 	_despawn_requested = false
-	previous_position = global_position
-	launch_position = global_position
+	previous_position = Vector3.ZERO
+	launch_position = Vector3.ZERO
 	last_despawn_position = global_position
 	_cache_collision_excludes()
 	_cache_ocean_manager()
@@ -618,8 +618,8 @@ func on_recycled_to_pool() -> void:
 	velocity = Vector3.ZERO
 	initial_velocity = Vector3.ZERO
 	age_seconds = 0.0
-	previous_position = global_position
-	launch_position = global_position
+	previous_position = Vector3.ZERO
+	launch_position = Vector3.ZERO
 	target_aim_point = Vector3.ZERO
 	impact_processed = false
 	water_impact_processed = false
@@ -644,8 +644,8 @@ func _on_reset_for_pool() -> void:
 	velocity = Vector3.ZERO
 	initial_velocity = Vector3.ZERO
 	age_seconds = 0.0
-	previous_position = global_position
-	launch_position = global_position
+	previous_position = Vector3.ZERO
+	launch_position = Vector3.ZERO
 	target_aim_point = Vector3.ZERO
 	impact_processed = false
 	water_impact_processed = false

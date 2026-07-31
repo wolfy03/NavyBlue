@@ -48,6 +48,7 @@ func get_pool_size() -> int:
 func clear_pool() -> void:
 	for effect in _effects:
 		if effect != null and is_instance_valid(effect):
+			effect.deactivate()
 			effect.queue_free()
 	_effects.clear()
 

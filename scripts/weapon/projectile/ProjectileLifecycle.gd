@@ -1,14 +1,29 @@
 extends RefCounted
 class_name ProjectileLifecycle
 
+enum State {
+	UNCONFIGURED,
+	CONFIGURED,
+	LAUNCHED,
+	IMPACTED,
+	RELEASED,
+}
+
 var projectile_data: ProjectileData
 var launch_context: ProjectileLaunchContext
 var battle_services: BattleServices
-var runtime_state: ProjectileRuntimeState
+var runtime_state := ProjectileRuntimeState.new()
+var state := State.UNCONFIGURED
 
-var configured := false
-var launched := false
-var impact_emitted := false
+var configured: bool:
+	get:
+		return state in [State.CONFIGURED, State.LAUNCHED, State.IMPACTED]
+var launched: bool:
+	get:
+		return state in [State.LAUNCHED, State.IMPACTED]
+var impact_emitted: bool:
+	get:
+		return state == State.IMPACTED
 
 
 func configure(data: ProjectileData, services: BattleServices) -> bool:
@@ -18,25 +33,42 @@ func configure(data: ProjectileData, services: BattleServices) -> bool:
 	projectile_data = data
 	battle_services = services
 	runtime_state = ProjectileRuntimeState.new()
-	configured = true
+	state = State.CONFIGURED
 	return true
 
 
 func begin_launch(context: ProjectileLaunchContext) -> bool:
-	if not configured or context == null:
+	if state != State.CONFIGURED or context == null:
 		return false
 	launch_context = context
-	launched = true
+	state = State.LAUNCHED
 	runtime_state.active = true
 	return true
 
 
 func mark_impact_once() -> bool:
-	if impact_emitted:
+	if state != State.LAUNCHED:
 		return false
-	impact_emitted = true
-	if runtime_state != null:
-		runtime_state.impact_resolved = true
+	state = State.IMPACTED
+	runtime_state.impact_resolved = true
+	return true
+
+
+func set_creation_ownership(
+		ownership: ProjectileCreationOwnership.Type
+) -> void:
+	runtime_state.creation_ownership = ownership
+
+
+func get_creation_ownership() -> ProjectileCreationOwnership.Type:
+	return runtime_state.creation_ownership
+
+
+func mark_released() -> bool:
+	if state not in [State.CONFIGURED, State.LAUNCHED, State.IMPACTED]:
+		return false
+	state = State.RELEASED
+	runtime_state.active = false
 	return true
 
 
@@ -45,6 +77,4 @@ func reset() -> void:
 	launch_context = null
 	battle_services = null
 	runtime_state = ProjectileRuntimeState.new()
-	configured = false
-	launched = false
-	impact_emitted = false
+	state = State.UNCONFIGURED

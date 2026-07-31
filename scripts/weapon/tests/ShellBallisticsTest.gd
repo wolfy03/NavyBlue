@@ -424,7 +424,10 @@ func _test_collision_exclusion_and_obstacle_policy() -> void:
 		load("res://resources/projectiles/small_ap_shell.tres"),
 		BattleTestServices.create(self)
 	)
-	obstacle_shell.velocity = Vector3.FORWARD * 100.0
+	var obstacle_context := ProjectileLaunchContext.new()
+	obstacle_context.initial_transform = obstacle_shell.global_transform
+	obstacle_context.initial_velocity = Vector3.FORWARD * 100.0
+	obstacle_shell.launch(obstacle_context)
 	obstacle_shell.call(&"_process_collision", obstacle_hit)
 	_check(
 		obstacle_shell.last_despawn_reason \

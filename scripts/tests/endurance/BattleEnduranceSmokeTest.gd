@@ -3,7 +3,6 @@ extends SceneTree
 const BATTLE_LOOP_STAGE: StageData = preload(
 	"res://resources/stages/tests/battle_loop_test.tres"
 )
-const DEFAULT_FRAMES := 600
 
 
 func _initialize() -> void:
@@ -23,42 +22,105 @@ func _run() -> void:
 	root.add_child(scene)
 	await process_frame
 	await physics_frame
+	if not scene.initialization_result.success:
+		push_error("ENDURANCE: battle scene initialization failed.")
+		quit(1)
+		return
 
+	var profile_name := _resolve_profile_name()
+	var frame_count := _resolve_frame_count(profile_name)
+	var seed_value := _resolve_seed()
+	seed(seed_value)
+	var services := scene.battle_services
 	var metrics := BattleEnduranceMetrics.new()
+	metrics.configure(
+		profile_name,
+		seed_value,
+		EnduranceProfile.DEFAULT_WARMUP_FRAMES,
+		EnduranceProfile.DEFAULT_CLEANUP_FRAMES
+	)
 	var runner := BattleEnduranceRunner.new()
+	await runner.wait_frames(self, metrics.warmup_frames)
+	metrics.capture_baseline(self, services)
 	await runner.run(
 		self,
-		_resolve_frame_count(),
+		frame_count,
 		metrics,
-		scene.battle_services,
-		120
+		services,
+		EnduranceProfile.DEFAULT_CHUNK_SIZE_FRAMES
 	)
-	# Active combat legitimately accumulates in-flight shells during this
-	# short window. Post-battle cleanup profiles use the stricter defaults.
-	# Thirty seconds can still contain long-range shells whose configured
-	# lifetime exceeds the sample window. The pool/live-count invariant below
-	# guards leaks while this budget permits those legitimate in-flight nodes.
-	var failures := metrics.validate_bounded_growth(160, 48, 16)
-	var summary := metrics.get_summary()
-	print(
-		"BATTLE_ENDURANCE_SMOKE frames=%d summary=%s failures=%d"
-		% [_resolve_frame_count(), summary, failures.size()]
-	)
-	for failure in failures:
-		push_error("BATTLE_ENDURANCE: %s" % failure)
+	var failures := metrics.validate_metadata()
+	failures.append_array(metrics.validate_bounded_growth(160, 48, 16))
 
 	scene.shutdown()
 	scene.queue_free()
-	await process_frame
-	await physics_frame
+	await runner.wait_frames(self, metrics.cleanup_frames)
 	var object_pool := root.get_node_or_null("ObjectPool")
 	if object_pool != null:
 		object_pool.call(&"clear_pool")
 	await process_frame
+	await process_frame
+	await physics_frame
+	metrics.capture_post_cleanup(self, services)
+	failures.append_array(metrics.validate_cleanup())
+
+	var summary := metrics.get_summary()
+	print(
+		"BATTLE_ENDURANCE profile=%s frames=%d seed=%d summary=%s failures=%d"
+		% [
+			profile_name,
+			frame_count,
+			seed_value,
+			summary,
+			failures.size(),
+		]
+	)
+	for failure in failures:
+		push_error("BATTLE_ENDURANCE: %s" % failure)
+	if not _write_result(summary, failures):
+		failures.append("Endurance result file could not be written.")
 	quit(0 if failures.is_empty() else 1)
 
 
-func _resolve_frame_count() -> int:
+func _resolve_profile_name() -> StringName:
+	var value := StringName(OS.get_environment(
+		"NAVYBLUE_ENDURANCE_PROFILE"
+	))
+	return value if EnduranceProfile.get_default_frames(value) > 0 \
+		else EnduranceProfile.SMOKE
+
+
+func _resolve_frame_count(profile_name: StringName) -> int:
 	var override := OS.get_environment("NAVYBLUE_ENDURANCE_FRAMES")
-	return maxi(int(override), 1) \
-		if override.is_valid_int() else DEFAULT_FRAMES
+	return maxi(int(override), 1) if override.is_valid_int() \
+		else EnduranceProfile.get_default_frames(profile_name)
+
+
+func _resolve_seed() -> int:
+	var value := OS.get_environment("NAVYBLUE_ENDURANCE_SEED")
+	return int(value) if value.is_valid_int() else 1
+
+
+func _write_result(
+		summary: Dictionary,
+		failures: PackedStringArray
+) -> bool:
+	var output_path := OS.get_environment("NAVYBLUE_ENDURANCE_OUTPUT_PATH")
+	if output_path.is_empty():
+		return true
+	var file := FileAccess.open(output_path, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(JSON.stringify({
+		"profile": String(summary.get(
+			"profile_name",
+			EnduranceProfile.SMOKE
+		)),
+		"frames": int(summary.get("total_executed_frames", 0)),
+		"seed": int(summary.get("seed", 1)),
+		"success": failures.is_empty(),
+		"metrics": summary,
+		"failures": Array(failures),
+	}, "\t"))
+	file.close()
+	return true

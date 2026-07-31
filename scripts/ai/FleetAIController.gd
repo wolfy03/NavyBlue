@@ -27,6 +27,15 @@ var role_change_count := 0
 var debug_snapshot_update_count := 0
 var tactical_path_failure_report_count := 0
 var empty_fleet_cleanup_count := 0
+var perception_refresh_count := 0
+var target_evaluation_count := 0
+var primary_target_change_count := 0
+var role_assignment_count := 0
+var tactical_plan_count := 0
+var member_order_dispatch_count := 0
+var emergency_assignment_count := 0
+var invalid_decision_count := 0
+var empty_decision_count := 0
 
 var _member_contexts: Dictionary = {}
 var _candidate_provider := Callable()
@@ -37,6 +46,8 @@ var _target_selector := FleetTargetSelector.new()
 var _tactical_planner := FleetTacticalPlanner.new()
 var _order_dispatcher := FleetOrderDispatcher.new()
 var _engagement_policy := FleetEngagementPolicy.new()
+var _role_suitability_policy := FleetRoleSuitabilityPolicy.new()
+var _emergency_interceptor_policy := EmergencyInterceptorPolicy.new()
 var _last_applied_decision := FleetTacticalDecision.new()
 var _member_exit_callbacks: Dictionary = {}
 var _primary_target_ref: WeakRef
@@ -71,6 +82,7 @@ func setup(
 		next_battle_services: BattleServices = null
 ) -> bool:
 	shutdown()
+	_reset_decision_metrics()
 	fleet_ai_settings = fleet_ai_settings \
 		if fleet_ai_settings != null else DEFAULT_FLEET_AI_SETTINGS
 	difficulty_profile = profile if profile != null else DEFAULT_DIFFICULTY
@@ -138,7 +150,9 @@ func update_fleet(delta: float) -> void:
 		_fleet_update_elapsed_sec = 0.0
 		_refresh_hostile_candidate_cache()
 		_update_fleet_geometry()
+		perception_refresh_count += 1
 		_evaluate_fleet_targets()
+		target_evaluation_count += 1
 		_detect_proximity_emergencies()
 		fleet_evaluation_count += 1
 
@@ -151,6 +165,7 @@ func update_fleet(delta: float) -> void:
 		_tactical_update_elapsed_sec = 0.0
 		_update_tactical_positions()
 		tactical_position_update_count += 1
+		tactical_plan_count += 1
 
 	if debug_enabled \
 			and _debug_elapsed_sec >= fleet_ai_settings.debug_update_interval_sec:
@@ -456,6 +471,11 @@ func _evaluate_fleet_targets() -> void:
 		get_emergency_targets(),
 		fleet_ai_settings
 	)
+	if decision == null:
+		invalid_decision_count += 1
+		return
+	if decision.primary_target == null:
+		empty_decision_count += 1
 	_primary_target_ref = weakref(decision.primary_target) \
 		if decision.primary_target != null else null
 	_primary_target_score = decision.primary_score
@@ -466,6 +486,7 @@ func _evaluate_fleet_targets() -> void:
 		_secondary_target_ids[candidate.get_instance_id()] = true
 	if previous_primary != get_primary_target():
 		target_change_count += 1
+		primary_target_change_count += 1
 		_primary_target_lock_sec = 0.0
 	_primary_target_is_emergency = _is_emergency_target(get_primary_target())
 	_last_applied_decision = decision
@@ -521,21 +542,29 @@ func _assign_tactical_roles(force: bool, preserve_existing_roles := true) -> voi
 		elif ship.ship_data.ship_class == ShipData.ShipClass.DESTROYER:
 			destroyer_candidates.append(ship)
 
-	var escort := _select_best_role_candidate(
-		cruiser_candidates,
+	var escort_assignment := _role_suitability_policy.select_best(
+		_get_contexts_for_ships(cruiser_candidates),
 		FleetMemberContext.TacticalRole.ESCORT,
 		protected_ship,
-		preserve_existing_roles
+		preserve_existing_roles,
+		fleet_ai_settings,
+		difficulty_profile
 	) if protected_ship != null else null
+	var escort := escort_assignment.ship \
+		if escort_assignment != null else null
 	for ship in cruiser_candidates:
 		desired_roles[ship.get_instance_id()] = FleetMemberContext.TacticalRole.ESCORT \
 			if ship == escort else FleetMemberContext.TacticalRole.LINE_COMBATANT
-	var screen := _select_best_role_candidate(
-		destroyer_candidates,
+	var screen_assignment := _role_suitability_policy.select_best(
+		_get_contexts_for_ships(destroyer_candidates),
 		FleetMemberContext.TacticalRole.SCREEN,
 		protected_ship,
-		preserve_existing_roles
+		preserve_existing_roles,
+		fleet_ai_settings,
+		difficulty_profile
 	) if protected_ship != null else null
+	var screen := screen_assignment.ship \
+		if screen_assignment != null else null
 	for ship in destroyer_candidates:
 		desired_roles[ship.get_instance_id()] = FleetMemberContext.TacticalRole.SCREEN \
 			if ship == screen else FleetMemberContext.TacticalRole.FLANKER
@@ -561,6 +590,7 @@ func _assign_tactical_roles(force: bool, preserve_existing_roles := true) -> voi
 			context.tactical_position_valid = false
 			context.tactical_heading_valid = false
 			role_change_count += 1
+			role_assignment_count += 1
 		context.set_protected_ship(
 			protected_ship if context.tactical_role in [
 				FleetMemberContext.TacticalRole.ESCORT,
@@ -586,6 +616,7 @@ func _assign_tactical_roles(force: bool, preserve_existing_roles := true) -> voi
 			context.tactical_role \
 				== FleetMemberContext.TacticalRole.INTERCEPT
 		)
+		member_order_dispatch_count += 1
 
 
 func _select_emergency_interceptors(
@@ -593,78 +624,20 @@ func _select_emergency_interceptors(
 		protected_ship: ShipUnit
 ) -> Array[FleetMemberOrder]:
 	var selected: Array[FleetMemberOrder] = []
-	if protected_ship == null:
-		return selected
-	var threats := _get_sorted_emergency_targets()
-	if threats.is_empty():
-		return selected
-	var candidates: Array[ShipUnit] = []
-	var current_screen_count := 0
-	var current_escort_count := 0
-	for member in members:
-		var context := get_member_context(member)
-		if context.tactical_role == FleetMemberContext.TacticalRole.SCREEN:
-			current_screen_count += 1
-		elif context.tactical_role == FleetMemberContext.TacticalRole.ESCORT:
-			current_escort_count += 1
-		if member.player_controlled or member.ship_data.ship_class not in [
-			ShipData.ShipClass.DESTROYER,
-			ShipData.ShipClass.CRUISER,
-		]:
-			continue
-		if _get_health_ratio(member) <= member.ship_data.ai_role_profile.disengage_health_ratio:
-			continue
-		candidates.append(member)
-	var fleet_interceptor_limit := mini(3, maxi(members.size() - 1, 1))
-	for threat in threats:
-		if selected.size() >= fleet_interceptor_limit or candidates.is_empty():
-			break
-		var required := mini(
-			_get_required_interceptor_count(threat, protected_ship, members.size()),
-			fleet_interceptor_limit - selected.size()
-		)
-		candidates.sort_custom(
-			func(first: ShipUnit, second: ShipUnit) -> bool:
-				var first_score := _get_interceptor_suitability(
-					first,
-					threat,
-					protected_ship
-				)
-				var second_score := _get_interceptor_suitability(
-					second,
-					threat,
-					protected_ship
-				)
-				if not is_equal_approx(first_score, second_score):
-					return first_score > second_score
-				return first.get_instance_id() < second.get_instance_id()
-		)
-		var selected_for_threat := 0
-		var remaining_candidates := candidates.size()
-		for ship in candidates.duplicate():
-			if selected_for_threat >= required:
-				break
-			var role := get_member_context(ship).tactical_role
-			var needed_after_current := required - selected_for_threat
-			var alternatives_remain := remaining_candidates - 1 >= needed_after_current
-			remaining_candidates -= 1
-			if alternatives_remain and (
-				(role == FleetMemberContext.TacticalRole.SCREEN and current_screen_count <= 1)
-				or (role == FleetMemberContext.TacticalRole.ESCORT and current_escort_count <= 1)
-			):
-				continue
+	var assignments := _emergency_interceptor_policy.assign(
+		_get_contexts_for_ships(members),
+		_get_sorted_emergency_threat_contexts(),
+		protected_ship
+	)
+	for assignment in assignments:
+		for ship in assignment.interceptors:
 			var order := FleetMemberOrder.new()
 			order.ship = ship
-			order.target = threat
+			order.target = assignment.threat
 			order.order_type = FleetMemberOrder.OrderType.FOCUS_FIRE
-			order.reason = &"emergency_intercept"
+			order.reason = assignment.reason
 			selected.append(order)
-			candidates.erase(ship)
-			selected_for_threat += 1
-			if role == FleetMemberContext.TacticalRole.SCREEN:
-				current_screen_count -= 1
-			elif role == FleetMemberContext.TacticalRole.ESCORT:
-				current_escort_count -= 1
+			emergency_assignment_count += 1
 	return selected
 
 
@@ -678,102 +651,26 @@ func _find_member_order(
 	return null
 
 
-func _get_required_interceptor_count(
-		threat: ShipUnit,
-		protected_ship: ShipUnit,
-		fleet_size: int
-) -> int:
-	var required := 1
-	if protected_ship.ship_data.ship_class == ShipData.ShipClass.AIRCRAFT_CARRIER:
-		required += 1
-	var threat_context := _emergency_threats.get(threat.get_instance_id()) as FleetThreatContext
-	if threat_context != null and threat_context.threat_score >= 60.0:
-		required += 1
-	return clampi(required, 1, mini(3, maxi(fleet_size - 1, 1)))
+func _get_contexts_for_ships(
+		ships: Array[ShipUnit]
+) -> Array[FleetMemberContext]:
+	var contexts: Array[FleetMemberContext] = []
+	for ship in ships:
+		var context := get_member_context(ship)
+		if context != null:
+			contexts.append(context)
+	return contexts
 
 
-func _get_interceptor_suitability(
-		ship: ShipUnit,
-		threat: ShipUnit,
-		protected_ship: ShipUnit
-) -> float:
-	var threat_distance := ship.global_position.distance_to(threat.global_position)
-	var protected_distance := ship.global_position.distance_to(protected_ship.global_position)
-	var speed_score := ship.ship_data.max_speed_mps / 50.0 * 25.0
-	var health_score := _get_health_ratio(ship) * 25.0
-	var distance_score := maxf(1.0 - threat_distance / 8000.0, 0.0) * 30.0 \
-		+ maxf(1.0 - protected_distance / 6000.0, 0.0) * 15.0
-	var context := get_member_context(ship)
-	var role_cost := 0.0
-	match context.tactical_role:
-		FleetMemberContext.TacticalRole.INTERCEPT:
-			role_cost = -18.0
-		FleetMemberContext.TacticalRole.ESCORT, FleetMemberContext.TacticalRole.SCREEN:
-			role_cost = 14.0
-		FleetMemberContext.TacticalRole.LINE_COMBATANT:
-			role_cost = 8.0
-	var current_target := ship.get_ai_target() as ShipUnit
-	if current_target != null \
-			and is_instance_valid(current_target) \
-			and current_target.is_alive() \
-			and ship.combat.is_target_in_range(current_target):
-		role_cost += 8.0
-	return distance_score + speed_score + health_score - role_cost
-
-
-func _select_best_role_candidate(
-		candidates: Array[ShipUnit],
-		role: FleetMemberContext.TacticalRole,
-		protected_ship: ShipUnit,
-		preserve_existing_role: bool
-) -> ShipUnit:
-	var best: ShipUnit
-	var best_score := -INF
-	for ship in candidates:
-		var score := _get_role_suitability(
-			ship,
-			role,
-			protected_ship,
-			preserve_existing_role
-		)
-		if score > best_score or (
-			is_equal_approx(score, best_score)
-			and best != null
-			and ship.get_instance_id() < best.get_instance_id()
-		):
-			best = ship
-			best_score = score
-	return best
-
-
-func _get_role_suitability(
-		ship: ShipUnit,
-		role: FleetMemberContext.TacticalRole,
-		protected_ship: ShipUnit,
-		preserve_existing_role: bool
-) -> float:
-	var context := get_member_context(ship)
-	var score := _get_health_ratio(ship) * 25.0
-	if protected_ship != null:
-		score += maxf(
-			1.0 - ship.global_position.distance_to(protected_ship.global_position) / 8000.0,
-			0.0
-		) * 25.0
-	if role == FleetMemberContext.TacticalRole.SCREEN:
-		score += ship.ship_data.max_speed_mps / 50.0 * 30.0
-	elif role == FleetMemberContext.TacticalRole.ESCORT \
-			and ship.ship_data.ship_class == ShipData.ShipClass.CRUISER:
-		score += 20.0
-	if preserve_existing_role and (
-		context.tactical_role == role or (
-		context.tactical_role == FleetMemberContext.TacticalRole.INTERCEPT
-		and context.previous_tactical_role == role
-	)):
-		score += 18.0
-	if context.tactical_position_valid \
-			and ship.global_position.distance_squared_to(context.tactical_position) < 500.0 * 500.0:
-		score += 6.0
-	return score
+func _get_sorted_emergency_threat_contexts() -> Array[FleetThreatContext]:
+	var contexts: Array[FleetThreatContext] = []
+	for target in _get_sorted_emergency_targets():
+		var context := _emergency_threats.get(
+			target.get_instance_id()
+		) as FleetThreatContext
+		if context != null:
+			contexts.append(context)
+	return contexts
 
 
 func _update_tactical_positions() -> void:
@@ -888,6 +785,7 @@ func _update_tactical_positions() -> void:
 			context.tactical_role \
 				== FleetMemberContext.TacticalRole.INTERCEPT
 		)
+		member_order_dispatch_count += 1
 
 
 func report_tactical_path_failure(ship: ShipUnit) -> void:
@@ -1385,8 +1283,37 @@ func _refresh_debug_snapshot() -> void:
 		"debug_snapshot_update_count": debug_snapshot_update_count,
 		"tactical_path_failure_report_count": tactical_path_failure_report_count,
 		"empty_fleet_cleanup_count": empty_fleet_cleanup_count,
+		"perception_refresh_count": perception_refresh_count,
+		"target_evaluation_count": target_evaluation_count,
+		"primary_target_change_count": primary_target_change_count,
+		"role_assignment_count": role_assignment_count,
+		"tactical_plan_count": tactical_plan_count,
+		"member_order_dispatch_count": member_order_dispatch_count,
+		"emergency_assignment_count": emergency_assignment_count,
+		"invalid_decision_count": invalid_decision_count,
+		"empty_decision_count": empty_decision_count,
 		"last_decision_reason": _last_applied_decision.reason,
 	}
+
+
+func _reset_decision_metrics() -> void:
+	fleet_evaluation_count = 0
+	role_evaluation_count = 0
+	tactical_position_update_count = 0
+	target_change_count = 0
+	role_change_count = 0
+	debug_snapshot_update_count = 0
+	tactical_path_failure_report_count = 0
+	empty_fleet_cleanup_count = 0
+	perception_refresh_count = 0
+	target_evaluation_count = 0
+	primary_target_change_count = 0
+	role_assignment_count = 0
+	tactical_plan_count = 0
+	member_order_dispatch_count = 0
+	emergency_assignment_count = 0
+	invalid_decision_count = 0
+	empty_decision_count = 0
 
 
 func _connect_events() -> void:

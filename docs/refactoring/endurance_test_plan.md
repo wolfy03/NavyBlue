@@ -2,65 +2,94 @@
 
 ## Profiles
 
-- smoke: 1,800 frames
-- extended smoke: 1,800 frames
-- seeded battle: 9,000 frames
-- full endurance: 36,000 frames
+- `smoke`: 600 frames, fast PR and local regression
+- `extended_smoke`: 1,800 frames, merge validation
+- seeded endurance: 9,000 frames, multi-seed stability
+- nightly endurance: 36,000 frames, release gate
 
-## Chunk Metrics
+The authoritative profile constants are in `EnduranceProfile.gd`. Profile
+frame counts are intentionally unique.
 
-Capture every 600 frames:
+## Phases And Chunks
 
-- live ships, aircraft, projectiles, effects, and total nodes
-- pending payload releases and orphan AI targets
-- ObjectPool acquire/release balance
-- FleetAI decision count and callback registry mismatch count
-- average and maximum physics-frame duration
-- object and memory growth trend
-- repeated warnings and invalid-instance failures
+The battle smoke harness runs:
+
+1. 120 warmup frames
+2. baseline snapshot
+3. active combat in 600-frame chunks
+4. ordered battle shutdown
+5. 180 cleanup frames
+6. ObjectPool clear
+7. post-cleanup snapshot
+
+Every result records requested and executed frames, chunk size, combat and
+cleanup chunk counts, warmup and cleanup frames, seed, profile, and initial and
+final snapshot counts. Therefore 1,800 active frames produce exactly three
+combat chunks.
+
+Metrics distinguish:
+
+- active and pooled projectiles
+- active and pooled effects
+- pool acquire and release counts
+- outstanding pool leases and the active lease registry
+- pool acquire and release failures
+- instantiate fallbacks, factory-owned releases, foreign releases, and legacy
+  direct-pool releases
+- pending payload requests, orphan targets, and invalid FleetAI callbacks
+- FleetAI perception, targeting, role, tactical-plan, order-dispatch,
+  emergency-assignment, invalid-decision, and empty-decision counts
+
+`pool_outstanding_count` means pool acquires minus successful pool releases.
+Inactive objects owned by ObjectPool are reported separately and are not
+outstanding leases.
 
 ## Failure Policy
 
-Small bounded fluctuations are allowed. Persistent linear growth, requests that
-outlive their timeout, stale destroyed targets, pool imbalance growth, or a
-battle that cannot finish are failures.
+Active combat may have bounded in-flight growth. Post-cleanup requires zero
+active projectiles, active effects, pending payload requests, orphan targets,
+callback mismatches, and outstanding pool leases. Missing or malformed JSON,
+timeouts, non-zero Godot exits, ObjectDB leaks, resource-in-use diagnostics,
+and unexpected errors make the PowerShell runner fail.
 
-Full endurance remains a separate local or nightly profile; CI uses smoke
-profiles.
+## Runner
 
-## Implemented Harness
+```powershell
+run_endurance_validation.ps1 `
+  -Profile extended_smoke `
+  -Frames 1800 `
+  -Seed 1 `
+  -OutputPath artifacts/endurance/local
+```
 
-- `BattleEnduranceMetrics` captures group counts, active typed pooled effects,
-  node count, pending payload requests, projectile-pool balance, FleetAI
-  decisions, orphan targets, callback mismatches, and chunk frame timing.
-- `BattleEnduranceRunner` executes physics frames in configurable chunks.
-- `BattleEnduranceSmokeTest` runs the battle-loop stage for 1,800 frames by
-  default.
-- `run_endurance_validation.ps1 -IncludeExtendedProfiles` runs 6v6 smoke,
-  10v10 9,000-frame seeds 1 and 2, and a 9,000-frame BattleAI profile.
-- `-IncludeNightly` keeps the separate 36,000-frame local release gate.
-
-The active-combat smoke allows bounded in-flight projectile growth. Cleanup
-profiles use the stricter default growth budget after battle teardown.
+Supported profiles are `smoke`, `extended_smoke`, `6v6`, `10v10`, and
+`battle_ai`. Large logs and JSON artifacts live under `artifacts/endurance`
+and are ignored by Git.
 
 ## Latest Validation
 
-Validated on Godot 4.7 from the `9a1fce5` baseline:
+Godot 4.7 validation from the `fffe562` baseline plus this stabilization:
 
-- Battle smoke, 1,800 frames: 15 chunks, node growth 114, projectile growth
-  34, effect growth 1, pending payload requests 0, projectile pool balance
-  35, FleetAI decisions 51, orphan targets 0, invalid callbacks 0.
-- FleetAI 6v6, 1,800 frames: 342.8 simulated FPS, 0 boundary violations,
-  0 tactical path failures, 0 failures.
-- FleetAI 10v10, 9,000 frames, seed 1: 166.9 simulated FPS,
-  max target evaluations 161, max path calculations 24, 0 failures.
-- FleetAI 10v10, 9,000 frames, seed 2: 171.1 simulated FPS,
-  max target evaluations 162, max path calculations 24, 0 failures.
-- BattleAI, 9,000 frames, seed 1: 4 live units, max target evaluations 153,
-  max path calculations 31, 0 failures.
+- smoke, 600 frames, seed 1: one 600-frame combat chunk; active peak 19
+  projectiles; post-cleanup projectiles/effects/pending/outstanding all zero.
+- extended smoke, 1,800 frames, seed 1: three 600-frame combat chunks; active
+  peak 31 projectiles and 3 effects; 56 pool acquires and 56 releases;
+  post-cleanup projectiles/effects/pending/outstanding all zero.
 
-The direct 10v10 fixture now builds the same battle service, projectile root,
-and aircraft root contracts used by the 6v6 fixture. This prevents fixture-only
-weapon launch failures from being mistaken for endurance failures.
+- 9,000-frame seeded gate: 10v10 seeds 1 and 2, BattleAI seed 1, and
+  carrier-inclusive 6v6 seed 1 all completed with zero failures.
+- 36,000-frame nightly gate: 10v10 seeds 1 and 2, BattleAI seed 1, and
+  carrier-inclusive 6v6 seed 1 all completed with zero failures.
 
-The 36,000-frame nightly profile was not run during this pass.
+The 36,000-frame 10v10 gate initially exposed a targetless lifecycle defect:
+ships with no current target requested an immediate evaluation every physics
+frame, and null-to-null target changes repeatedly cleared navigation. This
+produced 12,233 target evaluations, 11,787 path calculations, and 11,735
+target changes. After making targetless evaluation interval-driven and
+null-to-null transitions idempotent, seed 1 completed with 717 evaluations,
+116 path calculations, and 17 target changes; seed 2 completed with
+711, 125, and 14 respectively.
+
+Nightly summaries and logs are stored under the ignored
+`artifacts/endurance/<date>` tree. The runner recognizes both `FLEET_AI_*`
+and `AI_LONG_RUN` summary lines; a missing summary makes the result fail.

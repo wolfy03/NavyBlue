@@ -25,6 +25,13 @@ component used by both roots. It owns configuration, launch state,
 `ProjectileRuntimeState`, injected services, and the one-shot impact guard.
 Manual trajectory and RigidBody state remain on their respective roots.
 
+Lifecycle state is explicit and one-way:
+
+`UNCONFIGURED -> CONFIGURED -> LAUNCHED -> IMPACTED -> RELEASED`
+
+Reset returns to `UNCONFIGURED`. Launch-before-configure, duplicate launch,
+impact-before-launch, duplicate impact, and launch-after-release are rejected.
+
 The split is deliberate. Making the shared base a `RigidBody3D` changed the
 existing shell contract and failed `CombatVisibilityTest`; converting torpedoes
 to manual `Node3D` integration would change collision and guidance behavior.
@@ -36,6 +43,16 @@ service lifetime.
 
 `ProjectileFactory` is the only gameplay creation entry point and
 `ProjectilePoolService` is the only ObjectPool boundary.
+
+Creation ownership is explicit:
+
+- `POOL`: return through ObjectPool and close the tracked lease
+- `FACTORY_INSTANCE`: reset and `queue_free`; never call ObjectPool release
+- `NONE`: treat as foreign, reset, and free
+
+Invalid roots are discarded atomically. Configuration and launch failures
+return valid pool leases or free factory-owned fallbacks through the same
+cleanup transaction.
 
 ## Migration Order
 

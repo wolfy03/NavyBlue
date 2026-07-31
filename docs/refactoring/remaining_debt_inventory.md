@@ -1,6 +1,6 @@
 # Remaining Debt Inventory
 
-Baseline: `9a1fce593c51278905391338e4c42bde12123398`.
+Baseline: `fffe56206ddce1d75f95b29341cdb21f0bb5485a`.
 
 ## Direct Autoload Discovery
 
@@ -39,22 +39,26 @@ not domain logging.
 
 ## Remaining Work
 
-- Full 10v10 36,000-frame and multi-seed BattleAI endurance profiles remain a
-  nightly/local release gate.
-- The current release-candidate gate completed 1,800-frame battle/6v6 smoke,
-  9,000-frame 10v10 seeds 1 and 2, and a 9,000-frame BattleAI seed with no
-  reported metric failures.
+- The current release-candidate gate completed 600-frame smoke, 1,800-frame
+  extended smoke, 9,000-frame 10v10 seeds 1 and 2, 9,000-frame BattleAI and
+  carrier-inclusive 6v6, plus the same four 36,000-frame nightly profiles with
+  no final metric failures.
 - `BattleTestServices` no longer stores services in SceneTree root metadata.
   A lifecycle host and explicit fixture shutdown removed the prior ObjectDB
-  and Resource-in-use warnings from the final 83-entry extended validation
-  run. `TestTeardownAudit` reports no projectile, effect, squadron, FleetAI,
-  member callback, or payload-request runtime residue after shutdown.
+  and Resource-in-use warnings from the final 93-entry extended validation
+  and 15 standalone regression entrypoints. `TestTeardownAudit` reports no
+  projectile, effect, squadron, FleetAI, member callback, or payload-request
+  runtime residue after shutdown.
 - Warning-path tests still emit their expected diagnostics for pool failure
   and save migration. They do not leave ObjectDB or Resource-use residue.
 - Shell/bomb and torpedo roots use separate typed bases because Godot native
   inheritance cannot share one custom root across manual `Node3D` and
   `RigidBody3D` physics without changing established projectile behavior.
-- Role suitability and interceptor composition are still calculated in
-  `FleetAIController`. Target hysteresis and attacker saturation moved to
-  `FleetEngagementPolicy`; recommendations, decisions, and member orders are
-  typed.
+- Role suitability is owned by `FleetRoleSuitabilityPolicy`; emergency
+  interceptor composition is owned by `EmergencyInterceptorPolicy`.
+  `FleetAIController` schedules those policies and applies typed results.
+- Targetless ships use the normal targeting cadence, and null-to-null target
+  transitions no longer clear navigation or inflate decision metrics.
+- Endurance result parsing remains a small text adapter around the existing
+  long-run entrypoints. A future typed long-run result writer could replace it
+  without changing the test scenarios.

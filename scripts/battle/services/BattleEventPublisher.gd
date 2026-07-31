@@ -22,14 +22,15 @@ signal fighter_gun_burst(
 var _event_bus: Node
 
 
-func setup(event_bus: Node) -> void:
+func setup(event_bus: Node) -> bool:
 	shutdown()
+	if event_bus == null or not is_instance_valid(event_bus):
+		return false
 	_event_bus = event_bus
-	if _event_bus == null:
-		return
 	_connect_relay(&"battle_started", _relay_battle_started)
 	_connect_relay(&"battle_cleared", _relay_battle_cleared)
 	_connect_relay(&"battle_failed", _relay_battle_failed)
+	return true
 
 
 func shutdown() -> void:
@@ -38,6 +39,10 @@ func shutdown() -> void:
 		_disconnect_relay(&"battle_cleared", _relay_battle_cleared)
 		_disconnect_relay(&"battle_failed", _relay_battle_failed)
 	_event_bus = null
+
+
+func is_configured() -> bool:
+	return _event_bus != null and is_instance_valid(_event_bus)
 
 
 func emit_ship_spawned(ship: ShipUnit) -> void:

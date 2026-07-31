@@ -289,20 +289,20 @@ func _test_limited_emergency_interceptors() -> void:
 	fleet.register_emergency_threat(threat, 45.0, &"capital_ship_proximity")
 	fleet.update_fleet(5.0)
 	var suitability_ship := members[2]
+	var interceptor_policy := EmergencyInterceptorPolicy.new()
+	var suitability_context := fleet.get_member_context(suitability_ship)
 	suitability_ship.set_ai_target(null)
-	var idle_suitability := float(fleet.call(
-		&"_get_interceptor_suitability",
-		suitability_ship,
+	var idle_suitability := interceptor_policy.evaluate_suitability(
+		suitability_context,
 		threat,
 		members[0]
-	))
+	)
 	suitability_ship.set_ai_target(threat)
-	var engaged_suitability := float(fleet.call(
-		&"_get_interceptor_suitability",
-		suitability_ship,
+	var engaged_suitability := interceptor_policy.evaluate_suitability(
+		suitability_context,
 		threat,
 		members[0]
-	))
+	)
 	_check(
 		is_equal_approx(idle_suitability - engaged_suitability, 8.0),
 		"an in-range current combat target adds the intended INTERCEPT role-change cost"

@@ -98,6 +98,22 @@ func setup(
 	_apply_command_mode()
 
 
+func set_input_enabled(enabled: bool) -> void:
+	_input_enabled = enabled
+	set_process_input(enabled)
+	set_process_unhandled_input(enabled)
+	aircraft_command_controller.set_input_enabled(
+		enabled and command_mode == CommandMode.AIRCRAFT
+	)
+	if not enabled:
+		ship_command_controller.suspend_combat_input()
+		aircraft_command_controller.cancel_targeting()
+
+
+func is_input_enabled() -> bool:
+	return _input_enabled
+
+
 func set_carrier_command_controller(
 		controller: CarrierCommandController
 ) -> void:

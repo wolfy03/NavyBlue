@@ -12,6 +12,7 @@ enum ErrorCode {
 
 var projectile: Node3D
 var used_pool := false
+var ownership := ProjectileCreationOwnership.Type.NONE
 var error := ErrorCode.NONE
 
 

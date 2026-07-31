@@ -1,7 +1,7 @@
 extends RefCounted
 class_name BattleEnduranceRunner
 
-const DEFAULT_CHUNK_SIZE := 600
+const DEFAULT_CHUNK_SIZE := EnduranceProfile.DEFAULT_CHUNK_SIZE_FRAMES
 
 
 func run(
@@ -13,6 +13,8 @@ func run(
 ) -> void:
 	var safe_total := maxi(total_frames, 0)
 	var safe_chunk := maxi(chunk_size, 1)
+	metrics.total_requested_frames = safe_total
+	metrics.chunk_size_frames = safe_chunk
 	var frame_index := 0
 	var started_msec := Time.get_ticks_msec()
 	var chunk_index := 0
@@ -26,6 +28,7 @@ func run(
 			float(Time.get_ticks_msec() - chunk_started_msec)
 		)
 		frame_index += frame_count
+		metrics.total_executed_frames = frame_index
 		var elapsed_sec := float(
 			Time.get_ticks_msec() - started_msec
 		) * 0.001
@@ -36,3 +39,9 @@ func run(
 			services
 		)
 		chunk_index += 1
+	metrics.combat_chunk_count = chunk_index
+
+
+func wait_frames(tree: SceneTree, frame_count: int) -> void:
+	for _frame in maxi(frame_count, 0):
+		await tree.physics_frame

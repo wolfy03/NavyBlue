@@ -31,6 +31,14 @@ func configure(
 	if not lifecycle.configure(data, services):
 		push_error("ProjectileBase.configure requires data and BattleServices.")
 		return false
+	var ownership: ProjectileCreationOwnership.Type = int(get_meta(
+		&"projectile_creation_ownership",
+		ProjectileCreationOwnership.Type.NONE
+	))
+	if ownership == ProjectileCreationOwnership.Type.NONE \
+			and not scene_file_path.is_empty():
+		ownership = ProjectileCreationOwnership.Type.POOL
+	lifecycle.set_creation_ownership(ownership)
 	_on_configured()
 	return true
 
@@ -38,7 +46,6 @@ func configure(
 func launch(context: ProjectileLaunchContext) -> bool:
 	if not lifecycle.begin_launch(context):
 		push_error("ProjectileBase.launch called before valid configuration.")
-		recycle_projectile()
 		return false
 	projectile_runtime_stats = context.runtime_stats.duplicate_stats() \
 		if context.runtime_stats != null else WeaponRuntimeStats.new()
@@ -67,11 +74,13 @@ func recycle_projectile() -> void:
 	if _base_despawn_requested:
 		return
 	_base_despawn_requested = true
-	runtime_state.active = false
+	var ownership := lifecycle.get_creation_ownership()
 	var pool := battle_services.projectile_pool \
 		if battle_services != null else null
-	if pool != null and pool.release(self):
+	lifecycle.mark_released()
+	if pool != null and pool.release(self, ownership):
 		return
+	reset_for_pool()
 	queue_free()
 
 

@@ -816,7 +816,9 @@ func _update_aircraft_formation_targets() -> void:
 
 
 func _update_selection_indicator() -> void:
-	if selection_indicator == null:
+	if selection_indicator == null \
+			or not is_inside_tree() \
+			or not selection_indicator.is_inside_tree():
 		return
 	selection_indicator.global_position = formation_center \
 		+ Vector3.DOWN * 8.0

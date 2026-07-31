@@ -14,14 +14,30 @@ static func inspect_subtree(
 		"fleet_ai_count": 0,
 		"fleet_member_callback_count": 0,
 		"pending_payload_release_count": 0,
-		"pool_balance": 0,
+		"pool_acquire_count": 0,
+		"pool_release_count": 0,
+		"pool_outstanding_count": 0,
+		"pool_acquire_failure_count": 0,
+		"pool_release_failure_count": 0,
+		"instantiate_fallback_count": 0,
+		"foreign_instance_release_count": 0,
 	}
 	if subtree_root != null and is_instance_valid(subtree_root):
 		_visit_node(subtree_root, result)
 	if services != null:
-		result["pool_balance"] = \
-			services.projectile_pool.acquire_count \
-			- services.projectile_pool.release_count
+		var pool := services.projectile_pool
+		result["pool_acquire_count"] = pool.pool_acquire_count
+		result["pool_release_count"] = pool.pool_release_count
+		result["pool_outstanding_count"] = \
+			pool.get_pool_outstanding_count()
+		result["pool_acquire_failure_count"] = \
+			pool.pool_acquire_failure_count
+		result["pool_release_failure_count"] = \
+			pool.pool_release_failure_count
+		result["instantiate_fallback_count"] = \
+			pool.instantiate_fallback_count
+		result["foreign_instance_release_count"] = \
+			pool.foreign_instance_release_count
 	return result
 
 
@@ -31,7 +47,8 @@ static func is_runtime_clean(snapshot: Dictionary) -> bool:
 		and int(snapshot.get("aircraft_squadron_count", 0)) == 0 \
 		and int(snapshot.get("fleet_ai_count", 0)) == 0 \
 		and int(snapshot.get("fleet_member_callback_count", 0)) == 0 \
-		and int(snapshot.get("pending_payload_release_count", 0)) == 0
+		and int(snapshot.get("pending_payload_release_count", 0)) == 0 \
+		and int(snapshot.get("pool_outstanding_count", 0)) == 0
 
 
 static func _visit_node(node: Node, result: Dictionary) -> void:
