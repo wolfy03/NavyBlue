@@ -14,6 +14,18 @@ var minimum_run_distance_m := 0.0
 var command_plane_height_m := 0.0
 var target_ship: ShipUnit
 
+# AI predictive-attack metadata. Left at defaults for player manual commands so
+# their existing coordinate contract is untouched.
+var predicted_impact_position := Vector3.ZERO
+var predicted_collision_point := Vector3.ZERO
+var torpedo_safe_run_distance_m := 0.0
+var arming_distance_m := 0.0
+var collision_margin_m := 0.0
+var prediction_error_margin_m := 0.0
+var tracking_id := 0
+var solution_revision := 0
+var solution_locked := false
+
 
 func duplicate_command() -> TorpedoAttackCommand:
 	var copy := TorpedoAttackCommand.new()
@@ -29,6 +41,15 @@ func duplicate_command() -> TorpedoAttackCommand:
 	copy.minimum_run_distance_m = minimum_run_distance_m
 	copy.command_plane_height_m = command_plane_height_m
 	copy.target_ship = target_ship
+	copy.predicted_impact_position = predicted_impact_position
+	copy.predicted_collision_point = predicted_collision_point
+	copy.torpedo_safe_run_distance_m = torpedo_safe_run_distance_m
+	copy.arming_distance_m = arming_distance_m
+	copy.collision_margin_m = collision_margin_m
+	copy.prediction_error_margin_m = prediction_error_margin_m
+	copy.tracking_id = tracking_id
+	copy.solution_revision = solution_revision
+	copy.solution_locked = solution_locked
 	return copy
 
 

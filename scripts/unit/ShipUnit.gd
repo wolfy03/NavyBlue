@@ -444,6 +444,32 @@ func get_navigation_safety_radius_m() -> float:
 	return ship_data.navigation_safety_radius_m if ship_data != null else 0.0
 
 
+func get_projected_hull_extent_xz(axis_xz: Vector3) -> float:
+	# Half-width of the oriented hull box projected onto a horizontal axis, i.e.
+	# how far the hull surface sits from the ship centre along that axis. Mirrors
+	# the hull rectangle TorpedoProjectile collides against (hull_size * 0.5).
+	if ship_data == null:
+		return 0.0
+	var axis := axis_xz
+	axis.y = 0.0
+	if axis.length_squared() <= 0.0001:
+		return 0.0
+	axis = axis.normalized()
+	var half := ship_data.hull_size * 0.5
+	var x_axis := global_transform.basis.x
+	x_axis.y = 0.0
+	var z_axis := global_transform.basis.z
+	z_axis.y = 0.0
+	return absf(x_axis.dot(axis)) * half.x + absf(z_axis.dot(axis)) * half.z
+
+
+func get_torpedo_collision_margin_m(attack_direction: Vector3) -> float:
+	# Distance from the ship centre to the hull face a torpedo running along
+	# attack_direction meets first, matching TorpedoProjectile's +0.75 m hull
+	# skin so the safe-run maths and the actual collision test agree.
+	return get_projected_hull_extent_xz(attack_direction) + 0.75
+
+
 func sink() -> void:
 	if _is_sinking:
 		return

@@ -56,7 +56,7 @@ func update(delta: float) -> void:
 			or not is_instance_valid(owner_squadron):
 		return
 	var target := _get_target_ship()
-	if target == null:
+	if target == null and state in [State.APPROACHING, State.DIVE_ENTRY]:
 		_finish_and_return(false)
 		return
 	match state:
@@ -209,10 +209,11 @@ func _update_diving(target: Node3D) -> void:
 	if controller == null:
 		_finish_and_return(false)
 		return
-	controller.update_target(
-		_calculate_predicted_target_position(target),
-		_get_target_velocity(target)
-	)
+	if target != null and not controller.is_solution_locked():
+		controller.update_target(
+			_calculate_predicted_target_position(target),
+			_get_target_velocity(target)
+		)
 	match controller.state:
 		DiveBombAttackController.State.DIVE_ENTRY, \
 				DiveBombAttackController.State.DIVING, \
@@ -248,7 +249,7 @@ func _update_pulling_out(target: Node3D) -> void:
 func _begin_egress(target: Node3D) -> void:
 	var direction := owner_squadron.get_formation_forward()
 	direction.y = 0.0
-	if direction.length_squared() <= EPSILON:
+	if direction.length_squared() <= EPSILON and target != null:
 		direction = target.global_position - owner_squadron.formation_center
 		direction.y = 0.0
 	direction = direction.normalized() \

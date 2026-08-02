@@ -30,6 +30,11 @@ var dive_bomb_behavior: DiveBombMissionBehavior
 var torpedo_attack_planner := TorpedoAttackPlanner.new()
 var battle_services: BattleServices
 
+# AI torpedo approach re-tracking state.
+var _torpedo_repath_timer := 0.0
+var _torpedo_tracking_id := 0
+var _torpedo_solution_revision := 0
+
 
 func setup(
 		next_owner_squadron: AircraftSquadron,
@@ -47,6 +52,7 @@ func setup(
 	intercept_behavior = null
 	dive_bomb_behavior = null
 	torpedo_attack_planner = TorpedoAttackPlanner.new()
+	_reset_torpedo_repath_state()
 
 
 func shutdown() -> void:
@@ -61,6 +67,7 @@ func shutdown() -> void:
 	intercept_behavior = null
 	dive_bomb_behavior = null
 	torpedo_attack_planner = TorpedoAttackPlanner.new()
+	_reset_torpedo_repath_state()
 
 
 func assign_ship_strike(
@@ -207,7 +214,7 @@ func update_mission(_delta: float) -> void:
 	if mission_data != null \
 			and mission_data.mission_type \
 				== AirMissionData.MissionType.TORPEDO_ATTACK:
-		_update_torpedo_attack_mission()
+		_update_torpedo_attack_mission(_delta)
 		return
 	if mission_data != null \
 			and mission_data.mission_type == AirMissionData.MissionType.MOVE:
@@ -350,7 +357,8 @@ func _assign_torpedo_strike(
 		owner_squadron,
 		target_ship,
 		null,
-		next_mission_data.target_prediction_enabled
+		next_mission_data.target_prediction_enabled,
+		next_mission_data.approach_repath_interval_sec
 	)
 	if not plan.success:
 		return false
@@ -366,16 +374,27 @@ func _assign_torpedo_strike(
 	state = MissionState.ATTACK_RUN
 	_event_finished = false
 	_approach_initialized = true
+	_reset_torpedo_repath_state()
+	# The controller allocated its own tracking id inside begin_attack; mirror it
+	# so re-aims stay part of the same tracked attack rather than looking new.
+	var live_command := owner_squadron.torpedo_attack_controller.get_command()
+	if live_command != null:
+		_torpedo_tracking_id = live_command.tracking_id
+		_torpedo_solution_revision = live_command.solution_revision
+	# Give the controller a way to fetch one last fresh solution before it locks.
+	owner_squadron.torpedo_attack_controller.solution_refresher = \
+		Callable(self, "_refresh_torpedo_solution")
 	_publish_mission_event(&"air_mission_started", target_ship)
 	return true
 
 
-func _update_torpedo_attack_mission() -> void:
+func _update_torpedo_attack_mission(delta: float = 0.0) -> void:
 	if _event_finished or owner_squadron == null \
 			or owner_squadron.torpedo_attack_controller == null:
 		return
 	var controller := owner_squadron.torpedo_attack_controller
 	if controller.is_active():
+		_tick_torpedo_repath(controller, delta)
 		return
 	var success := controller.state \
 		== TorpedoAttackController.State.COMPLETED \
@@ -391,6 +410,98 @@ func _update_torpedo_attack_mission() -> void:
 	if mission_data != null and mission_data.return_after_attack:
 		owner_squadron.request_return()
 		state = MissionState.RETURNING
+
+
+func _tick_torpedo_repath(
+		controller: TorpedoAttackController,
+		delta: float
+) -> void:
+	# Re-aim the AI torpedo run at the moving target during the approach, at most
+	# once per repath interval, and only when the solution meaningfully changed.
+	if mission_data == null or not mission_data.target_prediction_enabled:
+		return
+	if not controller.can_update_attack_solution():
+		return
+	_torpedo_repath_timer += delta
+	if _torpedo_repath_timer < mission_data.approach_repath_interval_sec:
+		return
+	_torpedo_repath_timer = 0.0
+	var target := get_target_ship() as ShipUnit
+	if target == null:
+		return
+	var current := controller.get_command()
+	if current == null:
+		return
+	var plan := torpedo_attack_planner.plan_attack(
+		owner_squadron,
+		target,
+		null,
+		true,
+		mission_data.approach_repath_interval_sec
+	)
+	if not plan.success or plan.command == null:
+		return
+	if not _torpedo_solution_changed(current, plan.command):
+		return
+	# Preserve the tracked-attack identity and advance the revision so the
+	# controller accepts this as a newer solution for the same run.
+	plan.command.tracking_id = _torpedo_tracking_id
+	_torpedo_solution_revision += 1
+	plan.command.solution_revision = _torpedo_solution_revision
+	if controller.update_attack_solution(plan.command):
+		_torpedo_solution_revision = controller.get_command().solution_revision
+
+
+func _torpedo_solution_changed(
+		current: TorpedoAttackCommand,
+		candidate: TorpedoAttackCommand
+) -> bool:
+	var impact_shift := candidate.predicted_impact_position.distance_to(
+		current.predicted_impact_position
+	)
+	if impact_shift >= mission_data.approach_repath_threshold_m:
+		return true
+	var profile := owner_squadron.get_torpedo_attack_profile()
+	if profile == null:
+		return false
+	var current_dir := current.attack_direction
+	var candidate_dir := candidate.attack_direction
+	if current_dir.length_squared() <= EPSILON \
+			or candidate_dir.length_squared() <= EPSILON:
+		return false
+	var angle := rad_to_deg(current_dir.angle_to(candidate_dir))
+	return angle >= profile.attack_direction_repath_threshold_deg
+
+
+func _refresh_torpedo_solution() -> TorpedoAttackCommand:
+	# Invoked by the controller just before it locks. Returns a fresh solution
+	# for the current target, or null to keep the existing one.
+	if owner_squadron == null or not is_instance_valid(owner_squadron):
+		return null
+	if mission_data == null or not mission_data.target_prediction_enabled:
+		return null
+	var target := get_target_ship() as ShipUnit
+	if target == null:
+		return null
+	var plan := torpedo_attack_planner.plan_attack(
+		owner_squadron,
+		target,
+		null,
+		true,
+		mission_data.approach_repath_interval_sec
+	)
+	if not plan.success or plan.command == null:
+		return null
+	plan.command.tracking_id = _torpedo_tracking_id
+	_torpedo_solution_revision += 1
+	plan.command.solution_revision = _torpedo_solution_revision
+	return plan.command
+
+
+func _reset_torpedo_repath_state() -> void:
+	_torpedo_repath_timer = 0.0
+	_torpedo_tracking_id = 0
+	_torpedo_solution_revision = 0
 
 
 func _update_move_mission() -> void:

@@ -61,6 +61,7 @@ var release_policy := DiveReleasePolicy.new()
 var state: State = State.IDLE
 var target_position := Vector3.ZERO
 var target_velocity := Vector3.ZERO
+var solution_locked := false
 var dive_elapsed_seconds := 0.0
 var release_block_reason: ReleaseBlockReason = ReleaseBlockReason.NONE
 var dispersion_radius_m := 0.0
@@ -129,6 +130,7 @@ func reset() -> void:
 	target_velocity = Vector3.ZERO
 	dive_elapsed_seconds = 0.0
 	release_block_reason = ReleaseBlockReason.NONE
+	solution_locked = false
 	dispersion_radius_m = 0.0
 	_pull_out_forward = Vector3.FORWARD
 	_aircraft_release_states.clear()
@@ -182,6 +184,7 @@ func begin_dive_with_source(
 		reset()
 	target_position = next_target_position
 	target_velocity = next_target_velocity
+	solution_locked = source == AircraftSquadron.DiveControlSource.AI
 	dispersion_radius_m = maxf(next_dispersion_radius_m, 0.0)
 	if not _rng_seed_overridden:
 		_rng.seed = hash([
@@ -203,11 +206,15 @@ func update_target(
 		next_target_position: Vector3,
 		next_target_velocity: Vector3
 ) -> void:
+	if solution_locked:
+		return
 	if state not in [State.DIVE_ENTRY, State.DIVING, State.RELEASING]:
 		return
 	target_position = next_target_position
 	target_velocity = next_target_velocity
 
+func is_solution_locked() -> bool:
+	return solution_locked
 
 func update_dive(delta: float) -> void:
 	if owner_squadron == null or not is_instance_valid(owner_squadron):

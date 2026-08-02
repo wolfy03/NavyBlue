@@ -5,24 +5,19 @@ class_name TorpedoAttackPlanner
 # axis; above it the actual velocity heading is preferred.
 const MINIMUM_HEADING_SPEED_SQ := 4.0
 
-# Fallback arming distance when the squadron's torpedo data is unavailable.
-const DEFAULT_ARMING_DISTANCE_M := 50.0
-
-# Extra distance the torpedo runs while armed before reaching the target, on top
-# of its arming (safety) distance. The torpedo is released this much plus the
-# arming distance short of the predicted impact point so it arms during the run
-# and is live by the time it reaches the ship.
-const TORPEDO_ARMED_APPROACH_MARGIN_M := 100.0
+static var _next_tracking_id := 1
 
 var _resolver := TorpedoAttackCommandResolver.new()
 var _lead_predictor := TorpedoLeadPredictor.new()
+var _safe_run_resolver := TorpedoSafeRunDistanceResolver.new()
 
 
 func plan_attack(
 		squadron: AircraftSquadron,
 		target_ship: ShipUnit,
 		battle_environment: BattleEnvironment = null,
-		predict_lead: bool = false
+		predict_lead: bool = false,
+		prediction_refresh_interval_sec: float = 0.0
 ) -> TorpedoAttackResolveResult:
 	if squadron == null or not is_instance_valid(squadron):
 		return TorpedoAttackResolveResult.failed(&"invalid_squadron")
@@ -33,21 +28,11 @@ func plan_attack(
 	if profile == null:
 		return TorpedoAttackResolveResult.failed(&"invalid_profile")
 	var torpedo_data := _get_torpedo_data(squadron)
-	# The torpedo must run a short distance before it arms and can detonate, so
-	# it is released this far short of the point it should hit.
-	var run_distance := _torpedo_run_distance(torpedo_data)
-	# Where the torpedo should actually strike. For a moving ship this leads the
-	# target; for a stationary one it is the ship's current position.
-	var impact_point := target_ship.global_position
-	if predict_lead:
-		impact_point = _lead_predictor.predict_impact_position(
-			squadron,
-			target_ship,
-			profile,
-			run_distance,
-			torpedo_data
-		)
-	var to_target := impact_point - squadron.formation_center
+	var target_velocity := target_ship.get_world_velocity()
+	target_velocity.y = 0.0
+	# Head-on axis (squadron -> target) only drives which beam is the near side;
+	# the precise lead is recomputed per candidate direction below.
+	var to_target := target_ship.global_position - squadron.formation_center
 	to_target.y = 0.0
 	if to_target.length_squared() <= 0.0001:
 		to_target = squadron.get_formation_forward()
@@ -55,13 +40,39 @@ func plan_attack(
 	if to_target.length_squared() <= 0.0001:
 		return TorpedoAttackResolveResult.failed(&"direction_unavailable")
 	to_target = to_target.normalized()
+	var last_failure: StringName = &"no_valid_attack_geometry"
 	# Try a flank (beam) run first, then the opposite beam, then a head-on run.
-	# The first geometry the resolver accepts (min distance + map bounds) wins.
+	# The first geometry the resolver accepts (safe distance + min run + bounds)
+	# wins.
 	for direction in _attack_direction_candidates(target_ship, to_target):
-		# The predicted position is the torpedo's IMPACT point. Drop the torpedo
-		# short of it by the armed run distance so the torpedo runs onto the ship
-		# instead of being dropped on top of it.
-		var release_point := impact_point - direction * run_distance
+		var safe := _safe_run_resolver.resolve(
+			torpedo_data,
+			target_ship,
+			profile,
+			direction,
+			target_velocity,
+			prediction_refresh_interval_sec
+		)
+		if not safe.success:
+			last_failure = safe.failure_reason
+			continue
+		# Predicted target centre at the moment the torpedo arrives. The lead
+		# spans aircraft approach + water-entry fall + the armed underwater run
+		# to the hull. Stationary/disabled -> current position.
+		var impact_point := target_ship.global_position
+		if predict_lead:
+			impact_point = _lead_predictor.predict_impact_position(
+				squadron,
+				target_ship,
+				profile,
+				safe.underwater_run_to_hull_m,
+				torpedo_data
+			)
+		# The predicted centre is where the torpedo must END UP. Release it short
+		# by the airborne travel plus the armed underwater run so it clears its
+		# arming distance before the hull instead of splashing down on the ship.
+		var release_point := impact_point \
+			- direction * safe.release_offset_from_center_m
 		var entry_point := release_point \
 			- direction * profile.minimum_attack_run_distance_m
 		var result := _resolver.resolve(
@@ -73,8 +84,30 @@ func plan_attack(
 			target_ship
 		)
 		if result.success:
+			_annotate_command(result.command, impact_point, direction, safe)
 			return result
-	return TorpedoAttackResolveResult.failed(&"no_valid_attack_geometry")
+		last_failure = result.failure_reason
+	return TorpedoAttackResolveResult.failed(last_failure)
+
+
+func _annotate_command(
+		command: TorpedoAttackCommand,
+		impact_point: Vector3,
+		direction: Vector3,
+		safe: TorpedoSafeRunDistanceResult
+) -> void:
+	if command == null:
+		return
+	command.predicted_impact_position = impact_point
+	command.predicted_collision_point = impact_point \
+		- direction * safe.collision_margin_m
+	command.torpedo_safe_run_distance_m = safe.underwater_run_to_hull_m
+	command.arming_distance_m = safe.arming_distance_m
+	command.collision_margin_m = safe.collision_margin_m
+	command.prediction_error_margin_m = safe.prediction_error_margin_m
+	command.tracking_id = _allocate_tracking_id()
+	command.solution_revision = 0
+	command.solution_locked = false
 
 
 func _get_torpedo_data(squadron: AircraftSquadron) -> TorpedoProjectileData:
@@ -82,13 +115,6 @@ func _get_torpedo_data(squadron: AircraftSquadron) -> TorpedoProjectileData:
 	if weapon_data == null:
 		return null
 	return weapon_data.projectile_data as TorpedoProjectileData
-
-
-func _torpedo_run_distance(torpedo_data: TorpedoProjectileData) -> float:
-	var arming_distance := DEFAULT_ARMING_DISTANCE_M
-	if torpedo_data != null:
-		arming_distance = maxf(torpedo_data.arming_distance_m, 0.0)
-	return arming_distance + TORPEDO_ARMED_APPROACH_MARGIN_M
 
 
 func _attack_direction_candidates(
@@ -129,3 +155,11 @@ static func select_beam_direction(
 		return Vector3.ZERO
 	lateral = lateral.normalized()
 	return lateral if lateral.dot(head_on_direction) >= 0.0 else -lateral
+
+
+static func _allocate_tracking_id() -> int:
+	var tracking_id := _next_tracking_id
+	_next_tracking_id += 1
+	if _next_tracking_id <= 0:
+		_next_tracking_id = 1
+	return tracking_id

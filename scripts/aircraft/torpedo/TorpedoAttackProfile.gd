@@ -9,6 +9,22 @@ class_name TorpedoAttackProfile
 @export var multi_squadron_attack_spacing_m := 180.0
 @export var release_grace_distance_m := 120.0
 
+@export_category("AI Safe Run Distance")
+# Head-room added on top of arming + collision + prediction-error margins when
+# the AI sizes its torpedo run. Defaults to the previous hardcoded 100 m so the
+# existing balance is preserved while the value now lives in data.
+@export var additional_arming_margin_m := 100.0
+# Multiplies the distance the target can move between AI repaths to size the
+# prediction-error margin. 1.0 = exactly one refresh interval of travel.
+@export var prediction_error_safety_factor := 1.25
+# Optional tactical floor/ceiling on the underwater run distance (water-entry ->
+# target centre). 0 disables the corresponding bound.
+@export var minimum_preferred_torpedo_run_distance_m := 0.0
+@export var maximum_preferred_torpedo_run_distance_m := 0.0
+# Attack-direction change (degrees) that, on its own, justifies re-aiming the AI
+# solution during the approach even when the predicted impact barely moved.
+@export var attack_direction_repath_threshold_deg := 5.0
+
 @export_category("Altitude")
 @export var attack_entry_altitude_m := 45.0
 @export var release_altitude_m := 25.0
@@ -52,18 +68,33 @@ func validate() -> PackedStringArray:
 	if minimum_release_speed_mps <= 0.0 \
 			or maximum_release_speed_mps < minimum_release_speed_mps:
 		errors.append("release speed range is invalid.")
-	if attack_run_speed_mps < minimum_release_speed_mps \
-			or attack_run_speed_mps > maximum_release_speed_mps:
-		errors.append(
-			"attack_run_speed_mps must lie within the release speed range."
-		)
-	if alignment_tolerance_deg <= 0.0 \
-			or alignment_tolerance_deg > 180.0:
-		errors.append(
-			"alignment_tolerance_deg must be within (0, 180]."
-		)
+	if alignment_tolerance_deg <= 0.0:
+		errors.append("alignment_tolerance_deg must be positive.")
 	if release_point_tolerance_m <= 0.0:
 		errors.append("release_point_tolerance_m must be positive.")
 	if targeting_refresh_interval_sec < 0.0:
 		errors.append("targeting_refresh_interval_sec must not be negative.")
+	if additional_arming_margin_m < 0.0:
+		errors.append("additional_arming_margin_m must not be negative.")
+	if prediction_error_safety_factor < 0.0:
+		errors.append("prediction_error_safety_factor must not be negative.")
+	if minimum_preferred_torpedo_run_distance_m < 0.0:
+		errors.append(
+			"minimum_preferred_torpedo_run_distance_m must not be negative."
+		)
+	if maximum_preferred_torpedo_run_distance_m < 0.0:
+		errors.append(
+			"maximum_preferred_torpedo_run_distance_m must not be negative."
+		)
+	if maximum_preferred_torpedo_run_distance_m > 0.0 \
+			and maximum_preferred_torpedo_run_distance_m \
+				< minimum_preferred_torpedo_run_distance_m:
+		errors.append(
+			"maximum_preferred_torpedo_run_distance_m must not be below the "
+			+ "minimum when set."
+		)
+	if attack_direction_repath_threshold_deg < 0.0:
+		errors.append(
+			"attack_direction_repath_threshold_deg must not be negative."
+		)
 	return errors
