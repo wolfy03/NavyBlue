@@ -348,7 +348,9 @@ func _assign_torpedo_strike(
 		return false
 	var plan := torpedo_attack_planner.plan_attack(
 		owner_squadron,
-		target_ship
+		target_ship,
+		null,
+		next_mission_data.target_prediction_enabled
 	)
 	if not plan.success:
 		return false
