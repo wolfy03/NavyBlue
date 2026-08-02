@@ -1,9 +1,15 @@
 extends RefCounted
 class_name TorpedoAttackResolveResult
 
+enum FailureDisposition {
+	RETRYABLE,
+	FATAL,
+}
+
 var success := false
 var command: TorpedoAttackCommand
 var failure_reason: StringName
+var failure_disposition: FailureDisposition = FailureDisposition.FATAL
 
 
 static func completed(
@@ -15,7 +21,11 @@ static func completed(
 	return result
 
 
-static func failed(reason: StringName) -> TorpedoAttackResolveResult:
+static func failed(
+		reason: StringName,
+		disposition: FailureDisposition = FailureDisposition.FATAL
+) -> TorpedoAttackResolveResult:
 	var result := TorpedoAttackResolveResult.new()
 	result.failure_reason = reason
+	result.failure_disposition = disposition
 	return result

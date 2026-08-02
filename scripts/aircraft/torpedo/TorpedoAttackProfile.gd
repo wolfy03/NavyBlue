@@ -8,6 +8,7 @@ class_name TorpedoAttackProfile
 @export var minimum_direction_drag_m := 15.0
 @export var multi_squadron_attack_spacing_m := 180.0
 @export var release_grace_distance_m := 120.0
+@export_range(0, 8, 1) var maximum_projectile_creation_retries := 2
 
 @export_category("AI Safe Run Distance")
 # Head-room added on top of arming + collision + prediction-error margins when
@@ -57,6 +58,10 @@ func validate() -> PackedStringArray:
 		errors.append("multi_squadron_attack_spacing_m must not be negative.")
 	if release_grace_distance_m < 0.0:
 		errors.append("release_grace_distance_m must not be negative.")
+	if maximum_projectile_creation_retries < 0:
+		errors.append(
+			"maximum_projectile_creation_retries must not be negative."
+		)
 	if attack_entry_altitude_m <= 0.0 or release_altitude_m <= 0.0:
 		errors.append("attack and release altitudes must be positive.")
 	if maximum_release_altitude_m < release_altitude_m:

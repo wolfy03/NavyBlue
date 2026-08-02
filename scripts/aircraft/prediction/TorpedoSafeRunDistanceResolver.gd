@@ -27,6 +27,8 @@ func resolve(
 		attack_direction: Vector3,
 		target_velocity: Vector3,
 		prediction_refresh_interval_sec: float,
+		expected_release_velocity: Vector3 = Vector3.ZERO,
+		downward_release_speed_mps: float = 0.0,
 		gravity_mps2: float = 0.0
 ) -> TorpedoSafeRunDistanceResult:
 	if attack_profile == null:
@@ -50,12 +52,19 @@ func resolve(
 			"physics/3d/default_gravity",
 			9.8
 		))
-	var airborne_travel := airborne_travel_distance(
-		attack_profile.attack_run_speed_mps,
+	var horizontal_release_speed := Vector2(
+		expected_release_velocity.x,
+		expected_release_velocity.z
+	).length()
+	if horizontal_release_speed <= 0.01:
+		horizontal_release_speed = attack_profile.attack_run_speed_mps
+	var fall_time := airborne_fall_time_sec(
 		attack_profile.release_altitude_m,
+		downward_release_speed_mps,
 		gravity
 	)
-	return compose(
+	var airborne_travel := horizontal_release_speed * fall_time
+	var result := compose(
 		arming_distance,
 		collision_margin,
 		prediction_error,
@@ -64,6 +73,13 @@ func resolve(
 		attack_profile.minimum_preferred_torpedo_run_distance_m,
 		attack_profile.maximum_preferred_torpedo_run_distance_m
 	)
+	result.airborne_fall_time_sec = fall_time
+	result.horizontal_release_speed_mps = horizontal_release_speed
+	result.downward_release_speed_mps = maxf(
+		downward_release_speed_mps,
+		0.0
+	)
+	return result
 
 
 static func prediction_error_margin(
@@ -79,15 +95,39 @@ static func prediction_error_margin(
 static func airborne_travel_distance(
 		release_speed_mps: float,
 		release_altitude_m: float,
-		gravity_mps2: float
+		gravity_mps2: float,
+		downward_release_speed_mps: float = 0.0
 ) -> float:
 	# Horizontal distance covered during the ballistic fall from the release
 	# altitude to the water. The torpedo keeps its forward speed while falling,
 	# so this scales with both drop speed and fall time.
-	var fall_time := sqrt(
-		2.0 * maxf(release_altitude_m, 0.0) / maxf(gravity_mps2, 0.01)
+	var fall_time := airborne_fall_time_sec(
+		release_altitude_m,
+		downward_release_speed_mps,
+		gravity_mps2
 	)
 	return maxf(release_speed_mps, 0.0) * fall_time
+
+
+static func airborne_fall_time_sec(
+		release_altitude_m: float,
+		downward_release_speed_mps: float,
+		gravity_mps2: float
+) -> float:
+	# TorpedoProjectile inherits the aircraft velocity and the weapon controller
+	# clamps its initial Y velocity to at least this downward release speed.
+	var height := maxf(release_altitude_m, 0.0)
+	var downward_speed := maxf(downward_release_speed_mps, 0.0)
+	var gravity := maxf(gravity_mps2, 0.01)
+	if height <= 0.0:
+		return 0.0
+	return (
+		-downward_speed
+		+ sqrt(
+			downward_speed * downward_speed
+				+ 2.0 * gravity * height
+		)
+	) / gravity
 
 
 static func compose(

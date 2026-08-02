@@ -95,6 +95,33 @@ func _run() -> void:
 		) == DiveBombAttackController.BeginDiveResult.STARTED,
 		"new dive can start after pending request cancellation"
 	)
+	_check(
+		not controller.is_solution_locked(),
+		"AI solution remains open during DIVE_ENTRY"
+	)
+	controller.update_target(
+		Vector3(120.0, 0.0, 80.0),
+		Vector3(10.0, 0.0, 0.0)
+	)
+	_check(
+		controller.target_position.is_equal_approx(
+			Vector3(120.0, 0.0, 80.0)
+		),
+		"AI can refresh the target before the dive transition"
+	)
+	controller.update_dive(0.0)
+	_check(
+		not controller.is_solution_locked() \
+			and controller.state == DiveBombAttackController.State.DIVE_ENTRY,
+		"AI waits in DIVE_ENTRY for the mission's final refresh"
+	)
+	controller.lock_solution()
+	controller.update_dive(0.0)
+	_check(
+		controller.is_solution_locked() \
+			and controller.state == DiveBombAttackController.State.DIVING,
+		"AI commits to DIVING only after the final solution lock"
+	)
 	controller.cancel()
 	await _finish(battle)
 

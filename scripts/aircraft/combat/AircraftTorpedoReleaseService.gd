@@ -8,6 +8,12 @@ class_name AircraftTorpedoReleaseService
 # a projectile is successfully created; this service never mutates controller
 # state, it just reports what happened.
 
+var _creation_attempts: Dictionary = {}
+
+
+func reset() -> void:
+	_creation_attempts.clear()
+
 
 func release_ready_aircraft(
 		squadron: AircraftSquadron,
@@ -27,11 +33,10 @@ func release_ready_aircraft(
 		if resolved_ids.has(id) or id in result.resolved_aircraft_ids:
 			continue
 		var weapon := aircraft.weapon_controller
-		if weapon == null or weapon.weapon_data == null \
-				or weapon.weapon_data.weapon_type \
-					!= AircraftWeaponData.WeaponType.TORPEDO \
-				or not weapon.has_ammunition():
+		var permanent_reason := _get_permanent_failure_reason(weapon)
+		if not permanent_reason.is_empty():
 			result.resolved_aircraft_ids.append(id)
+			_add_failure(result, id, permanent_reason, false)
 			continue
 		if not evaluator.meets_release_envelope(
 			aircraft,
@@ -56,10 +61,73 @@ func release_ready_aircraft(
 		request.command_id = command.command_id
 		var release_result := weapon.release_air_dropped_torpedo(request)
 		if release_result.success:
+			_creation_attempts.erase(id)
 			result.released += 1
 			result.released_aircraft_ids.append(id)
 			result.resolved_aircraft_ids.append(id)
 		else:
 			result.failed += 1
-			result.failure_reasons.append(release_result.failure_reason)
+			var attempts := int(_creation_attempts.get(id, 0)) + 1
+			_creation_attempts[id] = attempts
+			var retryable := _is_retryable_failure(
+				release_result.failure_reason
+			) and attempts <= maxi(
+				profile.maximum_projectile_creation_retries,
+				0
+			)
+			_add_failure(
+				result,
+				id,
+				release_result.failure_reason,
+				retryable,
+				attempts
+			)
+			if not retryable:
+				result.resolved_aircraft_ids.append(id)
 	return result
+
+
+func get_creation_attempt_count(aircraft_id: int) -> int:
+	return int(_creation_attempts.get(aircraft_id, 0))
+
+
+func _get_permanent_failure_reason(
+		weapon: AircraftWeaponController
+) -> StringName:
+	if weapon == null:
+		return &"missing_weapon_controller"
+	if weapon.weapon_data == null:
+		return &"missing_weapon_data"
+	if weapon.weapon_data.weapon_type \
+			!= AircraftWeaponData.WeaponType.TORPEDO:
+		return &"not_torpedo_weapon"
+	if not weapon.has_ammunition():
+		return &"no_ammunition"
+	if not weapon.weapon_data.projectile_data is TorpedoProjectileData \
+			or weapon.weapon_data.projectile_scene == null:
+		return &"invalid_projectile_data"
+	return StringName()
+
+
+func _is_retryable_failure(reason: StringName) -> bool:
+	return reason in [
+		&"release_unavailable",
+		&"spawn_failed",
+		&"projectile_creation_failed",
+	]
+
+
+func _add_failure(
+		result: AircraftTorpedoReleaseResult,
+		aircraft_id: int,
+		reason: StringName,
+		retryable: bool,
+		attempt_count: int = 0
+) -> void:
+	result.failure_reasons.append(reason)
+	result.failures.append(AircraftTorpedoReleaseFailure.create(
+		aircraft_id,
+		reason,
+		retryable,
+		attempt_count
+	))

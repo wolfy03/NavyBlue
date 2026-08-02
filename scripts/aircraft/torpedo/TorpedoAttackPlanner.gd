@@ -22,12 +22,17 @@ func plan_attack(
 	if squadron == null or not is_instance_valid(squadron):
 		return TorpedoAttackResolveResult.failed(&"invalid_squadron")
 	if target_ship == null or not is_instance_valid(target_ship) \
-			or not target_ship.is_alive():
+			or not target_ship.is_valid_attack_target_for(
+				squadron.get_team()
+			):
 		return TorpedoAttackResolveResult.failed(&"invalid_target")
 	var profile := squadron.get_torpedo_attack_profile()
 	if profile == null:
 		return TorpedoAttackResolveResult.failed(&"invalid_profile")
 	var torpedo_data := _get_torpedo_data(squadron)
+	var weapon_data := squadron.get_aircraft_weapon_data()
+	if torpedo_data == null or weapon_data == null:
+		return TorpedoAttackResolveResult.failed(&"invalid_torpedo_data")
 	var target_velocity := target_ship.get_world_velocity()
 	target_velocity.y = 0.0
 	# Head-on axis (squadron -> target) only drives which beam is the near side;
@@ -41,20 +46,29 @@ func plan_attack(
 		return TorpedoAttackResolveResult.failed(&"direction_unavailable")
 	to_target = to_target.normalized()
 	var last_failure: StringName = &"no_valid_attack_geometry"
+	var last_disposition := \
+		TorpedoAttackResolveResult.FailureDisposition.RETRYABLE
 	# Try a flank (beam) run first, then the opposite beam, then a head-on run.
 	# The first geometry the resolver accepts (safe distance + min run + bounds)
 	# wins.
 	for direction in _attack_direction_candidates(target_ship, to_target):
+		# ALIGNING applies the same run speed through the named movement override,
+		# and ATTACK_RUN drives every aircraft at this exact horizontal speed.
+		var expected_release_velocity := direction \
+			* profile.attack_run_speed_mps
 		var safe := _safe_run_resolver.resolve(
 			torpedo_data,
 			target_ship,
 			profile,
 			direction,
 			target_velocity,
-			prediction_refresh_interval_sec
+			prediction_refresh_interval_sec,
+			expected_release_velocity,
+			weapon_data.downward_release_speed_mps
 		)
 		if not safe.success:
 			last_failure = safe.failure_reason
+			last_disposition = _classify_failure(last_failure)
 			continue
 		# Predicted target centre at the moment the torpedo arrives. The lead
 		# spans aircraft approach + water-entry fall + the armed underwater run
@@ -87,7 +101,11 @@ func plan_attack(
 			_annotate_command(result.command, impact_point, direction, safe)
 			return result
 		last_failure = result.failure_reason
-	return TorpedoAttackResolveResult.failed(last_failure)
+		last_disposition = _classify_failure(last_failure)
+	return TorpedoAttackResolveResult.failed(
+		last_failure,
+		last_disposition
+	)
 
 
 func _annotate_command(
@@ -163,3 +181,16 @@ static func _allocate_tracking_id() -> int:
 	if _next_tracking_id <= 0:
 		_next_tracking_id = 1
 	return tracking_id
+
+
+static func _classify_failure(
+		reason: StringName
+) -> TorpedoAttackResolveResult.FailureDisposition:
+	if reason in [
+		&"no_valid_attack_geometry",
+		&"outside_battle_area",
+		&"insufficient_attack_space",
+		&"target_snapshot_unavailable",
+	]:
+		return TorpedoAttackResolveResult.FailureDisposition.RETRYABLE
+	return TorpedoAttackResolveResult.FailureDisposition.FATAL

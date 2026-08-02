@@ -11,5 +11,6 @@ var attempted := 0
 var released := 0
 var failed := 0
 var failure_reasons: Array[StringName] = []
+var failures: Array[AircraftTorpedoReleaseFailure] = []
 var released_aircraft_ids: Array[int] = []
 var resolved_aircraft_ids: Array[int] = []

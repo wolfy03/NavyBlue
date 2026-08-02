@@ -184,7 +184,9 @@ func begin_dive_with_source(
 		reset()
 	target_position = next_target_position
 	target_velocity = next_target_velocity
-	solution_locked = source == AircraftSquadron.DiveControlSource.AI
+	# AI keeps tracking while the mission is still reaching DIVE_ENTRY. The
+	# solution is frozen only when this controller actually commits to DIVING.
+	solution_locked = false
 	dispersion_radius_m = maxf(next_dispersion_radius_m, 0.0)
 	if not _rng_seed_overridden:
 		_rng.seed = hash([
@@ -216,12 +218,22 @@ func update_target(
 func is_solution_locked() -> bool:
 	return solution_locked
 
+
+func lock_solution() -> void:
+	solution_locked = true
+
 func update_dive(delta: float) -> void:
 	if owner_squadron == null or not is_instance_valid(owner_squadron):
 		state = State.FAILED
 		return
 	match state:
 		State.DIVE_ENTRY:
+			if owner_squadron.dive_control_source \
+					== AircraftSquadron.DiveControlSource.AI \
+					and not solution_locked:
+				# The AI mission owns the final target refresh. Waiting here
+				# guarantees that refresh happens before the dive commits.
+				return
 			state = State.DIVING
 		State.DIVING, State.RELEASING:
 			_update_attack_descent(delta)

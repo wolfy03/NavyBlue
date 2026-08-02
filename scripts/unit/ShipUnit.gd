@@ -440,6 +440,18 @@ func is_hostile_to(other_ship: Node) -> bool:
 	return FactionRelations.are_hostile(team, StringName(str(other_ship.get(&"team"))))
 
 
+func is_valid_attack_target_for(attacker_team: StringName) -> bool:
+	if not is_inside_tree() \
+			or is_queued_for_deletion() \
+			or not is_alive() \
+			or not FactionRelations.are_hostile(attacker_team, team):
+		return false
+	var bounds := get_tree().get_first_node_in_group(
+		&"battlefield_bounds"
+	) as BattlefieldBounds
+	return bounds == null or bounds.is_inside_bounds(global_position)
+
+
 func get_navigation_safety_radius_m() -> float:
 	return ship_data.navigation_safety_radius_m if ship_data != null else 0.0
 
@@ -466,8 +478,69 @@ func get_projected_hull_extent_xz(axis_xz: Vector3) -> float:
 func get_torpedo_collision_margin_m(attack_direction: Vector3) -> float:
 	# Distance from the ship centre to the hull face a torpedo running along
 	# attack_direction meets first, matching TorpedoProjectile's +0.75 m hull
-	# skin so the safe-run maths and the actual collision test agree.
-	return get_projected_hull_extent_xz(attack_direction) + 0.75
+	# skin so the safe-run maths and the actual collision test agree. Runtime
+	# collision shapes account for node offsets, rotation, and global scale; the
+	# data extent remains a conservative fallback so this value is never smaller
+	# than the hull used by the projectile's rectangle intersection.
+	var axis := attack_direction
+	axis.y = 0.0
+	if axis.length_squared() <= 0.0001:
+		return 0.0
+	axis = axis.normalized()
+	var shape_margin := 0.0
+	for node in find_children("*", "CollisionShape3D", true, false):
+		var collision := node as CollisionShape3D
+		if collision == null or collision.disabled or collision.shape == null:
+			continue
+		var local_bounds := _get_collision_shape_local_aabb(collision.shape)
+		if local_bounds.size.length_squared() <= 0.0001:
+			continue
+		for endpoint_index in 8:
+			var world_point := collision.global_transform \
+				* local_bounds.get_endpoint(endpoint_index)
+			var toward_release_side := -(
+				world_point - global_position
+			).dot(axis)
+			shape_margin = maxf(shape_margin, toward_release_side)
+	return maxf(
+		shape_margin,
+		get_projected_hull_extent_xz(axis)
+	) + 0.75
+
+
+func _get_collision_shape_local_aabb(shape: Shape3D) -> AABB:
+	var box := shape as BoxShape3D
+	if box != null:
+		return AABB(-box.size * 0.5, box.size)
+	var sphere := shape as SphereShape3D
+	if sphere != null:
+		var sphere_size := Vector3.ONE * sphere.radius * 2.0
+		return AABB(-sphere_size * 0.5, sphere_size)
+	var capsule := shape as CapsuleShape3D
+	if capsule != null:
+		var capsule_size := Vector3(
+			capsule.radius * 2.0,
+			capsule.height,
+			capsule.radius * 2.0
+		)
+		return AABB(-capsule_size * 0.5, capsule_size)
+	var cylinder := shape as CylinderShape3D
+	if cylinder != null:
+		var cylinder_size := Vector3(
+			cylinder.radius * 2.0,
+			cylinder.height,
+			cylinder.radius * 2.0
+		)
+		return AABB(-cylinder_size * 0.5, cylinder_size)
+	var convex := shape as ConvexPolygonShape3D
+	if convex != null and not convex.points.is_empty():
+		var minimum := convex.points[0]
+		var maximum := minimum
+		for point in convex.points:
+			minimum = minimum.min(point)
+			maximum = maximum.max(point)
+		return AABB(minimum, maximum - minimum)
+	return AABB()
 
 
 func sink() -> void:

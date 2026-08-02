@@ -32,6 +32,14 @@ func clear_speed_override(key: StringName) -> void:
 	_speed_overrides.erase(key)
 
 
+func has_speed_override(key: StringName) -> bool:
+	return _speed_overrides.has(key)
+
+
+func get_speed_override(key: StringName, fallback: float = 0.0) -> float:
+	return float(_speed_overrides.get(key, fallback))
+
+
 func get_effective_speed() -> float:
 	# Formation stepping speed. Active named overrides (e.g. the torpedo attack
 	# run) cap the squadron below its cruise speed; the smallest override wins.

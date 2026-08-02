@@ -109,6 +109,38 @@ func _run() -> void:
 		90.0, 25.0, 9.8
 	)
 	_check(faster_travel > travel, "a faster drop covers more airborne distance")
+	var fall_without_downward := TorpedoSafeRunDistanceResolver \
+		.airborne_fall_time_sec(25.0, 0.0, 9.8)
+	var fall_with_downward := TorpedoSafeRunDistanceResolver \
+		.airborne_fall_time_sec(25.0, 4.0, 9.8)
+	_check(
+		fall_with_downward < fall_without_downward,
+		"initial downward release speed shortens the airborne fall"
+	)
+	var profile := TorpedoAttackProfile.new()
+	profile.release_altitude_m = 25.0
+	var velocity_result := TorpedoSafeRunDistanceResolver.new().resolve(
+		null,
+		null,
+		profile,
+		Vector3.FORWARD,
+		Vector3.ZERO,
+		0.5,
+		Vector3(30.0, 0.0, 40.0),
+		4.0,
+		9.8
+	)
+	_check(
+		is_equal_approx(velocity_result.horizontal_release_speed_mps, 50.0),
+		"safe distance uses the expected release velocity's horizontal speed"
+	)
+	_check(
+		is_equal_approx(
+			velocity_result.airborne_travel_margin_m,
+			50.0 * fall_with_downward
+		),
+		"airborne travel combines actual horizontal speed and downward fall time"
+	)
 
 	print(
 		"TORPEDO_SAFE_RUN_DISTANCE_RESOLVER_TEST %s"

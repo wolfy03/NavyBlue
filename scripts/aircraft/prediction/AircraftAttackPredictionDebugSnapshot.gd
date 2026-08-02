@@ -28,6 +28,7 @@ var total_impact_time_sec := 0.0
 var solution_revision := 0
 var solution_locked := false
 var replan_count := 0
+var last_plan_failure_reason: StringName = &""
 
 var attack_state: StringName = &""
 var last_repath_reason: StringName = &""

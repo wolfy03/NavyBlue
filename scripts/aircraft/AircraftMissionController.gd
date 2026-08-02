@@ -34,6 +34,9 @@ var battle_services: BattleServices
 var _torpedo_repath_timer := 0.0
 var _torpedo_tracking_id := 0
 var _torpedo_solution_revision := 0
+var _torpedo_last_plan_failure_reason: StringName
+var _torpedo_last_plan_failure_disposition := \
+	TorpedoAttackResolveResult.FailureDisposition.RETRYABLE
 
 
 func setup(
@@ -361,6 +364,7 @@ func _assign_torpedo_strike(
 		next_mission_data.approach_repath_interval_sec
 	)
 	if not plan.success:
+		_record_torpedo_plan_failure(plan)
 		return false
 	owner_squadron.set_command_authority(
 		AircraftSquadron.CommandAuthority.AI
@@ -396,9 +400,11 @@ func _update_torpedo_attack_mission(delta: float = 0.0) -> void:
 	if controller.is_active():
 		_tick_torpedo_repath(controller, delta)
 		return
-	var success := controller.state \
-		== TorpedoAttackController.State.COMPLETED \
-		and controller.get_released_aircraft_count() > 0
+	var finish_result := controller.get_finish_result()
+	var success := finish_result in [
+		TorpedoAttackController.FinishResult.SUCCESS,
+		TorpedoAttackController.FinishResult.PARTIAL_RELEASE,
+	]
 	_event_finished = true
 	state = MissionState.COMPLETED if success else MissionState.FAILED
 	if success:
@@ -440,6 +446,10 @@ func _tick_torpedo_repath(
 		mission_data.approach_repath_interval_sec
 	)
 	if not plan.success or plan.command == null:
+		_record_torpedo_plan_failure(plan)
+		if plan.failure_disposition \
+				== TorpedoAttackResolveResult.FailureDisposition.FATAL:
+			controller.abort_before_attack(plan.failure_reason)
 		return
 	if not _torpedo_solution_changed(current, plan.command):
 		return
@@ -478,7 +488,7 @@ func _refresh_torpedo_solution() -> TorpedoAttackCommand:
 	# for the current target, or null to keep the existing one.
 	if owner_squadron == null or not is_instance_valid(owner_squadron):
 		return null
-	if mission_data == null or not mission_data.target_prediction_enabled:
+	if mission_data == null:
 		return null
 	var target := get_target_ship() as ShipUnit
 	if target == null:
@@ -487,10 +497,11 @@ func _refresh_torpedo_solution() -> TorpedoAttackCommand:
 		owner_squadron,
 		target,
 		null,
-		true,
+		mission_data.target_prediction_enabled,
 		mission_data.approach_repath_interval_sec
 	)
 	if not plan.success or plan.command == null:
+		_record_torpedo_plan_failure(plan)
 		return null
 	plan.command.tracking_id = _torpedo_tracking_id
 	_torpedo_solution_revision += 1
@@ -502,6 +513,30 @@ func _reset_torpedo_repath_state() -> void:
 	_torpedo_repath_timer = 0.0
 	_torpedo_tracking_id = 0
 	_torpedo_solution_revision = 0
+	_torpedo_last_plan_failure_reason = StringName()
+	_torpedo_last_plan_failure_disposition = \
+		TorpedoAttackResolveResult.FailureDisposition.RETRYABLE
+
+
+func get_torpedo_last_plan_failure_reason() -> StringName:
+	return _torpedo_last_plan_failure_reason
+
+
+func _record_torpedo_plan_failure(
+		plan: TorpedoAttackResolveResult
+) -> void:
+	if plan == null:
+		_torpedo_last_plan_failure_reason = &"missing_plan_result"
+		_torpedo_last_plan_failure_disposition = \
+			TorpedoAttackResolveResult.FailureDisposition.FATAL
+	else:
+		_torpedo_last_plan_failure_reason = plan.failure_reason
+		_torpedo_last_plan_failure_disposition = plan.failure_disposition
+	if owner_squadron != null \
+			and owner_squadron.torpedo_attack_controller != null:
+		owner_squadron.torpedo_attack_controller.record_solution_failure(
+			_torpedo_last_plan_failure_reason
+		)
 
 
 func _update_move_mission() -> void:

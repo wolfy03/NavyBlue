@@ -59,6 +59,9 @@ func update(delta: float) -> void:
 	if target == null and state in [State.APPROACHING, State.DIVE_ENTRY]:
 		_finish_and_return(false)
 		return
+	if target == null and state == State.DIVING:
+		_pull_out_after_target_loss()
+		return
 	match state:
 		State.APPROACHING:
 			_update_approaching(target, delta)
@@ -214,6 +217,9 @@ func _update_diving(target: Node3D) -> void:
 			_calculate_predicted_target_position(target),
 			_get_target_velocity(target)
 		)
+		if owner_squadron.dive_control_source \
+				== AircraftSquadron.DiveControlSource.AI:
+			controller.lock_solution()
 	match controller.state:
 		DiveBombAttackController.State.DIVE_ENTRY, \
 				DiveBombAttackController.State.DIVING, \
@@ -230,6 +236,28 @@ func _update_diving(target: Node3D) -> void:
 			_finish_and_return(false)
 		_:
 			pass
+
+
+func _pull_out_after_target_loss() -> void:
+	var controller := owner_squadron.dive_bomb_controller
+	if controller == null:
+		_finish_and_return(false)
+		return
+	match controller.state:
+		DiveBombAttackController.State.DIVE_ENTRY, \
+				DiveBombAttackController.State.DIVING, \
+				DiveBombAttackController.State.RELEASING:
+			# Pending payload stays on the aircraft. Requests that already created
+			# projectiles remain independent and are never deleted by pull-out.
+			controller.begin_pull_out()
+			state = State.PULLING_OUT
+		DiveBombAttackController.State.PULLING_OUT:
+			state = State.PULLING_OUT
+		DiveBombAttackController.State.COMPLETED, \
+				DiveBombAttackController.State.FAILED:
+			_finish_and_return(false)
+		_:
+			_finish_and_return(false)
 
 
 func _update_pulling_out(target: Node3D) -> void:

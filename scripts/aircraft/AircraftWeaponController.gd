@@ -256,14 +256,24 @@ func release_air_dropped_torpedo(
 			or weapon_data.weapon_type \
 				!= AircraftWeaponData.WeaponType.TORPEDO:
 		return AirDroppedTorpedoCreateResult.failed(&"invalid_request")
+	if request.torpedo_data == null \
+			or not weapon_data.projectile_data is TorpedoProjectileData \
+			or weapon_data.projectile_scene == null:
+		return AirDroppedTorpedoCreateResult.failed(
+			&"invalid_projectile_data"
+		)
 	if not can_release():
 		return AirDroppedTorpedoCreateResult.failed(&"release_unavailable")
+	var launch_transform := owner_aircraft.get_payload_release_transform()
+	launch_transform.origin = request.launch_position
 	var projectile := _spawn_projectile(
 		request.target_point,
 		Vector3.ZERO,
 		request.command_id,
 		request.launch_direction,
-		true
+		true,
+		launch_transform,
+		request.aircraft_velocity
 	)
 	var torpedo := projectile as TorpedoProjectile
 	if torpedo == null:
@@ -350,7 +360,9 @@ func _spawn_projectile(
 		_target_velocity: Vector3,
 		attack_command_id: int = 0,
 		launch_direction: Vector3 = Vector3.ZERO,
-		require_torpedo_root: bool = false
+		require_torpedo_root: bool = false,
+		initial_transform_override: Variant = null,
+		initial_velocity_override: Variant = null
 ) -> Node3D:
 	if weapon_data == null or weapon_data.projectile_scene == null \
 			or weapon_data.projectile_data == null:
@@ -367,8 +379,12 @@ func _spawn_projectile(
 	context.source_team = owner_aircraft.team
 	context.source_weapon_id = StringName(weapon_data.id)
 	context.source_projectile_data = weapon_data.projectile_data
-	context.initial_transform = owner_aircraft.get_payload_release_transform()
-	context.initial_velocity = owner_aircraft.get_world_velocity()
+	context.initial_transform = initial_transform_override as Transform3D \
+		if initial_transform_override is Transform3D \
+		else owner_aircraft.get_payload_release_transform()
+	context.initial_velocity = initial_velocity_override as Vector3 \
+		if initial_velocity_override is Vector3 \
+		else owner_aircraft.get_world_velocity()
 	context.initial_velocity.y = minf(
 		context.initial_velocity.y,
 		-maxf(weapon_data.downward_release_speed_mps, 0.0)

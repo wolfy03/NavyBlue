@@ -24,15 +24,19 @@ static func predict_impact(
 		target_velocity: Vector3,
 		release_altitude_m: float,
 		gravity_mps2: float,
-		torpedo_run_time_sec: float = 0.0
+		torpedo_run_time_sec: float = 0.0,
+		downward_release_speed_mps: float = 0.0
 ) -> Vector3:
 	var flat_velocity := target_velocity
 	flat_velocity.y = 0.0
 	if flat_velocity.length_squared() <= 0.0001:
 		return target_position
 	var speed := maxf(aircraft_speed_mps, 1.0)
-	var water_entry_time := sqrt(
-		2.0 * maxf(release_altitude_m, 0.0) / maxf(gravity_mps2, 0.01)
+	var water_entry_time := TorpedoSafeRunDistanceResolver \
+		.airborne_fall_time_sec(
+			release_altitude_m,
+			downward_release_speed_mps,
+			gravity_mps2
 	)
 	var fixed_time := water_entry_time + maxf(torpedo_run_time_sec, 0.0)
 	var predicted := target_position
@@ -111,6 +115,9 @@ func predict_impact_position(
 			torpedo_data.max_speed_mps,
 			torpedo_data.acceleration_mps2
 		)
+	var weapon_data := squadron.get_aircraft_weapon_data()
+	var downward_release_speed := weapon_data.downward_release_speed_mps \
+		if weapon_data != null else 0.0
 	return predict_impact(
 		squadron.formation_center,
 		aircraft_speed,
@@ -118,5 +125,6 @@ func predict_impact_position(
 		target_ship.get_world_velocity(),
 		profile.release_altitude_m,
 		gravity,
-		run_time
+		run_time,
+		downward_release_speed
 	)

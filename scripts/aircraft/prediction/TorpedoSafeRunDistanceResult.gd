@@ -26,6 +26,9 @@ var collision_margin_m := 0.0
 var prediction_error_margin_m := 0.0
 var additional_safety_margin_m := 0.0
 var airborne_travel_margin_m := 0.0
+var airborne_fall_time_sec := 0.0
+var horizontal_release_speed_mps := 0.0
+var downward_release_speed_mps := 0.0
 
 # Underwater run distance (water-entry -> predicted target centre) that is the
 # minimum for the torpedo to be armed by the time it reaches the hull.
