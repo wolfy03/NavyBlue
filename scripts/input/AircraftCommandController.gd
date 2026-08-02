@@ -228,9 +228,25 @@ func handle_torpedo_targeting_input(event: InputEvent) -> bool:
 				"Torpedo attack could not be ordered for every squadron."
 			)
 		return true
-	torpedo_targeting_session.confirm_completed(commands)
+	# Apply atomically: issue each command and roll back everything already
+	# applied if any squadron fails, so the order is all-or-nothing and the
+	# session only completes once every squadron has actually started its run.
+	var applied: Array[AircraftSquadron] = []
 	for index in issued_count:
-		squadrons[index].issue_player_torpedo_attack(commands[index])
+		if squadrons[index].issue_player_torpedo_attack(commands[index]):
+			applied.append(squadrons[index])
+			continue
+		for applied_squadron in applied:
+			applied_squadron.abort_player_torpedo_attack(
+				&"atomic_apply_rollback"
+			)
+		torpedo_targeting_session.return_to_armed(&"apply_failed")
+		if selection_controller != null:
+			selection_controller.command_feedback.emit(
+				"Torpedo attack command failed."
+			)
+		return true
+	torpedo_targeting_session.confirm_completed(commands)
 	if selection_controller != null:
 		selection_controller.command_feedback.emit(
 			"Torpedo attack ordered for %d squadron(s)." % issued_count

@@ -64,6 +64,8 @@ var target_velocity := Vector3.ZERO
 var dive_elapsed_seconds := 0.0
 var release_block_reason: ReleaseBlockReason = ReleaseBlockReason.NONE
 var dispersion_radius_m := 0.0
+var _rng := RandomNumberGenerator.new()
+var _rng_seed_overridden := false
 
 var _pull_out_forward := Vector3.FORWARD
 var _aircraft_release_states: Dictionary = {}
@@ -181,6 +183,13 @@ func begin_dive_with_source(
 	target_position = next_target_position
 	target_velocity = next_target_velocity
 	dispersion_radius_m = maxf(next_dispersion_radius_m, 0.0)
+	if not _rng_seed_overridden:
+		_rng.seed = hash([
+			owner_squadron.get_instance_id() \
+				if owner_squadron != null else 0,
+			int(target_position.x * 10.0),
+			int(target_position.z * 10.0),
+		])
 	dive_elapsed_seconds = 0.0
 	release_block_reason = ReleaseBlockReason.TOO_EARLY
 	owner_squadron.dive_control_source = source
@@ -824,9 +833,14 @@ func _is_valid_dive_squadron() -> bool:
 		and dive_data.validate().is_empty()
 
 
+func set_random_seed_for_test(seed_value: int) -> void:
+	_rng.seed = seed_value
+	_rng_seed_overridden = true
+
+
 func _random_scatter_offset() -> Vector3:
 	if dispersion_radius_m <= 0.0:
 		return Vector3.ZERO
-	var angle := randf() * TAU
-	var distance := sqrt(randf()) * dispersion_radius_m
+	var angle := _rng.randf() * TAU
+	var distance := sqrt(_rng.randf()) * dispersion_radius_m
 	return Vector3(cos(angle) * distance, 0.0, sin(angle) * distance)

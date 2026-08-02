@@ -332,7 +332,7 @@ func set_player_selected(selected: bool) -> void:
 func cancel_current_mission_for_player_command() -> void:
 	if state in [State.RETURNING, State.RECOVERING, State.DESTROYED]:
 		return
-	_player_dive_run = null
+	_cancel_player_dive_run(&"player_command")
 	cancel_pending_weapon_release()
 	clear_fighter_targets()
 	var coordinator := get_combat_coordinator()
@@ -435,6 +435,19 @@ func get_dive_bomber_combat_data() -> DiveBomberCombatData:
 		and squadron_data.aircraft_data != null else null
 
 
+func _cancel_player_dive_run(reason: StringName) -> void:
+	# Cancels the pending player dive run AND the dive controller when a player
+	# dive is active, so clearing the run reference never leaves the underlying
+	# DiveBombAttackController running on its own.
+	if _player_dive_run != null:
+		_player_dive_run.cancel(reason)
+		_player_dive_run = null
+	if dive_bomb_controller != null \
+			and dive_control_source == DiveControlSource.PLAYER \
+			and dive_bomb_controller.is_active():
+		dive_bomb_controller.cancel()
+
+
 func get_dive_attack_state() -> DiveBombAttackController.State:
 	return dive_bomb_controller.state \
 		if dive_bomb_controller != null \
@@ -480,6 +493,15 @@ func issue_player_torpedo_attack(command: TorpedoAttackCommand) -> bool:
 		if command.target_ship != null \
 		and is_instance_valid(command.target_ship) else null
 	return torpedo_attack_controller.begin_attack(command)
+
+
+func abort_player_torpedo_attack(reason: StringName) -> void:
+	# Roll back an applied player torpedo order (used when a multi-squadron
+	# atomic apply fails partway). abort() does not consume ammunition, so any
+	# payload that has not been released yet is preserved.
+	if torpedo_attack_controller != null \
+			and torpedo_attack_controller.is_active():
+		torpedo_attack_controller.abort(reason, false)
 
 
 func can_apply_torpedo_attack(command: TorpedoAttackCommand) -> bool:

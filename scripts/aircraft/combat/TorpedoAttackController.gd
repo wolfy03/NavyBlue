@@ -91,12 +91,28 @@ func can_begin_attack(next_command: TorpedoAttackCommand) -> bool:
 func begin_attack(next_command: TorpedoAttackCommand) -> bool:
 	if not can_begin_attack(next_command):
 		return false
-	var measured_run_distance := Vector2(
-		next_command.entry_point.x - next_command.actual_release_point.x,
-		next_command.entry_point.z - next_command.actual_release_point.z
-	).length()
+	var release_delta := next_command.actual_release_point \
+		- next_command.entry_point
+	release_delta.y = 0.0
+	var measured_run_distance := release_delta.length()
 	if measured_run_distance + 0.01 < next_command.minimum_run_distance_m:
 		abort_reason = &"insufficient_measured_run_distance"
+		return false
+	if absf(measured_run_distance - next_command.actual_run_distance_m) > 0.1:
+		abort_reason = &"run_distance_mismatch"
+		return false
+	if measured_run_distance <= 0.0001:
+		abort_reason = &"invalid_attack_direction"
+		return false
+	var expected_direction := next_command.attack_direction
+	expected_direction.y = 0.0
+	if expected_direction.length_squared() <= 0.0001:
+		abort_reason = &"invalid_attack_direction"
+		return false
+	if (release_delta / measured_run_distance).dot(
+		expected_direction.normalized()
+	) < 0.999:
+		abort_reason = &"attack_direction_mismatch"
 		return false
 	command = next_command.duplicate_command()
 	command.attack_direction.y = 0.0

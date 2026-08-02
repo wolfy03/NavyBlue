@@ -57,8 +57,11 @@ func validate() -> PackedStringArray:
 		errors.append(
 			"attack_run_speed_mps must lie within the release speed range."
 		)
-	if alignment_tolerance_deg <= 0.0:
-		errors.append("alignment_tolerance_deg must be positive.")
+	if alignment_tolerance_deg <= 0.0 \
+			or alignment_tolerance_deg > 180.0:
+		errors.append(
+			"alignment_tolerance_deg must be within (0, 180]."
+		)
 	if release_point_tolerance_m <= 0.0:
 		errors.append("release_point_tolerance_m must be positive.")
 	if targeting_refresh_interval_sec < 0.0:
