@@ -3,6 +3,12 @@ extends SceneTree
 const BATTLE_LOOP_STAGE: StageData = preload(
 	"res://resources/stages/tests/battle_loop_test.tres"
 )
+const SHELL_SCENE: PackedScene = preload(
+	"res://scenes/weapon/projectiles/shell_projectile.tscn"
+)
+const SHELL_DATA: ShellProjectileData = preload(
+	"res://resources/projectiles/small_ap_shell.tres"
+)
 
 var _failures: Array[String] = []
 var _had_run_save := false
@@ -61,6 +67,10 @@ func _test_battle_clear_and_reward_selection() -> void:
 	var scene: Node = await _instantiate_battle_scene()
 	if scene == null:
 		return
+	var projectiles := scene.get_node_or_null("Projectiles")
+	var airborne_projectile := _spawn_airborne_shell(scene, projectiles)
+	var launch_position := airborne_projectile.global_position \
+		if airborne_projectile != null else Vector3.ZERO
 	var enemies: Array = scene.get("enemies")
 	for enemy in enemies:
 		_apply_lethal_damage(enemy)
@@ -71,6 +81,18 @@ func _test_battle_clear_and_reward_selection() -> void:
 	var run_manager = root.get_node_or_null("RunManager")
 	_check(game_manager != null and game_manager.get_mode_name() == "REWARD", "enemy wipe enters reward mode")
 	_check(run_manager != null and run_manager.pending_rewards.size() == 3, "battle clear stores three pending rewards")
+	_check(
+		projectiles != null
+			and airborne_projectile != null
+			and is_instance_valid(airborne_projectile)
+			and not airborne_projectile.is_queued_for_deletion()
+			and airborne_projectile.get_parent() == projectiles
+			and airborne_projectile.active
+			and airborne_projectile.global_position.distance_to(
+				launch_position
+			) > 1.0,
+		"airborne projectiles survive destruction of the final target"
+	)
 	if run_manager != null and not run_manager.pending_rewards.is_empty():
 		var reward_id := str(run_manager.pending_rewards[0])
 		var reward_system: Node = load("res://scripts/meta/RewardSystem.gd").new()
@@ -133,6 +155,30 @@ func _apply_lethal_damage(ship) -> void:
 	var health: Node = ship.get_node_or_null("ShipHealth")
 	if health != null and health.has_method("apply_damage"):
 		health.apply_damage(999999.0)
+
+
+func _spawn_airborne_shell(scene: Node, projectiles: Node) -> Projectile:
+	if projectiles == null:
+		return null
+	var services := scene.get("battle_services") as BattleServices
+	if services == null or not services.is_configured():
+		return null
+	var context := ProjectileLaunchContext.new()
+	context.source_team = &"player"
+	context.initial_transform = Transform3D(
+		Basis.IDENTITY,
+		Vector3(25000.0, 1000.0, 25000.0)
+	)
+	context.initial_velocity = Vector3(600.0, 0.0, 0.0)
+	context.aim_point = context.initial_transform.origin \
+		+ context.initial_velocity
+	var result := services.projectile_factory.create_result(
+		SHELL_SCENE,
+		projectiles,
+		SHELL_DATA,
+		context
+	)
+	return result.projectile as Projectile
 
 func _snapshot_run_save() -> void:
 	var save_manager = root.get_node_or_null("SaveManager")

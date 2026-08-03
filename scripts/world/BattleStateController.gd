@@ -116,7 +116,9 @@ func _clear_battle() -> void:
 	result_emitted = true
 	stop_battle()
 	_resolve_player_components(true)
-	_clear_active_projectiles()
+	# Battle result resolution must not terminate ordnance that was already
+	# launched. Projectiles own their impact, expiry, and pooling lifecycle;
+	# BattleScene.shutdown() performs the final cleanup when the scene exits.
 	var reward_system := REWARD_SYSTEM_SCRIPT.new()
 	var rewards: Array = reward_system.roll_upgrade_rewards(3, reward_table_id)
 	var reward_ids: Array[String] = reward_system.get_reward_ids(rewards)
@@ -142,7 +144,6 @@ func _fail_battle() -> void:
 	result_emitted = true
 	stop_battle()
 	_resolve_player_components(false)
-	_clear_active_projectiles()
 	var run_session := battle_services.run_session \
 		if battle_services != null else null
 	if run_session != null:
@@ -164,15 +165,3 @@ func _resolve_player_components(success: bool) -> void:
 	if player_ship == null or not is_instance_valid(player_ship):
 		return
 	player_ship.resolve_battle_end(success)
-
-
-func _clear_active_projectiles() -> void:
-	var projectiles := get_parent().get_node_or_null("Projectiles") \
-		if get_parent() != null else null
-	if projectiles == null:
-		return
-	for child in projectiles.get_children():
-		if child.has_method(&"despawn"):
-			child.call(&"despawn")
-		else:
-			child.queue_free()
