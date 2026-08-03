@@ -403,9 +403,12 @@ func get_debug_snapshot() -> Dictionary:
 				_get_aircraft_altitude(aircraft)
 	var squadron_released_count := 0
 	if owner_squadron != null and is_instance_valid(owner_squadron):
-		squadron_released_count = owner_squadron \
-			.get_last_payload_release_result().released_count \
-			if _release_pass_finished else owner_squadron \
+		if _release_pass_finished:
+			var pass_result := owner_squadron.get_last_payload_release_result()
+			squadron_released_count = pass_result.released_count \
+				if pass_result != null else 0
+		else:
+			squadron_released_count = owner_squadron \
 				.payload_release_coordinator \
 				.get_active_completed_count()
 	return {

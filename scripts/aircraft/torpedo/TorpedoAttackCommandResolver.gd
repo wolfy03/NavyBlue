@@ -27,7 +27,11 @@ func resolve(
 	flat_delta.y = 0.0
 	var requested_distance := flat_delta.length()
 	var direction := Vector3.ZERO
-	if requested_distance >= attack_profile.minimum_direction_drag_m:
+	# Require a strictly positive drag distance so a zero-length delta (cursor on
+	# the entry point, possible when minimum_direction_drag_m is configured to 0)
+	# cannot divide by zero and produce a NaN direction that slips past the
+	# length_squared guard below.
+	if requested_distance > maxf(attack_profile.minimum_direction_drag_m, 0.0001):
 		direction = flat_delta / requested_distance
 	else:
 		direction = squadron.get_formation_forward()

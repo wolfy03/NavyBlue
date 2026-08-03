@@ -570,6 +570,10 @@ func _assign_tactical_roles(force: bool, preserve_existing_roles := true) -> voi
 			if ship == screen else FleetMemberContext.TacticalRole.FLANKER
 
 	var role_slots: Dictionary = {}
+	# Rebuild the decision's member orders from scratch each pass; this method
+	# only appends, so without clearing here the array would grow unbounded
+	# across repeated (force) reassignments and emergency registrations.
+	_last_applied_decision.member_orders.clear()
 	for ship in members:
 		var context := get_member_context(ship)
 		var next_role: FleetMemberContext.TacticalRole = int(desired_roles.get(
@@ -1182,6 +1186,7 @@ func _get_difficulty_position_error(
 			int(context.tactical_side_sign),
 		])
 		var normalized_seed := float(abs(seed_value) % 10000) / 10000.0
+		@warning_ignore("integer_division")
 		var magnitude_seed := float(abs(seed_value / 10000) % 10000) / 10000.0
 		var angle := normalized_seed * TAU
 		context.tactical_error_offset = Vector3(cos(angle), 0.0, sin(angle)) \

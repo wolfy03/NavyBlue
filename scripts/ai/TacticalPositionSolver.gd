@@ -56,6 +56,7 @@ func calculate_escort_position(
 	threat_direction = threat_direction.normalized()
 	var lateral := Vector3(-threat_direction.z, 0.0, threat_direction.x)
 	var side := -1.0 if slot_index % 2 == 0 else 1.0
+	@warning_ignore("integer_division")
 	var distance_m := 900.0 + float(slot_index / 2) * 250.0
 	return _make_result(
 		protected_ship.global_position + lateral * side * distance_m,

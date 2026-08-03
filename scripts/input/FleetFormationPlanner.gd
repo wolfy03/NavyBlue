@@ -54,6 +54,7 @@ func build_positions(
 			var rows := ceili(float(ship_count) / float(columns))
 			for index in ship_count:
 				var column := index % columns
+				@warning_ignore("integer_division")
 				var row := index / columns
 				result.append(
 					center + Vector3(

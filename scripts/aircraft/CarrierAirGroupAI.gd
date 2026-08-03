@@ -180,6 +180,8 @@ func _try_launch_interceptor() -> bool:
 				!= AirMissionData.MissionType.INTERCEPT_AIRCRAFT:
 		return false
 	var fighter_data := template.aircraft_data.fighter_combat_data
+	if fighter_data == null:
+		return false
 	var detection_range := minf(
 		maxf(profile.intercept_detection_range_m, 0.0),
 		maxf(fighter_data.detection_range_m, 0.0)

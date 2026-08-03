@@ -25,8 +25,6 @@ static func find_surface_intersection(
 		if raw_hit is WaterSurfaceHit:
 			manager_hit = raw_hit as WaterSurfaceHit
 		if manager_hit != null:
-			if manager_hit.hit:
-				return manager_hit
 			return manager_hit
 		if raw_hit != null \
 				and report_invalid_manager_result \

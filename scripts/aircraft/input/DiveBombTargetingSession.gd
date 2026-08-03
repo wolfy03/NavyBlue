@@ -167,9 +167,9 @@ func _on_ground_plane(point: Vector3) -> Vector3:
 
 func _connect_squadron_callbacks(squadron: AircraftSquadron) -> void:
 	var id := squadron.get_instance_id()
-	var tree_callback := Callable(self, "_on_squadron_cancel_event").bind(
-		&"squadron_removed"
-	)
+	# tree_exiting emits zero arguments, so a bound reason would land in the
+	# first parameter and be discarded. Use a dedicated zero-arg handler.
+	var tree_callback := Callable(self, "_on_squadron_tree_exiting")
 	var return_callback := Callable(self, "_on_squadron_cancel_event").bind(
 		&"return_requested"
 	)
@@ -223,6 +223,10 @@ func _on_squadron_cancel_event(
 		reason: StringName = &"squadron_unavailable"
 ) -> void:
 	cancel(reason)
+
+
+func _on_squadron_tree_exiting() -> void:
+	cancel(&"squadron_removed")
 
 
 func _allocate_command_id() -> int:

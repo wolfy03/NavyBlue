@@ -176,6 +176,11 @@ func setup_dive_targeting(
 
 func _physics_process(_delta: float) -> void:
 	_prune_selection()
+	# Direct control reads Input every physics frame, so it must honour the
+	# input-enabled gate; otherwise a paused/cutscene ship keeps steering and
+	# firing even after set_input_enabled(false).
+	if not _input_enabled:
+		return
 	if controlled_ship == null or not is_instance_valid(controlled_ship):
 		return
 	if command_mode == CommandMode.AIRCRAFT:

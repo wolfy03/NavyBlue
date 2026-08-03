@@ -88,15 +88,15 @@ func activate_next_aircraft() -> void:
 		owner_squadron._next_aircraft_to_activate += 1
 		if is_instance_valid(aircraft):
 			aircraft.activate()
-			if owner_squadron._next_aircraft_to_activate \
-					>= owner_squadron.aircraft_units.size() \
-					and not owner_squadron \
-						._formation_activated_emitted:
-				owner_squadron._formation_activated_emitted = true
-				owner_squadron.formation_activated.emit(
-					owner_squadron
-				)
-			return
+			break
+	# Emit once every aircraft has been consumed, even when the trailing
+	# elements were invalid (destroyed mid-launch). Keeping this outside the
+	# per-aircraft valid branch prevents formation_activated from never firing.
+	if owner_squadron._next_aircraft_to_activate \
+			>= owner_squadron.aircraft_units.size() \
+			and not owner_squadron._formation_activated_emitted:
+		owner_squadron._formation_activated_emitted = true
+		owner_squadron.formation_activated.emit(owner_squadron)
 
 
 func release_aircraft() -> void:

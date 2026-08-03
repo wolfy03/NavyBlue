@@ -1,5 +1,11 @@
 extends Node
 
+# Signals on this global bus are emitted by other nodes via
+# get_node("/root/EventBus").<signal>.emit(...), so GDScript cannot see the
+# emissions locally and would flag every one as UNUSED_SIGNAL. Suppress that
+# category for the whole bus so real warnings elsewhere are not buried.
+@warning_ignore_start("unused_signal")
+
 signal ship_spawned(ship)
 signal ship_destroyed(ship)
 signal ship_damaged(ship, amount: float, damage_info)
@@ -44,3 +50,5 @@ signal run_started(stage_id: String)
 signal run_updated(run_state: Dictionary)
 signal run_finished(result: Dictionary)
 signal reward_selected(reward_id: String)
+
+@warning_ignore_restore("unused_signal")

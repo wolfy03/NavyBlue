@@ -175,6 +175,7 @@ func issue_move_command(
 	var issued := false
 	for index in squadrons.size():
 		var column := index % column_count
+		@warning_ignore("integer_division")
 		var row := index / column_count
 		var offset := Vector3(
 			(float(column) - float(column_count - 1) * 0.5) \

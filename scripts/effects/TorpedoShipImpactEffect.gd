@@ -28,9 +28,12 @@ func _ready() -> void:
 func _on_activate(request: EffectRequest) -> void:
 	global_position = request.position
 	var safe_strength := clampf(request.strength, 1.0, 4.0)
-	scale = Vector3.ONE * (1.2 + safe_strength * 0.55)
 	_age_seconds = 0.0
 	_align_to_normal(request.normal)
+	# _align_to_normal overwrites global_basis, which resets scale to 1. Apply the
+	# strength-based scale afterwards so it is not discarded (matches the ordering
+	# in ShellShipImpactEffect._on_activate).
+	scale = Vector3.ONE * (1.2 + safe_strength * 0.55)
 	flash_particles.amount_ratio = 1.0
 	bubble_particles.amount_ratio = clampf(0.45 + safe_strength * 0.18, 0.0, 1.0)
 	debris_particles.amount_ratio = clampf(0.35 + safe_strength * 0.2, 0.0, 1.0)

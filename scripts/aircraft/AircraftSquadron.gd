@@ -983,6 +983,8 @@ func _has_formation_arrived(target: Vector3) -> bool:
 
 
 func _get_aircraft_speed() -> float:
+	if squadron_data == null or squadron_data.aircraft_data == null:
+		return 0.0
 	var data := squadron_data.aircraft_data
 	return minf(
 		maxf(data.cruise_speed_mps, 0.0),
@@ -995,6 +997,8 @@ func _clamp_destination_to_combat_radius(
 ) -> Vector3:
 	var carrier := get_owner_carrier()
 	var data := squadron_data.aircraft_data
+	if carrier == null or data == null:
+		return world_position
 	var result := world_position
 	var origin := carrier.global_position
 	var horizontal := Vector2(

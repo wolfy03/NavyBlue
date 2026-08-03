@@ -405,8 +405,9 @@ func _spawn_ricochet_visual(
 	if parent == null:
 		return
 	var visual: Node
-	if battle_services != null:
-		var acquire_result := battle_services.projectile_pool.acquire_result(
+	var pool := battle_services.projectile_pool if battle_services != null else null
+	if pool != null:
+		var acquire_result := pool.acquire_result(
 			ricochet_visual_scene,
 			parent,
 			true
