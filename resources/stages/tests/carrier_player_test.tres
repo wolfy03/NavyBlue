@@ -1,16 +1,7 @@
-[gd_resource type="Resource" script_class="StageData" load_steps=6 format=3]
+[gd_resource type="Resource" script_class="StageData" format=3 uid="uid://f8byer1x3c3u"]
 
-[ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
-[ext_resource type="Script" path="res://scripts/data/spawn/ShipSpawnData.gd" id="2_spawn"]
-
-[sub_resource type="Resource" id="Player"]
-script = ExtResource("2_spawn")
-ship_id = &"cv_seabastion"
-team = &"player"
-display_name = "PlayerCarrier"
-is_player = true
-use_explicit_transform = true
-explicit_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1800)
+[ext_resource type="Script" uid="uid://beeaxt5k0jhmb" path="res://scripts/data/StageData.gd" id="1_stage"]
+[ext_resource type="Script" uid="uid://gl4nngcwwhis" path="res://scripts/data/spawn/ShipSpawnData.gd" id="2_spawn"]
 
 [sub_resource type="Resource" id="Ally"]
 script = ExtResource("2_spawn")
@@ -28,14 +19,19 @@ display_name = "CarrierPlayerTarget"
 use_explicit_transform = true
 explicit_transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -3200)
 
+[sub_resource type="Resource" id="Player"]
+script = ExtResource("2_spawn")
+ship_id = &"cv_seabastion"
+team = &"player"
+display_name = "PlayerCarrier"
+is_player = true
+use_explicit_transform = true
+explicit_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1800)
+
 [resource]
 script = ExtResource("1_stage")
 id = "carrier_player_test"
 display_name = "Player Carrier Test"
-sea_id = "test_sea"
-difficulty = 1.0
 player_spawn = SubResource("Player")
-ally_spawns = Array[ShipSpawnData]([SubResource("Ally")])
-enemy_spawns = Array[ShipSpawnData]([SubResource("Enemy")])
-reward_table_id = "test_rewards"
-next_stage_candidates = Array[String]([])
+ally_spawns = Array[ExtResource("2_spawn")]([SubResource("Ally")])
+enemy_spawns = Array[ExtResource("2_spawn")]([SubResource("Enemy")])

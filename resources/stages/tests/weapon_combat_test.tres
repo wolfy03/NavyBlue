@@ -1,16 +1,7 @@
-[gd_resource type="Resource" script_class="StageData" load_steps=7 format=3]
+[gd_resource type="Resource" script_class="StageData" format=3 uid="uid://nw4uybqk453u"]
 
-[ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
-[ext_resource type="Script" path="res://scripts/data/spawn/ShipSpawnData.gd" id="2_spawn"]
-
-[sub_resource type="Resource" id="Player"]
-script = ExtResource("2_spawn")
-ship_id = &"dd_bluewind"
-team = &"player"
-display_name = "WeaponPlayer"
-is_player = true
-use_explicit_transform = true
-explicit_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1800)
+[ext_resource type="Script" uid="uid://beeaxt5k0jhmb" path="res://scripts/data/StageData.gd" id="1_stage"]
+[ext_resource type="Script" uid="uid://gl4nngcwwhis" path="res://scripts/data/spawn/ShipSpawnData.gd" id="2_spawn"]
 
 [sub_resource type="Resource" id="EnemyDestroyer"]
 script = ExtResource("2_spawn")
@@ -36,14 +27,18 @@ display_name = "WeaponEnemyBattleship"
 use_explicit_transform = true
 explicit_transform = Transform3D(-0.984808, 0, 0.173648, 0, 1, 0, -0.173648, 0, -0.984808, 800, 0, -4200)
 
+[sub_resource type="Resource" id="Player"]
+script = ExtResource("2_spawn")
+ship_id = &"dd_bluewind"
+team = &"player"
+display_name = "WeaponPlayer"
+is_player = true
+use_explicit_transform = true
+explicit_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1800)
+
 [resource]
 script = ExtResource("1_stage")
 id = "weapon_combat_test"
 display_name = "Weapon Combat Test"
-sea_id = "test_sea"
-difficulty = 1.0
 player_spawn = SubResource("Player")
-ally_spawns = Array[ShipSpawnData]([])
-enemy_spawns = Array[ShipSpawnData]([SubResource("EnemyDestroyer"), SubResource("EnemyCruiser"), SubResource("EnemyBattleship")])
-reward_table_id = "test_rewards"
-next_stage_candidates = Array[String]([])
+enemy_spawns = Array[ExtResource("2_spawn")]([SubResource("EnemyDestroyer"), SubResource("EnemyCruiser"), SubResource("EnemyBattleship")])

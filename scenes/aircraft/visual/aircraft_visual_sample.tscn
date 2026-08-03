@@ -1,0 +1,10 @@
+[gd_scene format=3 uid="uid://bcd7smgix2o2s"]
+
+[ext_resource type="PackedScene" uid="uid://bdolnee5edv8c" path="res://assets/models/aircraft/sample_aircraft.glb" id="1_yfq4u"]
+
+[node name="AircraftVisualSample" type="Node3D" unique_id=1110505041]
+
+[node name="ModelPivot" type="Node3D" parent="." unique_id=619138327]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
+
+[node name="sample_aircraft" parent="ModelPivot" unique_id=1508943539 instance=ExtResource("1_yfq4u")]

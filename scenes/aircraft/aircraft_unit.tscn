@@ -1,39 +1,37 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene format=3 uid="uid://d3bqbikkjmnm2"]
 
-[ext_resource type="Script" path="res://scripts/aircraft/AircraftUnit.gd" id="1_unit"]
-[ext_resource type="Script" path="res://scripts/aircraft/AircraftMovement.gd" id="2_movement"]
-[ext_resource type="Script" path="res://scripts/aircraft/AircraftHealth.gd" id="3_health"]
-[ext_resource type="Script" path="res://scripts/aircraft/AircraftWeaponController.gd" id="4_weapon"]
-[ext_resource type="Script" path="res://scripts/aircraft/combat/FighterCombatController.gd" id="5_fighter"]
-
-[sub_resource type="PrismMesh" id="PrismMesh_aircraft"]
-size = Vector3(14, 2.5, 11)
+[ext_resource type="Script" uid="uid://dsxtav2rv20du" path="res://scripts/aircraft/AircraftUnit.gd" id="1_unit"]
+[ext_resource type="Script" uid="uid://c3fpv6vrg7v67" path="res://scripts/aircraft/AircraftMovement.gd" id="2_movement"]
+[ext_resource type="Script" uid="uid://b5ifi56ldh1jt" path="res://scripts/aircraft/AircraftHealth.gd" id="3_health"]
+[ext_resource type="Script" uid="uid://bwesqhfwycmg2" path="res://scripts/aircraft/AircraftWeaponController.gd" id="4_weapon"]
+[ext_resource type="Script" uid="uid://0hn3eje1pbcv" path="res://scripts/aircraft/combat/FighterCombatController.gd" id="5_fighter"]
+[ext_resource type="PackedScene" uid="uid://bcd7smgix2o2s" path="res://scenes/aircraft/visual/aircraft_visual_sample.tscn" id="6_t87gh"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_aircraft"]
-size = Vector3(12, 2.5, 10)
+size = Vector3(12.603394, 2.5, 31.27893)
 
-[node name="AircraftUnit" type="CharacterBody3D"]
+[node name="AircraftUnit" type="CharacterBody3D" unique_id=1406714222]
 collision_layer = 8
 collision_mask = 0
 script = ExtResource("1_unit")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-mesh = SubResource("PrismMesh_aircraft")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=517345968]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.30169678, 0, -17.058044)
 shape = SubResource("BoxShape3D_aircraft")
 
-[node name="PayloadHardpoint" type="Marker3D" parent="."]
-position = Vector3(0, -2, 0)
+[node name="PayloadHardpoint" type="Marker3D" parent="." unique_id=318324153]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -2, 0)
 
-[node name="AircraftMovement" type="Node" parent="."]
+[node name="AircraftMovement" type="Node" parent="." unique_id=1247931093]
 script = ExtResource("2_movement")
 
-[node name="AircraftHealth" type="Node" parent="."]
+[node name="AircraftHealth" type="Node" parent="." unique_id=1658179964]
 script = ExtResource("3_health")
 
-[node name="AircraftWeaponController" type="Node" parent="."]
+[node name="AircraftWeaponController" type="Node" parent="." unique_id=471505079]
 script = ExtResource("4_weapon")
 
-[node name="FighterCombatController" type="Node" parent="."]
+[node name="FighterCombatController" type="Node" parent="." unique_id=1046265608]
 script = ExtResource("5_fighter")
+
+[node name="AircraftVisualSample" parent="." unique_id=1110505041 instance=ExtResource("6_t87gh")]

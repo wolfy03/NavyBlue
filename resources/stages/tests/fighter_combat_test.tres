@@ -1,7 +1,15 @@
-[gd_resource type="Resource" script_class="StageData" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="StageData" format=3 uid="uid://caqggd3v3hp78"]
 
-[ext_resource type="Script" path="res://scripts/data/StageData.gd" id="1_stage"]
-[ext_resource type="Script" path="res://scripts/data/spawn/ShipSpawnData.gd" id="2_spawn"]
+[ext_resource type="Script" uid="uid://beeaxt5k0jhmb" path="res://scripts/data/StageData.gd" id="1_stage"]
+[ext_resource type="Script" uid="uid://gl4nngcwwhis" path="res://scripts/data/spawn/ShipSpawnData.gd" id="2_spawn"]
+
+[sub_resource type="Resource" id="Enemy"]
+script = ExtResource("2_spawn")
+ship_id = &"cv_seabastion"
+team = &"enemy"
+display_name = "FighterEnemyCarrier"
+use_explicit_transform = true
+explicit_transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1800, 0, -1200)
 
 [sub_resource type="Resource" id="Player"]
 script = ExtResource("2_spawn")
@@ -12,22 +20,9 @@ is_player = true
 use_explicit_transform = true
 explicit_transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1800, 0, 1200)
 
-[sub_resource type="Resource" id="Enemy"]
-script = ExtResource("2_spawn")
-ship_id = &"cv_seabastion"
-team = &"enemy"
-display_name = "FighterEnemyCarrier"
-use_explicit_transform = true
-explicit_transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 1800, 0, -1200)
-
 [resource]
 script = ExtResource("1_stage")
 id = "fighter_combat_test"
 display_name = "Fighter Combat Test"
-sea_id = "test_sea"
-difficulty = 1.0
 player_spawn = SubResource("Player")
-ally_spawns = Array[ShipSpawnData]([])
-enemy_spawns = Array[ShipSpawnData]([SubResource("Enemy")])
-reward_table_id = "test_rewards"
-next_stage_candidates = Array[String]([])
+enemy_spawns = Array[ExtResource("2_spawn")]([SubResource("Enemy")])

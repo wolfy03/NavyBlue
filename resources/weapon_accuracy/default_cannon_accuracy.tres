@@ -1,19 +1,6 @@
-[gd_resource type="Resource" script_class="GunneryWeaponAccuracyProfile" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="GunneryWeaponAccuracyProfile" format=3 uid="uid://brwkmwbwtj4t0"]
 
-[ext_resource type="Script" path="res://scripts/weapon/aiming/GunneryWeaponAccuracyProfile.gd" id="1"]
+[ext_resource type="Script" uid="uid://dty37sdgxwf4y" path="res://scripts/weapon/aiming/GunneryWeaponAccuracyProfile.gd" id="1"]
 
 [resource]
 script = ExtResource("1")
-reference_range_m = 5000.0
-base_range_error_m = 40.0
-base_lateral_error_m = 25.0
-base_shell_dispersion_m = 15.0
-range_error_growth_exponent = 1.0
-lateral_error_growth_exponent = 1.0
-dispersion_growth_exponent = 1.0
-minimum_range_factor = 0.25
-maximum_range_factor = 3.0
-minimum_range_error_m = 2.0
-minimum_lateral_error_m = 2.0
-minimum_shell_dispersion_m = 1.0
-salvo_grouping_window_sec = 0.35
