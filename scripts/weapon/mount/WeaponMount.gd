@@ -194,6 +194,28 @@ func is_current_target_within_traverse_arc() -> bool:
 		and _is_inside_traverse_arc(aim_point)
 
 
+func is_world_point_within_traverse(world_point: Vector3) -> bool:
+	return world_point.is_finite() and _is_inside_traverse_arc(world_point)
+
+
+func return_to_rest(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	rotation.y = wrapf(
+		rotate_toward(
+			rotation.y,
+			base_local_yaw_radians,
+			deg_to_rad(get_rest_traverse_speed_degrees()) * delta
+		),
+		-PI,
+		PI
+	)
+
+
+func get_rest_traverse_speed_degrees() -> float:
+	return 30.0
+
+
 func get_rest_yaw_relative_to_hull() -> float:
 	return base_local_yaw_radians
 

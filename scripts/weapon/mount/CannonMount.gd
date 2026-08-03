@@ -93,6 +93,33 @@ func get_fire_readiness_at(
 	return WeaponFireReadiness.State.READY
 
 
+## Geometry-only engagement contract for automatic batteries. Reload,
+## ammunition, and current alignment are deliberately excluded so target
+## selection remains stable while a usable turret is cycling or traversing.
+func can_engage_world_point(world_point: Vector3) -> bool:
+	if weapon_data == null \
+			or not runtime_state.enabled \
+			or not world_point.is_finite() \
+			or not _has_projectile_available() \
+			or not has_valid_preview_muzzle():
+		return false
+	var distance := get_distance_to_world_point(world_point)
+	if distance < get_minimum_range_m() or distance > get_range_m():
+		return false
+	if not is_world_point_within_traverse(world_point):
+		return false
+	var required_pitch: Variant = _calculate_ballistic_pitch_deg(world_point)
+	if required_pitch == null:
+		return false
+	var desired_pitch := float(required_pitch) + manual_pitch_offset_deg
+	return desired_pitch >= min_pitch_degrees \
+		and desired_pitch <= max_pitch_degrees
+
+
+func get_rest_traverse_speed_degrees() -> float:
+	return get_modified_traverse_speed(yaw_speed)
+
+
 func adjust_pitch(delta_degrees: float) -> void:
 	manual_pitch_offset_deg = clampf(
 		manual_pitch_offset_deg + delta_degrees,

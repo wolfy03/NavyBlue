@@ -27,12 +27,17 @@ var _manual_aim_command: ShipManualAimCommand
 var _ai_fire_control: ShipGunneryFireControl
 var _ai_fire_control_hooks_active := false
 var weapon_mounts: Array[WeaponMount] = []
+var main_cannon_mounts: Array[CannonMount] = []
+var secondary_cannon_mounts: Array[CannonMount] = []
+var _secondary_battery_controller: SecondaryBatteryController
+var _secondary_candidate_provider := Callable()
 # Deprecated: compatibility only. Do not use in new code.
 var turrets: Array = []
 var owner_ship: ShipUnit
 
 
 func setup(next_owner_ship: ShipUnit, next_weapon_mounts: Array) -> void:
+	_shutdown_secondary_battery()
 	var replaces_existing_groups := not weapon_mounts.is_empty()
 	if replaces_existing_groups:
 		_release_ai_fire_control_hooks()
@@ -46,7 +51,9 @@ func setup(next_owner_ship: ShipUnit, next_weapon_mounts: Array) -> void:
 		var mount := mount_value as WeaponMount
 		if mount != null:
 			weapon_mounts.append(mount)
-	turrets.assign(get_weapons_by_type(WeaponTypes.Type.CANNON))
+	_classify_cannon_mounts()
+	turrets.assign(get_main_cannon_mounts())
+	_setup_secondary_battery()
 
 
 func set_target(next_target) -> void:
@@ -66,7 +73,7 @@ func clear_target() -> void:
 		_ai_fire_control.clear_tracking_target(&"combat_clear_target")
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
-		if mount != null:
+		if mount != null and not is_secondary_battery_mount(mount):
 			mount.clear_aim()
 
 
@@ -106,7 +113,7 @@ func set_aim_point(world_point: Vector3) -> void:
 	_manual_aim_command = null
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
-		if mount != null:
+		if mount != null and not is_secondary_battery_mount(mount):
 			mount.aim_at(world_point)
 
 
@@ -150,21 +157,24 @@ func get_manual_aim_world_direction() -> Vector3:
 
 
 func adjust_turret_pitch(delta_degrees: float) -> void:
-	for mount in get_weapons_by_type(WeaponTypes.Type.CANNON):
+	for mount in get_main_cannon_mounts():
 		mount.adjust_pitch(delta_degrees)
 
 
 func fire_weapon_type(weapon_type: WeaponTypes.Type) -> int:
 	var fired_count := 0
+	var mounts_to_fire: Array[WeaponMount] = weapon_mounts
+	if weapon_type == WeaponTypes.Type.CANNON:
+		mounts_to_fire = get_main_cannon_mounts()
 	if weapon_type == WeaponTypes.Type.CANNON \
 			and aim_source == AimSource.AI:
 		var ai_target := _get_ai_fire_control_target()
 		if ai_target == null:
 			return 0
 		_ensure_ai_fire_control()
-		var cannon_mounts := get_weapons_by_type(WeaponTypes.Type.CANNON)
+		var cannon_mounts := get_main_cannon_mounts()
 		_ai_fire_control.begin_salvo_for_mounts(cannon_mounts)
-	for mount_value: Variant in weapon_mounts:
+	for mount_value: Variant in mounts_to_fire:
 		var mount := _as_valid_weapon_mount(mount_value)
 		if mount == null or mount.get_weapon_type() != weapon_type:
 			continue
@@ -263,7 +273,7 @@ func update_weapon_mounts(next_owner_ship: Node3D, use_default_aim: bool) -> voi
 		_update_ai_fire_control(ai_target)
 		for mount_value: Variant in weapon_mounts:
 			var mount := _as_valid_weapon_mount(mount_value)
-			if mount == null:
+			if mount == null or is_secondary_battery_mount(mount):
 				continue
 			if mount is CannonMount:
 				# Cannons track their weapon group's predictive, salvo-biased
@@ -278,7 +288,7 @@ func update_weapon_mounts(next_owner_ship: Node3D, use_default_aim: bool) -> voi
 	_release_ai_fire_control_hooks()
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
-		if mount != null:
+		if mount != null and not is_secondary_battery_mount(mount):
 			# All aim modes fire at the shared aim point: for manual bearing it
 			# already reflects the clicked distance (clamped to range), so mounts
 			# no longer force their own maximum range here.
@@ -298,7 +308,7 @@ func _get_ai_fire_control_target() -> ShipUnit:
 
 func _update_ai_fire_control(target_ship: ShipUnit) -> void:
 	_ensure_ai_fire_control()
-	var cannons := get_weapons_by_type(WeaponTypes.Type.CANNON)
+	var cannons := get_main_cannon_mounts()
 	_ai_fire_control.update(owner_ship, target_ship, cannons)
 	for cannon in cannons:
 		var cannon_mount := cannon as CannonMount
@@ -380,6 +390,55 @@ func get_weapons_by_type(
 	return result
 
 
+func get_main_cannon_mounts() -> Array[WeaponMount]:
+	var result: Array[WeaponMount] = []
+	for cannon in main_cannon_mounts:
+		if cannon != null and is_instance_valid(cannon):
+			result.append(cannon)
+	return result
+
+
+func get_secondary_cannon_mounts() -> Array[CannonMount]:
+	var result: Array[CannonMount] = []
+	for cannon in secondary_cannon_mounts:
+		if cannon != null and is_instance_valid(cannon):
+			result.append(cannon)
+	return result
+
+
+func is_secondary_battery_mount(mount: WeaponMount) -> bool:
+	return mount != null \
+		and mount.slot_data != null \
+		and mount.slot_data.battery_role == BatteryRole.Type.SECONDARY
+
+
+func set_secondary_candidate_provider(provider: Callable) -> void:
+	_secondary_candidate_provider = provider
+	if _secondary_battery_controller != null:
+		_secondary_battery_controller.set_candidate_provider(provider)
+
+
+func update_secondary_battery(delta: float) -> void:
+	if _secondary_battery_controller != null:
+		_secondary_battery_controller.update(delta)
+
+
+func get_secondary_battery_controller() -> SecondaryBatteryController:
+	return _secondary_battery_controller
+
+
+func get_secondary_battery_debug_snapshot() -> SecondaryBatteryDebugSnapshot:
+	return _secondary_battery_controller.get_debug_snapshot() \
+		if _secondary_battery_controller != null \
+		else SecondaryBatteryDebugSnapshot.new()
+
+
+func get_main_target() -> ShipUnit:
+	if target == null or not is_instance_valid(target):
+		return null
+	return target as ShipUnit
+
+
 func can_fire_weapon_type_at(
 		weapon_type: WeaponTypes.Type,
 		world_point: Vector3
@@ -458,7 +517,7 @@ func get_best_fire_readiness_for_type(
 
 
 func get_primary_weapon_range_m() -> float:
-	var cannons := get_weapons_by_type(WeaponTypes.Type.CANNON)
+	var cannons := get_main_cannon_mounts()
 	if not cannons.is_empty():
 		return cannons[0].get_range_m()
 	for mount_value: Variant in weapon_mounts:
@@ -476,7 +535,7 @@ func get_selected_cannon_maximum_range_m() -> float:
 
 func get_player_cannon_preview_range_m() -> float:
 	var maximum_range_m := 0.0
-	for mount in get_weapons_by_type(WeaponTypes.Type.CANNON):
+	for mount in get_main_cannon_mounts():
 		if not mount.is_operational():
 			continue
 		maximum_range_m = maxf(
@@ -488,10 +547,59 @@ func get_player_cannon_preview_range_m() -> float:
 
 func get_player_cannon_preview_mounts() -> Array[WeaponMount]:
 	var result: Array[WeaponMount] = []
-	for mount in get_weapons_by_type(WeaponTypes.Type.CANNON):
+	for mount in get_main_cannon_mounts():
 		if mount.is_available_for_range_preview():
 			result.append(mount)
 	return result
+
+
+func shutdown() -> void:
+	_release_ai_fire_control_hooks()
+	if _ai_fire_control != null:
+		_ai_fire_control.clear_tracking_target(&"shutdown")
+	_shutdown_secondary_battery()
+	owner_ship = null
+	_secondary_candidate_provider = Callable()
+
+
+func _classify_cannon_mounts() -> void:
+	main_cannon_mounts.clear()
+	secondary_cannon_mounts.clear()
+	for mount_value: Variant in weapon_mounts:
+		if mount_value == null or not is_instance_valid(mount_value):
+			continue
+		var cannon := mount_value as CannonMount
+		if cannon == null:
+			continue
+		if is_secondary_battery_mount(cannon):
+			secondary_cannon_mounts.append(cannon)
+		else:
+			main_cannon_mounts.append(cannon)
+
+
+func _setup_secondary_battery() -> void:
+	if secondary_cannon_mounts.is_empty() or owner_ship == null:
+		return
+	_secondary_battery_controller = SecondaryBatteryController.new()
+	var selected_profile := owner_ship.ship_data.secondary_battery_profile \
+		if owner_ship.ship_data != null else null
+	_secondary_battery_controller.setup(
+		owner_ship,
+		self,
+		secondary_cannon_mounts,
+		selected_profile,
+		_secondary_candidate_provider
+	)
+
+
+func _shutdown_secondary_battery() -> void:
+	if _secondary_battery_controller != null:
+		_secondary_battery_controller.shutdown()
+		_secondary_battery_controller = null
+
+
+func _exit_tree() -> void:
+	shutdown()
 
 
 func get_max_weapon_range_m(type_filter: Variant = null) -> float:

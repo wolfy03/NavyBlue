@@ -25,6 +25,7 @@ display_name = "Secondary battery"
 local_position = Vector3(0, 15.75, 0)
 local_scale = Vector3(13, 13, 13)
 allowed_weapon_types = Array[int]([0, 3])
+battery_role = 1
 default_weapon_id = "carrier_secondary"
 elevation_max_degrees = 80.0
 

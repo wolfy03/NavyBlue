@@ -52,3 +52,18 @@ remain at their serialization/diagnostic boundaries.
 
 Source audit tests enforce that weapon, combat, effect, unit, and AI domain
 directories contain no `/root/EventBus` or `/root/ObjectPool` discovery.
+
+## Automatic Secondary Batteries
+
+Battery role belongs to `ShipWeaponSlotData`, so one immutable `WeaponData`
+may be a main gun on one hull and a secondary on another. `ShipCombat` composes
+two independent fire-control lifecycles: the existing main battery and a
+`SecondaryBatteryController` with its own `ShipGunneryFireControl` instance.
+
+The secondary controller owns target scanning and hysteresis only. Ballistic
+lead, crew and difficulty error, salvo dispersion, mount traverse/elevation,
+reload, projectile creation, and damage continue through the shared weapon
+pipeline. Battle unit candidates are injected by `BattleScene`; secondary
+domain code does not discover the scene or Autoloads. Player-owned automatic
+secondaries use the fixed Normal assistance profile, while AI-owned
+secondaries use `BattleServices.ai_gunnery_difficulty`.

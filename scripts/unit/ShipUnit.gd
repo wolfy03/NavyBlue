@@ -107,6 +107,7 @@ func _physics_process(delta: float) -> void:
 	navigation.constrain_owner_to_bounds()
 	buoyancy.apply_buoyancy(self)
 	combat.update_weapon_mounts(self, player_controlled)
+	combat.update_secondary_battery(delta)
 
 func set_player_commands(
 		throttle_axis: float,
@@ -331,6 +332,8 @@ func configure_ai_target_provider(provider: Callable) -> void:
 	_ai_candidate_provider = provider
 	if targeting != null:
 		targeting.set_candidate_provider(provider)
+	if combat != null:
+		combat.set_secondary_candidate_provider(provider)
 
 
 func get_ai_target():
@@ -586,6 +589,7 @@ func _setup_components() -> void:
 	avoidance.setup(self, settings)
 	buoyancy.water_height = settings.sea_level_m
 	combat.setup(self, built_mounts)
+	combat.set_secondary_candidate_provider(_ai_candidate_provider)
 	health.setup(
 		ship_data.defense_stats if ship_data != null else null,
 		battle_services
@@ -649,6 +653,7 @@ func _rebuild_weapon_mounts() -> void:
 	)
 	_apply_runtime_stats_to_mounts(built_mounts)
 	combat.setup(self, built_mounts)
+	combat.set_secondary_candidate_provider(_ai_candidate_provider)
 	if previous_aim_mode \
 			== ShipCombat.AimMode.MANUAL_RELATIVE_BEARING \
 			and previous_manual_command != null:
@@ -704,12 +709,23 @@ func _find_weapon_slot(slot_id: StringName) -> ShipWeaponSlotData:
 
 
 func _on_health_died() -> void:
+	if combat != null:
+		combat.shutdown()
 	if carrier_air_group_ai != null:
 		carrier_air_group_ai.shutdown()
 		carrier_air_group_ai.process_mode = Node.PROCESS_MODE_DISABLED
 	if carrier_air_group != null:
 		carrier_air_group.resolve_carrier_loss()
 	sink()
+
+
+func shutdown_battle_runtime() -> void:
+	set_physics_process(false)
+	suspend_player_combat_input(false)
+	if combat != null:
+		combat.shutdown()
+	if carrier_air_group_ai != null:
+		carrier_air_group_ai.shutdown()
 
 
 func _on_damage_result_applied(result: DamageResult) -> void:

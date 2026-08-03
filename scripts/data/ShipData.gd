@@ -44,6 +44,8 @@ enum ShipClass {
 ## Gunnery crew proficiency. Null falls back to default mid skills (0.5) in
 ## ShipGunneryFireControl until a full crew system exists.
 @export var gunnery_crew_stats: GunneryCrewStats
+@export var secondary_battery_profile: SecondaryBatteryProfile
+@export var secondary_gunnery_crew_stats: GunneryCrewStats
 @export_category("Combat Role")
 @export var strategic_value := 1.0
 @export var combat_role: StringName = &"line_combatant"

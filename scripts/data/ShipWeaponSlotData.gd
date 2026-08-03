@@ -14,6 +14,7 @@ class_name ShipWeaponSlotData
 @export var slot_size: WeaponTypes.SlotSize = WeaponTypes.SlotSize.MEDIUM
 @export var allowed_weapon_types: Array[WeaponTypes.Type] = []
 @export var mount_side: WeaponTypes.MountSide = WeaponTypes.MountSide.CENTERLINE
+@export var battery_role: BatteryRole.Type = BatteryRole.Type.MAIN
 
 @export_category("Default Loadout")
 @export var default_weapon_id := ""

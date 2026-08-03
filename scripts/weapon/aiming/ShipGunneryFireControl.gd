@@ -21,6 +21,7 @@ const DEFAULT_DIFFICULTY: AIGunneryDifficultyProfile = preload(
 var difficulty_profile: AIGunneryDifficultyProfile
 var crew_stats: GunneryCrewStats
 var debug_settings: BattleDebugSettings
+var fallback_accuracy_profile: GunneryWeaponAccuracyProfile
 
 var tracking := GunneryTrackingState.new()
 var fire_command_id := 0
@@ -42,7 +43,8 @@ var _bound_mount_refs: Dictionary = {}
 func configure(
 		next_difficulty: AIGunneryDifficultyProfile,
 		next_crew_stats: GunneryCrewStats,
-		next_debug_settings: BattleDebugSettings = null
+		next_debug_settings: BattleDebugSettings = null,
+		next_fallback_accuracy_profile: GunneryWeaponAccuracyProfile = null
 ) -> void:
 	difficulty_profile = next_difficulty \
 		if next_difficulty != null \
@@ -51,6 +53,7 @@ func configure(
 	crew_stats = next_crew_stats \
 		if next_crew_stats != null else GunneryCrewStats.new()
 	debug_settings = next_debug_settings
+	fallback_accuracy_profile = next_fallback_accuracy_profile
 
 
 ## Drives the fire-control pipeline. Call once per physics frame while the
@@ -547,7 +550,9 @@ func _get_accuracy_profile(
 ) -> GunneryWeaponAccuracyProfile:
 	var weapon_profile := mount.weapon_data.gunnery_accuracy_profile \
 		if mount != null and mount.weapon_data != null else null
-	return GunneryAccuracyProfileResolver.resolve(weapon_profile)
+	return GunneryAccuracyProfileResolver.resolve(
+		weapon_profile if weapon_profile != null else fallback_accuracy_profile
+	)
 
 
 func _rebuild_groups(cannon_mounts: Array[WeaponMount]) -> void:

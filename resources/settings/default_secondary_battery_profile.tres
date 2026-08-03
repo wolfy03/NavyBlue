@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="SecondaryBatteryProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/weapon/secondary/SecondaryBatteryProfile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+enabled = true
+hold_fire = false
+scan_interval_sec = 0.3
+target_switch_cooldown_sec = 2.0
+target_switch_score_ratio = 1.25
+minimum_engaging_mount_count = 1
+maximum_candidates_per_scan = 32
+idle_behavior = 1
+prefer_main_target = true
+main_target_score_bonus = 0.15
+distance_score_weight = 1.0
+available_mount_score_weight = 0.35
+threat_score_weight = 0.25
+target_size_score_weight = 0.1

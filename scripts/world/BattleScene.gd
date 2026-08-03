@@ -174,6 +174,12 @@ func shutdown() -> void:
 	_fleet_controllers.clear()
 	friendly_fleet_ai = null
 	enemy_fleet_ai = null
+	for unit_value: Variant in get_battle_units():
+		if unit_value == null or not is_instance_valid(unit_value):
+			continue
+		var ship := unit_value as ShipUnit
+		if ship != null:
+			ship.shutdown_battle_runtime()
 	_shutdown_aircraft()
 	_shutdown_projectiles()
 	if combat_effect_presenter != null:
