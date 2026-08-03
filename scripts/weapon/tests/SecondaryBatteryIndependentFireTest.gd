@@ -26,6 +26,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	await _test_shared_lead_with_independent_bias()
+	await _test_runtime_ballistics_split_groups()
 	await _test_mixed_reload_times()
 	await _test_mixed_traverse_times()
 	await _test_no_shared_salvo_and_state_cleanup()
@@ -134,6 +135,54 @@ func _test_shared_lead_with_independent_bias() -> void:
 	)
 	_teardown_arena()
 #endregion
+
+
+func _test_runtime_ballistics_split_groups() -> void:
+	_build_arena()
+	var shooter := _spawn_ship("cl_tidebreaker", &"enemy", Vector3.ZERO)
+	var target := _spawn_ship("dd_bluewind", &"ally", Vector3(0, 0, 3000))
+	target.velocity = Vector3(12.0, 0.0, 0.0)
+	var standard := _spawn_mount(
+		"naval_gun_100mm",
+		Vector3(-20, 6, 10)
+	)
+	var upgraded := _spawn_mount(
+		"naval_gun_100mm",
+		Vector3(-20, 6, -10)
+	)
+	upgraded.runtime_stats.projectile_speed_multiplier = 1.2
+	await physics_frame
+	var fire_control := ShipGunneryFireControl.new()
+	fire_control.configure(
+		NORMAL,
+		GunneryCrewStats.new(),
+		null,
+		SECONDARY_ACCURACY
+	)
+	fire_control.set_fire_mode(
+		ShipGunneryFireControl.FireMode.INDEPENDENT_MOUNT
+	)
+	var mounts: Array[WeaponMount] = [standard, upgraded]
+	fire_control.update(shooter, target, mounts)
+	var standard_group := fire_control.get_group_session_for_mount(standard)
+	var upgraded_group := fire_control.get_group_session_for_mount(upgraded)
+	_check(
+		standard_group != null and upgraded_group != null,
+		"runtime ballistic variants both receive a weapon group"
+	)
+	if standard_group != null and upgraded_group != null:
+		_check(
+			standard_group != upgraded_group,
+			"different runtime muzzle velocities do not share one lead solve"
+		)
+		_check(
+			not is_equal_approx(
+				standard_group.flight_time_sec,
+				upgraded_group.flight_time_sec
+			),
+			"runtime ballistic groups preserve different flight times"
+		)
+	_teardown_arena()
 
 
 #region Mixed reload
@@ -248,6 +297,11 @@ func _test_no_shared_salvo_and_state_cleanup() -> void:
 	if controller == null:
 		_teardown_arena()
 		return
+	for mount in controller.secondary_mounts:
+		_check(
+			controller.get_mount_fire_control_state(mount) != null,
+			"every configured mount owns a fire-control state before firing"
+		)
 	await _run_battery(controller, 6.0)
 	var profile := controller.profile
 	_check(
@@ -265,6 +319,19 @@ func _test_no_shared_salvo_and_state_cleanup() -> void:
 	_check(
 		controller.get_mount_fire_control_state(doomed) != null,
 		"a live mount owns a fire-control state"
+	)
+	var surviving := controller.secondary_mounts[1]
+	var surviving_state := controller.get_mount_fire_control_state(surviving)
+	var sequence_before_weapon_change := surviving_state.fire_sequence_index
+	surviving.weapon_data = surviving.weapon_data.duplicate(true) as WeaponData
+	controller.update(0.016)
+	var rebound_state := controller.get_mount_fire_control_state(surviving)
+	_check(
+		rebound_state == surviving_state
+			and rebound_state.fire_sequence_index
+				== sequence_before_weapon_change
+			and rebound_state.is_bound_to_weapon(surviving),
+		"WeaponData replacement resets tracking without reusing the fire sequence"
 	)
 	doomed.queue_free()
 	await physics_frame
@@ -348,12 +415,30 @@ func _build_arena() -> void:
 	_arena = Node3D.new()
 	root.add_child(_arena)
 	var projectile_root := Node3D.new()
+	projectile_root.name = "Projectiles"
 	projectile_root.add_to_group(&"projectile_root")
 	_arena.add_child(projectile_root)
 
 
 func _teardown_arena() -> void:
 	if _arena != null:
+		# Match BattleScene shutdown ordering: return live projectiles while
+		# their parent is still in a stable SceneTree, then remove the arena.
+		# Letting SceneTree quit perform this step would make ObjectPool reparent
+		# children while root is already busy removing them.
+		for projectile_root in get_nodes_in_group(&"projectile_root"):
+			if projectile_root == null \
+					or not is_instance_valid(projectile_root) \
+					or not _arena.is_ancestor_of(projectile_root):
+				continue
+			for child in projectile_root.get_children():
+				var projectile := child as ProjectileBase
+				if projectile != null:
+					projectile.recycle_projectile()
+					continue
+				var rigid_projectile := child as WeaponProjectileBase
+				if rigid_projectile != null:
+					rigid_projectile.recycle_projectile()
 		_arena.queue_free()
 		_arena = null
 

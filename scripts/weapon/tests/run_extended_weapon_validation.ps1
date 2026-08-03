@@ -37,6 +37,8 @@ $tests = @(
 	"res://scripts/weapon/tests/PlayerAutoDoesNotUseAIDifficultyTest.gd",
 	"res://scripts/weapon/tests/GunneryTrackingConfidenceDropOnManeuverTest.gd",
 	"res://scripts/weapon/tests/SecondaryBatterySystemTest.gd",
+	"res://scripts/weapon/tests/SecondaryWeaponRenameTest.gd",
+	"res://scripts/weapon/tests/SecondaryBatteryIndependentFireTest.gd",
 	"res://scripts/weapon/tests/SecondaryBatterySelectorTest.gd",
 	"res://scripts/weapon/tests/SecondaryBatteryAutoFireIntegrationTest.gd",
 	"res://scripts/weapon/tests/ShipClassSecondaryBatteryLayoutTest.gd",

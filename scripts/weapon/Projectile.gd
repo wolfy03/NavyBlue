@@ -91,6 +91,13 @@ func _on_configured() -> void:
 	base_water_splash_strength = shell_data.splash_strength
 	explosion_radius = shell_data.explosion_radius
 	shell_stats = _make_shell_stats(shell_data)
+	projectile_trail_enabled = shell_data.trail_enabled
+	trail_lifetime_sec = maxf(shell_data.trail_lifetime_sec, 0.1)
+	trail_width_m = maxf(shell_data.trail_width_m, 0.5)
+	trail_particle_count = maxi(shell_data.trail_particle_count, 16)
+	trail_color = shell_data.trail_color
+	_configure_trail()
+	_stop_trail()
 
 
 func _on_launched(context: ProjectileLaunchContext) -> void:

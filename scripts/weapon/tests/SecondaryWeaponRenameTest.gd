@@ -54,6 +54,14 @@ func _test_registry_resolves_new_id() -> void:
 		"renamed weapon keeps its gunnery accuracy profile"
 	)
 	_check(
+		is_equal_approx(weapon.muzzle_velocity, 560.0),
+		"100 mm naval gun uses the doubled 560 m/s muzzle velocity"
+	)
+	_check(
+		is_equal_approx(weapon.range_meters, 4500.0),
+		"100 mm naval gun range is reduced to 4.5 km"
+	)
+	_check(
 		_weapon_database.find_weapon(LEGACY_WEAPON_ID) == null,
 		"the legacy id is no longer a registry key"
 	)
@@ -68,6 +76,73 @@ func _test_projectile_renamed() -> void:
 		weapon.projectile_data.id == "secondary_100mm_shell",
 		"projectile id is generalized (got '%s')" % weapon.projectile_data.id
 	)
+	var shell_data := weapon.projectile_data as ShellProjectileData
+	_check(shell_data != null, "secondary projectile uses ShellProjectileData")
+	if shell_data == null:
+		return
+	_check(
+		is_equal_approx(shell_data.muzzle_velocity, 560.0),
+		"secondary projectile data matches the doubled muzzle velocity"
+	)
+	_check(
+		is_equal_approx(shell_data.trail_lifetime_sec, 0.575)
+			and is_equal_approx(shell_data.trail_width_m, 2.5)
+			and shell_data.trail_particle_count == 80,
+		"secondary trail lifetime, width and particle count are halved"
+	)
+	_check(
+		shell_data.trail_color.r >= 0.9
+			and shell_data.trail_color.g >= 0.9
+			and shell_data.trail_color.b >= 0.9,
+		"secondary trail color is near white"
+	)
+	var projectile := weapon.projectile_scene.instantiate() as Projectile
+	_check(projectile != null, "secondary shell scene instantiates as Projectile")
+	if projectile != null:
+		root.add_child(projectile)
+		var services := BattleTestServices.create(self)
+		var configured := projectile.configure(
+			shell_data,
+			services
+		)
+		var secondary_trail_mesh := projectile.trail_particles.draw_pass_1 \
+			as QuadMesh
+		_check(
+			configured
+				and projectile.trail_particles.amount == 80
+				and is_equal_approx(
+					projectile.trail_particles.lifetime,
+					0.575
+				)
+				and projectile.trail_color.is_equal_approx(
+					shell_data.trail_color
+				)
+				and secondary_trail_mesh != null
+				and secondary_trail_mesh.size.is_equal_approx(
+					Vector2(2.5, 2.5)
+				),
+			"secondary Projectile applies its data-owned trail profile"
+		)
+		var main_weapon := _weapon_database.find_weapon("destroyer_cannon")
+		var main_shell_data := main_weapon.projectile_data as ShellProjectileData \
+			if main_weapon != null else null
+		projectile.reset_for_pool()
+		var main_configured := projectile.configure(main_shell_data, services) \
+			if main_shell_data != null else false
+		var main_trail_mesh := projectile.trail_particles.draw_pass_1 as QuadMesh
+		_check(
+			main_configured
+				and projectile.trail_particles.amount == 160
+				and is_equal_approx(projectile.trail_particles.lifetime, 1.15)
+				and main_trail_mesh != null
+				and main_trail_mesh.size.is_equal_approx(Vector2(5.0, 5.0))
+				and projectile.trail_color.is_equal_approx(
+					Color(1.0, 0.66, 0.24, 0.9)
+				),
+			"pooled Projectile reuse restores the main-gun trail defaults"
+		)
+		root.remove_child(projectile)
+		projectile.free()
 
 
 func _test_layout_default_and_ship_resources() -> void:

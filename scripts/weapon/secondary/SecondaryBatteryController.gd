@@ -74,6 +74,7 @@ func setup(
 	fire_control.set_fire_mode(
 		ShipGunneryFireControl.FireMode.INDEPENDENT_MOUNT
 	)
+	_initialize_mount_fire_control_states()
 	scan_elapsed_sec = maxf(profile.scan_interval_sec, 0.01)
 	_configured = not secondary_mounts.is_empty()
 	_refresh_debug_snapshot(0, 0)
@@ -223,6 +224,14 @@ func _get_or_create_mount_state(
 	var existing := _mount_fire_control_states.get(mount_id) \
 		as SecondaryMountFireControlState
 	if existing != null:
+		if not existing.is_bound_to_weapon(mount):
+			existing.reset_for_weapon(mount)
+			var rebound_target := get_current_target()
+			if rebound_target != null:
+				existing.reset_for_target(
+					rebound_target,
+					rebound_target.get_instance_id()
+				)
 		return existing
 	var state := SecondaryMountFireControlState.create(mount)
 	var target := get_current_target()
@@ -230,6 +239,15 @@ func _get_or_create_mount_state(
 		state.reset_for_target(target, target.get_instance_id())
 	_mount_fire_control_states[mount_id] = state
 	return state
+
+
+func _initialize_mount_fire_control_states() -> void:
+	_mount_fire_control_states.clear()
+	for mount in secondary_mounts:
+		if mount == null or not is_instance_valid(mount):
+			continue
+		var state := SecondaryMountFireControlState.create(mount)
+		_mount_fire_control_states[mount.get_instance_id()] = state
 
 
 func _set_mount_failure(mount: CannonMount, reason: StringName) -> void:
@@ -474,4 +492,3 @@ func get_max_secondary_range_m() -> float:
 		if mount != null and is_instance_valid(mount):
 			result = maxf(result, mount.get_range_m())
 	return result
-

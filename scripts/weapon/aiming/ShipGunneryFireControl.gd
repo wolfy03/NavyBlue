@@ -560,6 +560,11 @@ func begin_salvo(
 ) -> GunnerySalvoSolution:
 	var group := _group_states.get(weapon_group_id) \
 		as GunneryWeaponGroupSession
+	# Compatibility contract: callers may address the single standard group by
+	# WeaponData.id. Internal keys also carry the ballistic/runtime signature so
+	# upgraded mounts can split without changing the public salvo API.
+	if group == null:
+		group = _find_group_for_weapon_id(weapon_group_id)
 	if group == null or not group.has_solution \
 			or group.current_salvo == null:
 		return null
@@ -744,6 +749,9 @@ func _rebuild_groups(cannon_mounts: Array[WeaponMount]) -> void:
 			group = GunneryWeaponGroupSession.new()
 			group.group_key = group_key
 			_group_states[group_key] = group
+		group.weapon_data = cannon.weapon_data
+		group.projectile_data = cannon.weapon_data.projectile_data \
+			if cannon.weapon_data != null else null
 		if not seen_groups.has(group_key):
 			group.mounts.clear()
 			group.mounted_turret_ids.clear()
@@ -771,9 +779,82 @@ func _rebuild_groups(cannon_mounts: Array[WeaponMount]) -> void:
 
 
 func _get_group_key(cannon: CannonMount) -> StringName:
-	if cannon.weapon_data != null and not cannon.weapon_data.id.is_empty():
-		return StringName(cannon.weapon_data.id)
-	return StringName("mount_%d" % cannon.get_instance_id())
+	if cannon.weapon_data == null or cannon.weapon_data.id.is_empty():
+		return StringName("mount_%d" % cannon.get_instance_id())
+	var projectile_data := cannon.weapon_data.projectile_data
+	var projectile_id := projectile_data.id \
+		if projectile_data != null else "missing_projectile"
+	var projectile_path := projectile_data.resource_path \
+		if projectile_data != null else ""
+	var weapon_path := cannon.weapon_data.resource_path
+	var accuracy_profile := _get_accuracy_profile(cannon)
+	var accuracy_signature := _get_accuracy_profile_signature(
+		accuracy_profile
+	)
+	# A weapon id alone is not a complete ballistic contract: runtime upgrades
+	# can change range or muzzle velocity independently on otherwise identical
+	# mounts. Only mounts with matching projectile, speed, gravity, range and
+	# accuracy data may share one NavalGunLeadResolver result.
+	return StringName(
+		"%s|w=%s|p=%s@%s|v=%.6f|g=%.6f|r=%.3f|a=%s"
+		% [
+			cannon.weapon_data.id,
+			weapon_path,
+			projectile_id,
+			projectile_path,
+			cannon.get_modified_projectile_speed(cannon.muzzle_velocity),
+			cannon.get_effective_gravity_mps2(),
+			cannon.get_range_m(),
+			accuracy_signature,
+		]
+	)
+
+
+func _get_accuracy_profile_signature(
+		profile: GunneryWeaponAccuracyProfile
+) -> String:
+	if profile == null:
+		return "missing"
+	return (
+		(
+			"%.3f,%.3f,%.3f,%.3f,%.6f,%.6f,%.6f,%.6f,%.6f,"
+			+ "%.3f,%.3f,%.3f,%.6f"
+		)
+		% [
+			profile.reference_range_m,
+			profile.base_range_error_m,
+			profile.base_lateral_error_m,
+			profile.base_shell_dispersion_m,
+			profile.range_error_growth_exponent,
+			profile.lateral_error_growth_exponent,
+			profile.dispersion_growth_exponent,
+			profile.minimum_range_factor,
+			profile.maximum_range_factor,
+			profile.minimum_range_error_m,
+			profile.minimum_lateral_error_m,
+			profile.minimum_shell_dispersion_m,
+			profile.salvo_grouping_window_sec,
+		]
+	)
+
+
+func _find_group_for_weapon_id(
+		weapon_id: StringName
+) -> GunneryWeaponGroupSession:
+	var matching_keys: Array = []
+	for group_key_value: Variant in _group_states:
+		var candidate := _group_states[group_key_value] \
+			as GunneryWeaponGroupSession
+		if candidate != null and candidate.weapon_data != null \
+				and StringName(candidate.weapon_data.id) == weapon_id:
+			matching_keys.append(group_key_value)
+	if matching_keys.is_empty():
+		return null
+	matching_keys.sort_custom(
+		func(left: Variant, right: Variant) -> bool:
+			return str(left) < str(right)
+	)
+	return _group_states[matching_keys[0]] as GunneryWeaponGroupSession
 
 
 func _get_representative_mount(

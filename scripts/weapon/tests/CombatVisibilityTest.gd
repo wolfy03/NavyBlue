@@ -93,12 +93,13 @@ func _test_ballistic_configuration(player: ShipUnit) -> void:
 		var weapon := weapon_database.find_weapon(weapon_id)
 		var shell_data := weapon.projectile_data as ShellProjectileData \
 			if weapon != null else null
-		var expected_velocity := sqrt(weapon.range_meters * gravity) \
-			if weapon != null else 0.0
+		var physical_maximum_range := (
+			weapon.muzzle_velocity * weapon.muzzle_velocity / gravity
+		) if weapon != null else 0.0
 		_check(
 			weapon != null
-				and absf(weapon.muzzle_velocity - expected_velocity) <= 1.0,
-			"%s reaches nominal range near 45 degrees" % weapon_id
+				and weapon.range_meters <= physical_maximum_range * 1.005,
+			"%s configured range is physically reachable" % weapon_id
 		)
 		_check(
 			shell_data != null
@@ -112,19 +113,49 @@ func _test_ballistic_configuration(player: ShipUnit) -> void:
 		)
 		_check(
 			shell_data != null
-				and shell_data.lifetime_seconds
-					>= (sqrt(2.0) * weapon.muzzle_velocity / gravity) * 1.1,
-			"%s shell lifetime covers its maximum-range flight" % weapon_id
+				and (
+					_shell_lifetime_covers_configured_range(
+						weapon,
+						shell_data,
+						gravity
+					) if weapon_id == "naval_gun_100mm" else (
+						shell_data.lifetime_seconds
+							>= (sqrt(2.0) * weapon.muzzle_velocity / gravity)
+								* 1.1
+					)
+				),
+			"%s shell lifetime covers the required flight" % weapon_id
 		)
 	for cannon in player.combat.get_weapons_by_type(
 		WeaponTypes.Type.CANNON
 	):
-		var expected_velocity := sqrt(cannon.get_range_m() * gravity)
-		var actual_velocity := cannon.get_muzzle_velocity_vector().length()
 		_check(
-			absf(actual_velocity - expected_velocity) <= 1.0,
-			"cannon maximum range corresponds to an approximately 45 degree shot"
+			cannon.is_configured_range_physically_reachable(),
+			"cannon configured range has a valid low-arc ballistic solution"
 		)
+
+
+func _shell_lifetime_covers_configured_range(
+		weapon: WeaponData,
+		shell_data: ShellProjectileData,
+		gravity: float
+) -> bool:
+	if weapon == null or shell_data == null or gravity <= 0.0:
+		return false
+	var angle: Variant = BallisticMath.solve_low_arc_angle(
+		weapon.range_meters,
+		0.0,
+		weapon.muzzle_velocity,
+		gravity * maxf(shell_data.gravity_scale, 0.01)
+	)
+	if angle == null:
+		return false
+	var horizontal_speed := weapon.muzzle_velocity * cos(float(angle))
+	if horizontal_speed <= 0.0:
+		return false
+	var configured_range_flight_time := weapon.range_meters / horizontal_speed
+	return shell_data.lifetime_seconds \
+		>= configured_range_flight_time * 1.1
 
 
 func _test_cannon_range_preview(
@@ -174,11 +205,20 @@ func _test_maximum_range_pitch(player: ShipUnit) -> void:
 	forward.y = 0.0
 	var aim_point := cannon.get_muzzle_position() \
 		+ forward.normalized() * cannon.get_range_m()
+	var expected_pitch: Variant = BallisticMath.solve_low_arc_angle(
+		cannon.get_range_m(),
+		0.0,
+		cannon.get_modified_projectile_speed(cannon.muzzle_velocity),
+		cannon.get_effective_gravity_mps2()
+	)
 	cannon.aim_at(aim_point)
 	cannon.call(&"_turn_toward", aim_point, 10.0)
 	_check(
-		cannon.pitch_degrees >= 43.0 and cannon.pitch_degrees <= 46.0,
-		"nominal maximum range produces an approximately 45 degree gun angle"
+		expected_pitch != null
+			and absf(
+				cannon.pitch_degrees - rad_to_deg(float(expected_pitch))
+			) <= cannon.pitch_alignment_tolerance_degrees,
+		"nominal maximum range uses its actual low-arc gun angle"
 	)
 
 
