@@ -202,8 +202,16 @@ func _test_battle_weapon_flow() -> void:
 	var mounts := player.get_weapon_mounts()
 	var cannons := player.combat.get_weapons_by_type(WeaponTypes.Type.CANNON)
 	var torpedoes := player.combat.get_weapons_by_type(WeaponTypes.Type.TORPEDO)
-	_check(mounts.size() == 4, "ShipVisualBuilder creates every destroyer mount")
-	_check(cannons.size() == 2, "ShipCombat exposes two cannon mounts")
+	_check(mounts.size() == 10, "ShipVisualBuilder creates every destroyer mount")
+	_check(cannons.size() == 8, "ShipCombat exposes main and secondary cannons")
+	_check(
+		player.combat.get_main_cannon_mounts().size() == 2,
+		"destroyer retains its two player-controlled main cannons"
+	)
+	_check(
+		player.combat.get_secondary_cannon_mounts().size() == 6,
+		"destroyer exposes three secondary cannons on each side"
+	)
 	_check(torpedoes.size() == 2, "ShipCombat exposes two torpedo mounts")
 	var aim_preview := player.get_node_or_null("TorpedoAimPreview") \
 		as TorpedoAimPreview

@@ -64,4 +64,3 @@ func _check(condition: bool, description: String) -> void:
 		return
 	_failures.append(description)
 	push_error("SECONDARY BATTERY AUTO FIRE: %s" % description)
-

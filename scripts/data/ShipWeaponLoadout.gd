@@ -192,7 +192,7 @@ static func from_ship_data(ship_data: ShipData) -> ShipWeaponLoadout:
 	var loadout := ShipWeaponLoadout.new()
 	if ship_data == null:
 		return loadout
-	for slot in ship_data.weapon_slots:
+	for slot in ship_data.get_runtime_weapon_slots():
 		if slot != null and not slot.slot_id.is_empty():
 			loadout.set_weapon_id(slot.slot_id, slot.default_weapon_id)
 	return loadout
@@ -204,7 +204,7 @@ static func _find_slot(
 ) -> ShipWeaponSlotData:
 	if ship_data == null:
 		return null
-	for slot in ship_data.weapon_slots:
+	for slot in ship_data.get_runtime_weapon_slots():
 		if slot != null and slot.slot_id == slot_id:
 			return slot
 	return null

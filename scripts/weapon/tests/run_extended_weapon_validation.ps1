@@ -39,6 +39,7 @@ $tests = @(
 	"res://scripts/weapon/tests/SecondaryBatterySystemTest.gd",
 	"res://scripts/weapon/tests/SecondaryBatterySelectorTest.gd",
 	"res://scripts/weapon/tests/SecondaryBatteryAutoFireIntegrationTest.gd",
+	"res://scripts/weapon/tests/ShipClassSecondaryBatteryLayoutTest.gd",
 	"res://scripts/weapon/tests/WeaponLineOfFireEvaluatorTest.gd",
 	"res://scripts/weapon/tests/TorpedoXZCollisionTest.gd",
 	"res://scripts/unit/tests/TorpedoCollisionMarginShapeTest.gd",

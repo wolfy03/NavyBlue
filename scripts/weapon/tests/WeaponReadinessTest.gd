@@ -256,10 +256,14 @@ func _test_damage_evaluation(player: ShipUnit) -> void:
 	var torpedoes := player.combat.get_weapons_by_type(
 		WeaponTypes.Type.TORPEDO
 	)
-	var cannons := player.combat.get_weapons_by_type(
-		WeaponTypes.Type.CANNON
+	var cannons := player.combat.get_main_cannon_mounts()
+	var secondaries := player.combat.get_secondary_cannon_mounts()
+	_check(
+		torpedoes.size() == 2
+			and cannons.size() == 2
+			and secondaries.size() == 6,
+		"main, secondary, and torpedo weapon groups load"
 	)
-	_check(torpedoes.size() == 2 and cannons.size() == 2, "weapon groups load")
 	if torpedoes.is_empty() or cannons.is_empty():
 		return
 	var torpedo := torpedoes[0] as TorpedoMount

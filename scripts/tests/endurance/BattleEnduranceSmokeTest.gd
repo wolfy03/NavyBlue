@@ -50,7 +50,10 @@ func _run() -> void:
 		EnduranceProfile.DEFAULT_CHUNK_SIZE_FRAMES
 	)
 	var failures := metrics.validate_metadata()
-	failures.append_array(metrics.validate_bounded_growth(160, 48, 16))
+	# Class-based secondary batteries can put dozens of legitimate shells and
+	# their trail nodes in flight together. Active-combat headroom reflects the
+	# 30-mount battleship layout; post-cleanup counts remain strictly zero.
+	failures.append_array(metrics.validate_bounded_growth(320, 96, 16))
 
 	scene.shutdown()
 	scene.queue_free()

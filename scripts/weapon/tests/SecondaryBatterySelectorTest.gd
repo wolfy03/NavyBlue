@@ -14,6 +14,7 @@ func _run() -> void:
 	_arena = Node3D.new()
 	root.add_child(_arena)
 	var owner_data := _database.get_ship("dd_bluewind").duplicate(true) as ShipData
+	owner_data.secondary_battery_layout = null
 	owner_data.weapon_slots[0].battery_role = BatteryRole.Type.SECONDARY
 	owner_data.weapon_slots[1].battery_role = BatteryRole.Type.SECONDARY
 	var owner := _spawn(owner_data, &"player", Vector3.ZERO)

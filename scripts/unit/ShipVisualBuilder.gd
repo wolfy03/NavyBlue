@@ -42,25 +42,31 @@ func build(
 		return []
 	_apply_hull_shape(ship_data)
 	_apply_materials(team_color)
-	if ship_data.weapon_slots.is_empty():
+	var runtime_slots := ship_data.get_runtime_weapon_slots()
+	if runtime_slots.is_empty():
 		return _build_legacy_turrets(
 			ship_data,
 			team,
 			owner_ship,
 			legacy_turret_scene
 		)
-	return _rebuild_weapon_mounts(ship_data, loadout, team, owner_ship)
+	return _rebuild_weapon_mounts(
+		runtime_slots,
+		loadout,
+		team,
+		owner_ship
+	)
 
 
 func _rebuild_weapon_mounts(
-		ship_data: ShipData,
+		runtime_slots: Array[ShipWeaponSlotData],
 		loadout: ShipWeaponLoadout,
 		team: StringName,
 		owner_ship: ShipUnit
 ) -> Array[WeaponMount]:
 	_clear_mounts()
 	var mounts: Array[WeaponMount] = []
-	for slot in ship_data.weapon_slots:
+	for slot in runtime_slots:
 		if slot == null:
 			continue
 		var weapon_id := loadout.get_weapon_id(slot.slot_id) \

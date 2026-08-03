@@ -48,8 +48,8 @@ func _test_carrier_mount_classification() -> void:
 		"carrier secondary slot is excluded from the main battery"
 	)
 	_check(
-		carrier.combat.get_secondary_cannon_mounts().size() == 1,
-		"carrier secondary slot is classified as SECONDARY"
+		carrier.combat.get_secondary_cannon_mounts().size() == 12,
+		"carrier side batteries are classified as twelve SECONDARY mounts"
 	)
 	_check(
 		carrier.get_player_cannon_preview_mounts().is_empty(),
@@ -70,6 +70,7 @@ func _test_main_and_secondary_independence() -> void:
 	_begin_arena()
 	var data := _ship_database.get_ship("dd_bluewind").duplicate(true) \
 		as ShipData
+	data.secondary_battery_layout = null
 	data.secondary_battery_profile = _hold_fire_profile()
 	data.weapon_slots[1].battery_role = BatteryRole.Type.SECONDARY
 	data.weapon_slots[1].traverse_min_degrees = -180.0

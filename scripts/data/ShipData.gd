@@ -26,6 +26,10 @@ enum ShipClass {
 @export var hull_size := Vector3(2.2, 0.8, 7.0)
 @export_category("Weapons")
 @export var weapon_slots: Array[ShipWeaponSlotData] = []
+## Optional scripted Resource exposing build_slots() -> Array[ShipWeaponSlotData].
+## Kept at the Resource boundary so headless validation does not depend on the
+## editor's global class cache discovering a newly added layout script first.
+@export var secondary_battery_layout: Resource
 
 @export_group("Legacy Weapon Configuration")
 # Deprecated: compatibility only. Do not use in new ship definitions.
@@ -52,3 +56,22 @@ enum ShipClass {
 
 @export_category("Carrier")
 @export var carrier_air_group_data: CarrierAirGroupData
+
+
+func get_runtime_weapon_slots() -> Array[ShipWeaponSlotData]:
+	var result: Array[ShipWeaponSlotData] = []
+	for slot in weapon_slots:
+		if slot != null:
+			result.append(slot)
+	if secondary_battery_layout != null \
+			and secondary_battery_layout.has_method(&"build_slots"):
+		var generated_value: Variant = secondary_battery_layout.call(
+			&"build_slots"
+		)
+		if generated_value is Array:
+			for generated_slot_value: Variant in generated_value:
+				var generated_slot := generated_slot_value \
+					as ShipWeaponSlotData
+				if generated_slot != null:
+					result.append(generated_slot)
+	return result

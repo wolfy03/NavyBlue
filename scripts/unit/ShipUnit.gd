@@ -702,7 +702,7 @@ func _apply_runtime_stats_to_mounts(
 func _find_weapon_slot(slot_id: StringName) -> ShipWeaponSlotData:
 	if ship_data == null:
 		return null
-	for slot in ship_data.weapon_slots:
+	for slot in ship_data.get_runtime_weapon_slots():
 		if slot != null and slot.slot_id == slot_id:
 			return slot
 	return null
