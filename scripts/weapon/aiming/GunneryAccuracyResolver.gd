@@ -57,13 +57,25 @@ static func compute_range_factor(
 		profile: GunneryWeaponAccuracyProfile,
 		growth_exponent: float
 ) -> float:
+	var reference_range := maxf(
+		_sanitize_nonnegative(profile.reference_range_m, 1.0),
+		1.0
+	)
+	var minimum_factor := maxf(
+		_sanitize_nonnegative(profile.minimum_range_factor, 0.25),
+		EPSILON
+	)
+	var maximum_factor := maxf(
+		_sanitize_nonnegative(profile.maximum_range_factor, minimum_factor),
+		minimum_factor
+	)
 	var ratio := maxf(
-		range_m / maxf(profile.reference_range_m, 1.0),
-		profile.minimum_range_factor
+		_sanitize_nonnegative(range_m) / reference_range,
+		minimum_factor
 	)
 	return minf(
-		pow(ratio, growth_exponent),
-		profile.maximum_range_factor
+		pow(ratio, _sanitize_nonnegative(growth_exponent)),
+		maximum_factor
 	)
 
 
@@ -79,53 +91,72 @@ static func compute_sigmas(
 	var result := GunneryAccuracyResult.new()
 	result.success = true
 	result.ideal_aim_point = context.ideal_aim_point
-	var crew_range_multiplier := lerpf(1.5, 0.45, crew.rangefinding_skill)
-	var crew_tracking_multiplier := lerpf(1.6, 0.5, crew.target_tracking_skill)
-	var crew_lead_multiplier := lerpf(1.3, 0.7, crew.fire_control_skill)
-	var crew_dispersion_multiplier := lerpf(1.4, 0.55, crew.gun_laying_skill)
+	var rangefinding_skill := _sanitize_skill(crew.rangefinding_skill)
+	var tracking_skill := _sanitize_skill(crew.target_tracking_skill)
+	var fire_control_skill := _sanitize_skill(crew.fire_control_skill)
+	var gun_laying_skill := _sanitize_skill(crew.gun_laying_skill)
+	var crew_range_multiplier := lerpf(1.5, 0.45, rangefinding_skill)
+	var crew_tracking_multiplier := lerpf(1.6, 0.5, tracking_skill)
+	var crew_lead_multiplier := lerpf(1.3, 0.7, fire_control_skill)
+	var crew_dispersion_multiplier := lerpf(1.4, 0.55, gun_laying_skill)
 	result.range_sigma_m = (
-		weapon_profile.base_range_error_m
+		_sanitize_nonnegative(weapon_profile.base_range_error_m)
 		* compute_range_factor(
 			context.range_m,
 			weapon_profile,
 			weapon_profile.range_error_growth_exponent
 		)
-		* difficulty.range_error_multiplier
+		* _sanitize_nonnegative(difficulty.range_error_multiplier)
 		* crew_range_multiplier
 		* crew_lead_multiplier
 	)
 	result.lateral_sigma_m = (
-		weapon_profile.base_lateral_error_m
+		_sanitize_nonnegative(weapon_profile.base_lateral_error_m)
 		* compute_range_factor(
 			context.range_m,
 			weapon_profile,
 			weapon_profile.lateral_error_growth_exponent
 		)
-		* difficulty.lateral_error_multiplier
+		* _sanitize_nonnegative(difficulty.lateral_error_multiplier)
 		* crew_tracking_multiplier
 	)
 	result.shell_dispersion_sigma_m = (
-		weapon_profile.base_shell_dispersion_m
+		_sanitize_nonnegative(weapon_profile.base_shell_dispersion_m)
 		* compute_range_factor(
 			context.range_m,
 			weapon_profile,
 			weapon_profile.dispersion_growth_exponent
 		)
-		* difficulty.shell_dispersion_multiplier
+		* _sanitize_nonnegative(difficulty.shell_dispersion_multiplier)
 		* crew_dispersion_multiplier
 	)
-	var floor_scale := maxf(difficulty.minimum_error_multiplier, EPSILON)
+	var floor_scale := maxf(
+		_sanitize_nonnegative(difficulty.minimum_error_multiplier, 1.0),
+		EPSILON
+	)
 	result.range_sigma_m = maxf(
 		result.range_sigma_m,
-		weapon_profile.minimum_range_error_m * floor_scale
+		maxf(
+			_sanitize_nonnegative(weapon_profile.minimum_range_error_m, 2.0),
+			EPSILON
+		) * floor_scale
 	)
 	result.lateral_sigma_m = maxf(
 		result.lateral_sigma_m,
-		weapon_profile.minimum_lateral_error_m * floor_scale
+		maxf(
+			_sanitize_nonnegative(weapon_profile.minimum_lateral_error_m, 2.0),
+			EPSILON
+		) * floor_scale
 	)
 	result.shell_dispersion_sigma_m = maxf(
 		result.shell_dispersion_sigma_m,
-		weapon_profile.minimum_shell_dispersion_m * floor_scale
+		maxf(
+			_sanitize_nonnegative(
+				weapon_profile.minimum_shell_dispersion_m,
+				1.0
+			),
+			EPSILON
+		) * floor_scale
 	)
 	return result
 
@@ -162,7 +193,14 @@ static func create_salvo_solution(
 	# zero, but the minimum floors keep the final bias from vanishing.
 	var correction_scale := lerpf(
 		1.0,
-		context.difficulty_profile.minimum_corrected_bias_ratio,
+		clampf(
+			_sanitize_nonnegative(
+				context.difficulty_profile.minimum_corrected_bias_ratio,
+				0.4
+			),
+			0.0,
+			1.0
+		),
 		clampf(context.salvo_correction_level, 0.0, 1.0)
 	)
 	solution.salvo_seed = make_salvo_seed(
@@ -243,22 +281,38 @@ static func observe_target(
 		observation.observed_position = actual_position
 		observation.observed_velocity = actual_velocity
 		return observation
-	var confidence_penalty := 2.0 - clampf(confidence, 0.0, 1.0)
+	var confidence_penalty := 2.0 - _sanitize_skill(confidence)
+	var minimum_delay := _sanitize_nonnegative(
+		difficulty.minimum_observation_delay_sec
+	)
+	var maximum_delay := maxf(
+		_sanitize_nonnegative(
+			difficulty.maximum_observation_delay_sec,
+			minimum_delay
+		),
+		minimum_delay
+	)
+	var tracking_skill := _sanitize_skill(crew.target_tracking_skill)
+	var rangefinding_skill := _sanitize_skill(crew.rangefinding_skill)
 	observation.observation_delay_sec = lerpf(
-		difficulty.maximum_observation_delay_sec,
-		difficulty.minimum_observation_delay_sec,
-		crew.target_tracking_skill
-	) * difficulty.observation_delay_multiplier
+		maximum_delay,
+		minimum_delay,
+		tracking_skill
+	) * _sanitize_nonnegative(difficulty.observation_delay_multiplier)
 	observation.position_sigma_m = (
-		difficulty.base_position_observation_error_m
-		* difficulty.position_observation_error_multiplier
-		* lerpf(1.5, 0.5, crew.rangefinding_skill)
+		_sanitize_nonnegative(difficulty.base_position_observation_error_m)
+		* _sanitize_nonnegative(
+			difficulty.position_observation_error_multiplier
+		)
+		* lerpf(1.5, 0.5, rangefinding_skill)
 		* confidence_penalty
 	)
 	observation.velocity_sigma_mps = (
-		difficulty.base_velocity_observation_error_mps
-		* difficulty.velocity_observation_error_multiplier
-		* lerpf(1.6, 0.5, crew.target_tracking_skill)
+		_sanitize_nonnegative(difficulty.base_velocity_observation_error_mps)
+		* _sanitize_nonnegative(
+			difficulty.velocity_observation_error_multiplier
+		)
+		* lerpf(1.6, 0.5, tracking_skill)
 		* confidence_penalty
 	)
 	var flat_velocity := actual_velocity
@@ -322,3 +376,18 @@ static func dispersion_to_launch_deviation(
 			MAX_SHELL_PITCH_DEVIATION_RAD
 		)
 	)
+
+
+static func _sanitize_nonnegative(
+		value: float,
+		fallback: float = 0.0
+) -> float:
+	if is_nan(value) or is_inf(value):
+		return maxf(fallback, 0.0)
+	return maxf(value, 0.0)
+
+
+static func _sanitize_skill(value: float) -> float:
+	if is_nan(value) or is_inf(value):
+		return 0.5
+	return clampf(value, 0.0, 1.0)

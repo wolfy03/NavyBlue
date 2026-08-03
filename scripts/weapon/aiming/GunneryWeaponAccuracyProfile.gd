@@ -25,19 +25,48 @@ class_name GunneryWeaponAccuracyProfile
 @export var minimum_lateral_error_m := 2.0
 @export var minimum_shell_dispersion_m := 1.0
 
+@export_category("Salvo Lifecycle")
+@export var salvo_grouping_window_sec := 0.35
+
 
 func validate() -> PackedStringArray:
 	var errors := PackedStringArray()
-	if reference_range_m <= 0.0:
+	if not _is_finite(reference_range_m) or reference_range_m <= 0.0:
 		errors.append("reference_range_m must be positive.")
-	if minimum_range_factor <= 0.0:
+	if not _is_finite(base_range_error_m) \
+			or not _is_finite(base_lateral_error_m) \
+			or not _is_finite(base_shell_dispersion_m) \
+			or base_range_error_m < 0.0 \
+			or base_lateral_error_m < 0.0 \
+			or base_shell_dispersion_m < 0.0:
+		errors.append("Base error values must not be negative.")
+	if not _is_finite(range_error_growth_exponent) \
+			or not _is_finite(lateral_error_growth_exponent) \
+			or not _is_finite(dispersion_growth_exponent) \
+			or range_error_growth_exponent < 0.0 \
+			or lateral_error_growth_exponent < 0.0 \
+			or dispersion_growth_exponent < 0.0:
+		errors.append("Range growth exponents must not be negative.")
+	if not _is_finite(minimum_range_factor) \
+			or minimum_range_factor <= 0.0:
 		errors.append("minimum_range_factor must be positive.")
-	if maximum_range_factor < minimum_range_factor:
+	if not _is_finite(maximum_range_factor) \
+			or maximum_range_factor < minimum_range_factor:
 		errors.append(
 			"maximum_range_factor must be >= minimum_range_factor."
 		)
-	if minimum_range_error_m < 0.0 \
-			or minimum_lateral_error_m < 0.0 \
-			or minimum_shell_dispersion_m < 0.0:
-		errors.append("Minimum error floors must not be negative.")
+	if not _is_finite(minimum_range_error_m) \
+			or not _is_finite(minimum_lateral_error_m) \
+			or not _is_finite(minimum_shell_dispersion_m) \
+			or minimum_range_error_m <= 0.0 \
+			or minimum_lateral_error_m <= 0.0 \
+			or minimum_shell_dispersion_m <= 0.0:
+		errors.append("Minimum error floors must be positive.")
+	if not _is_finite(salvo_grouping_window_sec) \
+			or salvo_grouping_window_sec < 0.0:
+		errors.append("salvo_grouping_window_sec must not be negative.")
 	return errors
+
+
+func _is_finite(value: float) -> bool:
+	return not is_nan(value) and not is_inf(value)

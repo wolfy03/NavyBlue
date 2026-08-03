@@ -4,10 +4,10 @@
 
 [resource]
 script = ExtResource("1")
-reference_range_m = 5000.0
-base_range_error_m = 40.0
-base_lateral_error_m = 25.0
-base_shell_dispersion_m = 15.0
+reference_range_m = 14000.0
+base_range_error_m = 113.0
+base_lateral_error_m = 71.0
+base_shell_dispersion_m = 42.5
 range_error_growth_exponent = 1.0
 lateral_error_growth_exponent = 1.0
 dispersion_growth_exponent = 1.0

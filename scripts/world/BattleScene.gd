@@ -556,19 +556,10 @@ func _resolve_ai_difficulty_profile() -> AIDifficultyProfile:
 
 
 func _resolve_ai_gunnery_difficulty_profile() -> AIGunneryDifficultyProfile:
-	# Same RunManager.difficulty thresholds as the fleet AI profile so both
-	# systems always agree on the selected difficulty tier.
-	var difficulty := 1.0
+	var difficulty_value: Variant = null
 	if has_node("/root/RunManager"):
-		difficulty = float(get_node("/root/RunManager").get(&"difficulty"))
-	if difficulty < 0.85:
-		return load("res://resources/ai_difficulty/gunnery_easy.tres") \
-			as AIGunneryDifficultyProfile
-	if difficulty > 1.25:
-		return load("res://resources/ai_difficulty/gunnery_hard.tres") \
-			as AIGunneryDifficultyProfile
-	return load("res://resources/ai_difficulty/gunnery_normal.tres") \
-		as AIGunneryDifficultyProfile
+		difficulty_value = get_node("/root/RunManager").get(&"difficulty")
+	return AIGunneryDifficultyProfileResolver.resolve(difficulty_value)
 
 func _update_impact_marker() -> void:
 	if impact_marker == null or player_ship == null:

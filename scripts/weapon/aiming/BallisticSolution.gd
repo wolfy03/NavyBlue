@@ -1,6 +1,11 @@
 extends RefCounted
 class_name BallisticSolution
 
+enum ArcType {
+	LOW,
+	HIGH,
+}
+
 var success := false
 var launch_direction := Vector3.ZERO
 var launch_velocity := Vector3.ZERO
@@ -9,6 +14,7 @@ var estimated_flight_time_sec := 0.0
 var predicted_impact_position := Vector3.ZERO
 var horizontal_distance_m := 0.0
 var failure_reason: StringName = &""
+var arc_type: ArcType = ArcType.LOW
 
 
 static func failed(reason: StringName) -> BallisticSolution:

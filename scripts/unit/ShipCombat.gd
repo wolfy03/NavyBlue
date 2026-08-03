@@ -33,6 +33,11 @@ var owner_ship: ShipUnit
 
 
 func setup(next_owner_ship: ShipUnit, next_weapon_mounts: Array) -> void:
+	var replaces_existing_groups := not weapon_mounts.is_empty()
+	if replaces_existing_groups:
+		_release_ai_fire_control_hooks()
+		if _ai_fire_control != null:
+			_ai_fire_control.clear_tracking_target(&"weapon_groups_replaced")
 	owner_ship = next_owner_ship
 	weapon_mounts.clear()
 	for mount_value: Variant in next_weapon_mounts:
@@ -58,7 +63,7 @@ func clear_target() -> void:
 	_manual_aim_command = null
 	_release_ai_fire_control_hooks()
 	if _ai_fire_control != null:
-		_ai_fire_control.clear()
+		_ai_fire_control.clear_tracking_target(&"combat_clear_target")
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
 		if mount != null:
@@ -70,19 +75,34 @@ func clear_target() -> void:
 func set_ai_engagement_target(target_ship: ShipUnit) -> void:
 	if target_ship == null or not is_instance_valid(target_ship):
 		return
+	var same_target: bool = aim_source == AimSource.AI \
+		and aim_mode == AimMode.TRACK_WORLD_TARGET \
+		and target != null \
+		and is_instance_valid(target) \
+		and target == target_ship \
+		and (_ai_fire_control == null \
+			or _ai_fire_control.is_tracking_target(target_ship))
 	target = target_ship
 	aim_mode = AimMode.TRACK_WORLD_TARGET
 	aim_source = AimSource.AI
 	_manual_aim_command = null
-	if not has_aim_point:
-		aim_point = target_ship.global_position
-		has_aim_point = true
+	aim_point = target_ship.global_position
+	has_aim_point = true
+	if same_target:
+		return
+	_release_ai_fire_control_hooks()
+	_ensure_ai_fire_control()
+	_ai_fire_control.begin_tracking_target(target_ship)
 
 
 func set_aim_point(world_point: Vector3) -> void:
+	_release_ai_fire_control_hooks()
+	if _ai_fire_control != null:
+		_ai_fire_control.clear_tracking_target(&"player_world_aim")
 	aim_point = world_point
 	has_aim_point = true
 	aim_mode = AimMode.TRACK_WORLD_TARGET
+	aim_source = AimSource.PLAYER_MANUAL
 	_manual_aim_command = null
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
@@ -101,6 +121,8 @@ func apply_manual_aim_command(command: ShipManualAimCommand) -> void:
 	aim_source = AimSource.PLAYER_MANUAL
 	has_aim_point = true
 	_release_ai_fire_control_hooks()
+	if _ai_fire_control != null:
+		_ai_fire_control.clear_tracking_target(&"player_manual_aim")
 	_update_manual_relative_aim_point()
 
 
@@ -134,9 +156,21 @@ func adjust_turret_pitch(delta_degrees: float) -> void:
 
 func fire_weapon_type(weapon_type: WeaponTypes.Type) -> int:
 	var fired_count := 0
+	if weapon_type == WeaponTypes.Type.CANNON \
+			and aim_source == AimSource.AI:
+		var ai_target := _get_ai_fire_control_target()
+		if ai_target == null:
+			return 0
+		_ensure_ai_fire_control()
+		var cannon_mounts := get_weapons_by_type(WeaponTypes.Type.CANNON)
+		_ai_fire_control.begin_salvo_for_mounts(cannon_mounts)
 	for mount_value: Variant in weapon_mounts:
 		var mount := _as_valid_weapon_mount(mount_value)
 		if mount == null or mount.get_weapon_type() != weapon_type:
+			continue
+		if weapon_type == WeaponTypes.Type.CANNON \
+				and aim_source == AimSource.AI \
+				and not _ai_fire_control.has_solution_for_mount(mount):
 			continue
 		if mount.fire():
 			fired_count += 1
@@ -263,31 +297,37 @@ func _get_ai_fire_control_target() -> ShipUnit:
 
 
 func _update_ai_fire_control(target_ship: ShipUnit) -> void:
-	if _ai_fire_control == null:
-		_ai_fire_control = ShipGunneryFireControl.new()
-		var services := owner_ship.battle_services \
-			if owner_ship != null and is_instance_valid(owner_ship) else null
-		_ai_fire_control.configure(
-			services.ai_gunnery_difficulty if services != null else null,
-			owner_ship.ship_data.gunnery_crew_stats \
-				if owner_ship != null \
-				and is_instance_valid(owner_ship) \
-				and owner_ship.ship_data != null else null,
-			services.debug_settings if services != null else null
-		)
+	_ensure_ai_fire_control()
 	var cannons := get_weapons_by_type(WeaponTypes.Type.CANNON)
 	_ai_fire_control.update(owner_ship, target_ship, cannons)
 	for cannon in cannons:
 		var cannon_mount := cannon as CannonMount
 		if cannon_mount != null:
-			cannon_mount.shell_deviation_provider = _ai_fire_control
+			_ai_fire_control.bind_mount_provider(cannon_mount)
 	_ai_fire_control_hooks_active = true
 
 
+func _ensure_ai_fire_control() -> void:
+	if _ai_fire_control != null:
+		return
+	_ai_fire_control = ShipGunneryFireControl.new()
+	var services := owner_ship.battle_services \
+		if owner_ship != null and is_instance_valid(owner_ship) else null
+	_ai_fire_control.configure(
+		services.ai_gunnery_difficulty if services != null else null,
+		owner_ship.ship_data.gunnery_crew_stats \
+			if owner_ship != null \
+			and is_instance_valid(owner_ship) \
+			and owner_ship.ship_data != null else null,
+		services.debug_settings if services != null else null
+	)
+
+
 func _release_ai_fire_control_hooks() -> void:
-	if not _ai_fire_control_hooks_active:
+	if _ai_fire_control == null:
 		return
 	_ai_fire_control_hooks_active = false
+	_ai_fire_control.release_provider_bindings()
 	for mount_value: Variant in weapon_mounts:
 		var cannon_mount := _as_valid_weapon_mount(mount_value) as CannonMount
 		if cannon_mount != null \

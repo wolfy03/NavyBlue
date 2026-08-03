@@ -1,9 +1,10 @@
-[gd_resource type="Resource" script_class="WeaponData" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="WeaponData" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1_weapon"]
 [ext_resource type="Resource" path="res://resources/projectiles/heavy_ap_shell.tres" id="2_projectile"]
 [ext_resource type="PackedScene" path="res://scenes/weapon/projectiles/shell_projectile.tscn" id="3_scene"]
 [ext_resource type="PackedScene" path="res://scenes/weapon/mounts/cannon_mount.tscn" id="4_mount"]
+[ext_resource type="Resource" path="res://resources/weapon_accuracy/battleship_main_gun_accuracy.tres" id="5_accuracy"]
 
 [resource]
 script = ExtResource("1_weapon")
@@ -20,3 +21,4 @@ range_meters = 20000.0
 projectile_data = ExtResource("2_projectile")
 projectile_scene = ExtResource("3_scene")
 damage = 110.0
+gunnery_accuracy_profile = ExtResource("5_accuracy")

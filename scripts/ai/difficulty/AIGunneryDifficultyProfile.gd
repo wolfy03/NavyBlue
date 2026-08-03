@@ -37,17 +37,45 @@ class_name AIGunneryDifficultyProfile
 
 func validate() -> PackedStringArray:
 	var errors := PackedStringArray()
-	if minimum_observation_delay_sec < 0.0:
+	var nonnegative_values := {
+		"position_observation_error_multiplier": position_observation_error_multiplier,
+		"velocity_observation_error_multiplier": velocity_observation_error_multiplier,
+		"observation_delay_multiplier": observation_delay_multiplier,
+		"base_position_observation_error_m": base_position_observation_error_m,
+		"base_velocity_observation_error_mps": base_velocity_observation_error_mps,
+		"range_error_multiplier": range_error_multiplier,
+		"lateral_error_multiplier": lateral_error_multiplier,
+		"shell_dispersion_multiplier": shell_dispersion_multiplier,
+		"salvo_correction_multiplier": salvo_correction_multiplier,
+		"minimum_error_multiplier": minimum_error_multiplier,
+		"aim_solution_repath_threshold_m": aim_solution_repath_threshold_m,
+		"velocity_change_alert_mps": velocity_change_alert_mps,
+	}
+	for property_name: String in nonnegative_values:
+		var value := float(nonnegative_values[property_name])
+		if not _is_finite(value) or value < 0.0:
+			errors.append("%s must not be negative." % property_name)
+	if not _is_finite(minimum_observation_delay_sec) \
+			or minimum_observation_delay_sec < 0.0:
 		errors.append("minimum_observation_delay_sec must not be negative.")
-	if maximum_observation_delay_sec < minimum_observation_delay_sec:
+	if not _is_finite(maximum_observation_delay_sec) \
+			or maximum_observation_delay_sec < minimum_observation_delay_sec:
 		errors.append(
 			"maximum_observation_delay_sec must be >= minimum_observation_delay_sec."
 		)
-	if aim_solution_refresh_interval_sec <= 0.0:
+	if not _is_finite(aim_solution_refresh_interval_sec) \
+			or aim_solution_refresh_interval_sec <= 0.0:
 		errors.append("aim_solution_refresh_interval_sec must be positive.")
-	if minimum_error_multiplier <= 0.0:
-		errors.append("minimum_error_multiplier must be positive.")
-	if minimum_corrected_bias_ratio < 0.0 \
+	if not _is_finite(base_salvo_correction_strength) \
+			or base_salvo_correction_strength < 0.0 \
+			or base_salvo_correction_strength > 1.0:
+		errors.append("base_salvo_correction_strength must be within 0..1.")
+	if not _is_finite(minimum_corrected_bias_ratio) \
+			or minimum_corrected_bias_ratio < 0.0 \
 			or minimum_corrected_bias_ratio > 1.0:
 		errors.append("minimum_corrected_bias_ratio must be within 0..1.")
 	return errors
+
+
+func _is_finite(value: float) -> bool:
+	return not is_nan(value) and not is_inf(value)

@@ -13,6 +13,7 @@ var projectile_flight_time_sec := 0.0
 var horizontal_distance_m := 0.0
 var projectile_speed_mps := 0.0
 var elevation_rad := 0.0
+var arc_type: BallisticSolution.ArcType = BallisticSolution.ArcType.LOW
 
 var failure_reason: StringName = &""
 

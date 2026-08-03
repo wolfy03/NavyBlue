@@ -2,6 +2,8 @@ param(
 	[string]$GodotBin = "C:\Users\maker\Downloads\Godot_v4.7-stable_win64.exe\Godot_v4.7-stable_win64_console.exe"
 )
 
+. (Join-Path $PSScriptRoot "GodotOutputPolicy.ps1")
+
 $projectRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..\..")
 $originalAppData = $env:APPDATA
 $testAppData = Join-Path `
@@ -21,6 +23,19 @@ $tests = @(
 	"res://scripts/weapon/tests/ShellBallisticsTest.gd",
 	"res://scripts/weapon/tests/ExtendedWeaponSystemTest.gd",
 	"res://scripts/weapon/tests/WeaponReadinessTest.gd",
+	"res://scripts/weapon/tests/NavalGunLeadResolverTest.gd",
+	"res://scripts/weapon/tests/GunneryAccuracyResolverTest.gd",
+	"res://scripts/weapon/tests/GunnerySalvoStructureTest.gd",
+	"res://scripts/weapon/tests/AIGunneryFireControlIntegrationTest.gd",
+	"res://scripts/weapon/tests/AIGunneryDifficultyResourceSelectionTest.gd",
+	"res://scripts/weapon/tests/GunneryProfileValidationTest.gd",
+	"res://scripts/weapon/tests/GunneryWeaponAccuracyProfileSelectionTest.gd",
+	"res://scripts/weapon/tests/GunneryAccuracyStatisticalTest.gd",
+	"res://scripts/weapon/tests/AIGunnerySameTargetAssignmentTest.gd",
+	"res://scripts/weapon/tests/GunnerySalvoIndexLifecycleTest.gd",
+	"res://scripts/weapon/tests/GunneryFreedMountCleanupTest.gd",
+	"res://scripts/weapon/tests/PlayerAutoDoesNotUseAIDifficultyTest.gd",
+	"res://scripts/weapon/tests/GunneryTrackingConfidenceDropOnManeuverTest.gd",
 	"res://scripts/weapon/tests/TorpedoXZCollisionTest.gd",
 	"res://scripts/unit/tests/TorpedoCollisionMarginShapeTest.gd",
 	"res://scripts/weapon/tests/AirDroppedTorpedoLifecycleTest.gd",
@@ -121,12 +136,16 @@ $tests = @(
 )
 
 try {
+	& (Join-Path $PSScriptRoot "GodotOutputPolicyTest.ps1")
 	foreach ($test in $tests) {
 		Write-Host "Running $test"
-		& $GodotBin --headless --path $projectRoot --script $test
-		if ($LASTEXITCODE -ne 0) {
-			exit $LASTEXITCODE
-		}
+		Invoke-GodotChecked -GodotBin $GodotBin -Arguments @(
+			"--headless",
+			"--path",
+			$projectRoot.Path,
+			"--script",
+			$test
+		)
 	}
 
 	$sceneTests = @(
@@ -138,10 +157,12 @@ try {
 
 	foreach ($scene in $sceneTests) {
 		Write-Host "Running $scene"
-		& $GodotBin --headless --path $projectRoot $scene
-		if ($LASTEXITCODE -ne 0) {
-			exit $LASTEXITCODE
-		}
+		Invoke-GodotChecked -GodotBin $GodotBin -Arguments @(
+			"--headless",
+			"--path",
+			$projectRoot.Path,
+			$scene
+		)
 	}
 
 	Write-Host "Extended weapon validation passed."

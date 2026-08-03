@@ -635,6 +635,7 @@ func _rebuild_weapon_mounts() -> void:
 	var previous_aim_point := combat.aim_point
 	var previous_has_aim_point := combat.has_aim_point
 	var previous_aim_mode := combat.aim_mode
+	var previous_aim_source := combat.aim_source
 	var previous_manual_command := combat.get_manual_aim_command()
 	_capture_runtime_stats_from_mounts()
 	_repair_weapon_loadout()
@@ -652,6 +653,9 @@ func _rebuild_weapon_mounts() -> void:
 			== ShipCombat.AimMode.MANUAL_RELATIVE_BEARING \
 			and previous_manual_command != null:
 		combat.apply_manual_aim_command(previous_manual_command)
+	elif is_instance_valid(previous_target) \
+			and previous_aim_source == ShipCombat.AimSource.AI:
+		combat.set_ai_engagement_target(previous_target)
 	elif is_instance_valid(previous_target):
 		combat.set_target(previous_target)
 		combat.set_aim_point(previous_aim_point)

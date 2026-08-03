@@ -19,12 +19,18 @@ static func solve_ballistic_to_point(
 		launch_position: Vector3,
 		target_point: Vector3,
 		projectile_speed_mps: float,
-		gravity_mps2: float
+		gravity_mps2: float,
+		preferred_arc: BallisticSolution.ArcType = BallisticSolution.ArcType.LOW
 ) -> BallisticSolution:
 	if not launch_position.is_finite() or not target_point.is_finite():
 		return BallisticSolution.failed(&"invalid_input")
-	if projectile_speed_mps <= EPSILON:
+	if is_nan(projectile_speed_mps) or is_inf(projectile_speed_mps) \
+			or projectile_speed_mps <= EPSILON:
 		return BallisticSolution.failed(&"invalid_projectile_speed")
+	if is_nan(gravity_mps2) or is_inf(gravity_mps2) or gravity_mps2 < 0.0:
+		return BallisticSolution.failed(&"invalid_gravity")
+	if preferred_arc != BallisticSolution.ArcType.LOW:
+		return BallisticSolution.failed(&"unsupported_ballistic_arc")
 	var horizontal_offset := Vector2(
 		target_point.x - launch_position.x,
 		target_point.z - launch_position.z
@@ -62,6 +68,7 @@ static func solve_ballistic_to_point(
 	) / horizontal_distance
 	var result := BallisticSolution.new()
 	result.success = true
+	result.arc_type = preferred_arc
 	result.elevation_rad = elevation_rad
 	result.estimated_flight_time_sec = flight_time
 	result.horizontal_distance_m = horizontal_distance
@@ -81,14 +88,18 @@ static func solve(
 		target_position: Vector3,
 		target_velocity: Vector3,
 		projectile_speed_mps: float,
-		gravity_mps2: float
+		gravity_mps2: float,
+		preferred_arc: BallisticSolution.ArcType = BallisticSolution.ArcType.LOW
 ) -> NavalGunLeadResult:
 	if not launch_position.is_finite() \
 			or not target_position.is_finite() \
 			or not target_velocity.is_finite():
 		return NavalGunLeadResult.failed(&"invalid_input")
-	if projectile_speed_mps <= EPSILON:
+	if is_nan(projectile_speed_mps) or is_inf(projectile_speed_mps) \
+			or projectile_speed_mps <= EPSILON:
 		return NavalGunLeadResult.failed(&"invalid_projectile_speed")
+	if is_nan(gravity_mps2) or is_inf(gravity_mps2) or gravity_mps2 < 0.0:
+		return NavalGunLeadResult.failed(&"invalid_gravity")
 	var flat_velocity := target_velocity
 	flat_velocity.y = 0.0
 	var predicted_position := target_position
@@ -98,7 +109,8 @@ static func solve(
 			launch_position,
 			predicted_position,
 			projectile_speed_mps,
-			gravity_mps2
+			gravity_mps2,
+			preferred_arc
 		)
 		if not ballistic.success:
 			return NavalGunLeadResult.failed(ballistic.failure_reason)
@@ -128,4 +140,5 @@ static func solve(
 	result.horizontal_distance_m = last_solution.horizontal_distance_m
 	result.projectile_speed_mps = projectile_speed_mps
 	result.elevation_rad = last_solution.elevation_rad
+	result.arc_type = last_solution.arc_type
 	return result

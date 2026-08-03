@@ -138,15 +138,26 @@ func _test_fire_control_aim_stability() -> void:
 		).is_equal_approx(initial_point):
 			stable = false
 	_check(stable, "stability: aim point does not jitter between refreshes")
-	# Marking the salvo as fired and passing the refresh window rolls a new
-	# salvo bias for the next salvo.
+	# Lead refreshes never change salvo identity. A new explicit fire command
+	# after the previous salvo has launched advances it exactly once.
+	fire_control.begin_salvo(&"destroyer_cannon")
 	fire_control.get_shell_deviation_radians(mount_a, 0, 1)
+	for _frame in 5:
+		fire_control.update(shooter, target, mounts)
+	fire_control.get_shell_deviation_radians(mount_b, 0, 1)
 	var refresh_frames := 1 + maxi(1, roundi(
 		NORMAL.aim_solution_refresh_interval_sec
 		* float(Engine.physics_ticks_per_second)
 	))
 	for _frame in refresh_frames:
 		fire_control.update(shooter, target, mounts)
+	var before_next_salvo := fire_control.get_debug_snapshots()
+	_check(
+		before_next_salvo.size() == 1
+			and before_next_salvo[0].salvo_index == 0,
+		"stability: lead refresh does not advance the salvo index"
+	)
+	fire_control.begin_salvo(&"destroyer_cannon")
 	var snapshots := fire_control.get_debug_snapshots()
 	_check(
 		snapshots.size() == 1 and snapshots[0].salvo_index == 1,

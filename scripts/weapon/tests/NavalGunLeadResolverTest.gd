@@ -21,6 +21,7 @@ func _run() -> void:
 	_test_shooter_independent_flight_time()
 	_test_no_solution_out_of_reach()
 	_test_invalid_inputs()
+	_test_arc_contract()
 	print("NAVAL_GUN_LEAD_RESOLVER_TEST failures=%d" % _failures.size())
 	quit(0 if _failures.is_empty() else 1)
 
@@ -144,6 +145,46 @@ func _test_invalid_inputs() -> void:
 		Vector3.ZERO, Vector3.ZERO, SHELL_SPEED, GRAVITY
 	)
 	_check(not degenerate.success, "invalid: degenerate distance fails")
+	var invalid_gravity := NavalGunLeadResolver.solve(
+		Vector3.ZERO,
+		Vector3(0, 0, 1000),
+		Vector3.ZERO,
+		SHELL_SPEED,
+		-1.0
+	)
+	_check(
+		not invalid_gravity.success
+			and invalid_gravity.failure_reason == &"invalid_gravity",
+		"invalid: negative gravity fails explicitly"
+	)
+
+
+func _test_arc_contract() -> void:
+	var low := NavalGunLeadResolver.solve(
+		Vector3(0, 4, 0),
+		Vector3(0, 0.5, 4000),
+		Vector3.ZERO,
+		SHELL_SPEED,
+		GRAVITY,
+		BallisticSolution.ArcType.LOW
+	)
+	_check(
+		low.success and low.arc_type == BallisticSolution.ArcType.LOW,
+		"arc: current low-arc contract is explicit"
+	)
+	var high := NavalGunLeadResolver.solve(
+		Vector3(0, 4, 0),
+		Vector3(0, 0.5, 4000),
+		Vector3.ZERO,
+		SHELL_SPEED,
+		GRAVITY,
+		BallisticSolution.ArcType.HIGH
+	)
+	_check(
+		not high.success
+			and high.failure_reason == &"unsupported_ballistic_arc",
+		"arc: unsupported high arc returns a typed failure"
+	)
 
 
 func _check(condition: bool, label: String) -> void:
