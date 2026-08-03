@@ -38,6 +38,25 @@ static func make_shell_seed(
 	return hash([salvo_seed, turret_index, shell_index])
 
 
+## Seed for an independently firing mount. The mount instance id and its own
+## monotonic fire sequence replace the shared salvo index, so two guns of the
+## same weapon group never draw the same error even on the same frame.
+static func make_mount_seed(
+		shooter_instance_id: int,
+		target_instance_id: int,
+		mount_instance_id: int,
+		fire_sequence_index: int,
+		weapon_group_id: StringName
+) -> int:
+	return hash([
+		shooter_instance_id,
+		target_instance_id,
+		mount_instance_id,
+		fire_sequence_index,
+		weapon_group_id,
+	])
+
+
 ## Single deterministic gaussian draw, clamped to +-3 sigma so a rare extreme
 ## roll cannot throw a shell absurdly far.
 static func sample_gaussian(seed_value: int, sigma_m: float) -> float:
@@ -216,6 +235,57 @@ static func create_salvo_solution(
 	) * correction_scale
 	solution.shared_lateral_error_m = sample_gaussian(
 		hash([solution.salvo_seed, &"lateral"]),
+		solution.lateral_sigma_m
+	) * correction_scale
+	solution.biased_salvo_center = (
+		context.ideal_aim_point
+		+ solution.range_direction * solution.shared_range_error_m
+		+ solution.lateral_direction * solution.shared_lateral_error_m
+	)
+	return solution
+
+
+## Bias solution for a single independently firing mount.
+##
+## Reuses the same sigma model and geometry as create_salvo_solution; only the
+## seed differs, so the mount owns its fire-control bias instead of sharing the
+## group's. The result is still a GunnerySalvoSolution: downstream dispersion
+## and aim-point code is identical for both modes.
+static func create_independent_mount_solution(
+		context: GunneryAccuracyContext,
+		mount_instance_id: int,
+		fire_sequence_index: int
+) -> GunnerySalvoSolution:
+	var solution := create_salvo_solution(context)
+	if not solution.has_bias_basis():
+		return solution
+	var mount_seed := make_mount_seed(
+		context.shooter_instance_id,
+		context.target_instance_id,
+		mount_instance_id,
+		fire_sequence_index,
+		context.weapon_group_id
+	)
+	solution.salvo_seed = mount_seed
+	solution.salvo_index = fire_sequence_index
+	var correction_scale := lerpf(
+		1.0,
+		clampf(
+			_sanitize_nonnegative(
+				context.difficulty_profile.minimum_corrected_bias_ratio,
+				0.4
+			),
+			0.0,
+			1.0
+		),
+		clampf(context.salvo_correction_level, 0.0, 1.0)
+	)
+	solution.shared_range_error_m = sample_gaussian(
+		hash([mount_seed, &"range"]),
+		solution.range_sigma_m
+	) * correction_scale
+	solution.shared_lateral_error_m = sample_gaussian(
+		hash([mount_seed, &"lateral"]),
 		solution.lateral_sigma_m
 	) * correction_scale
 	solution.biased_salvo_center = (

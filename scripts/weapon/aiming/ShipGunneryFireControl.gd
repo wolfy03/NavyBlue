@@ -17,6 +17,18 @@ const DEFAULT_DIFFICULTY: AIGunneryDifficultyProfile = preload(
 	"res://resources/ai_difficulty/gunnery_normal.tres"
 )
 
+## How this fire control times and biases shots. Both modes share the whole
+## observation -> lead -> accuracy pipeline; only the error/timing granularity
+## differs.
+##   SALVO            - one shared bias per weapon group per salvo (main guns).
+##   INDEPENDENT_MOUNT - each mount carries its own bias, tracking state and
+##                       fire sequence (secondary guns).
+enum FireMode {
+	SALVO,
+	INDEPENDENT_MOUNT,
+}
+
+var fire_mode: FireMode = FireMode.SALVO
 
 var difficulty_profile: AIGunneryDifficultyProfile
 var crew_stats: GunneryCrewStats
@@ -38,6 +50,16 @@ var _elapsed_time_sec := 0.0
 var _tracking_state_reset_count := 0
 var _last_tracking_reset_reason: StringName = &""
 var _bound_mount_refs: Dictionary = {}
+## mount_instance_id -> GunnerySalvoSolution. Only populated in
+## INDEPENDENT_MOUNT mode: each entry is one mount's own bias solution.
+var _mount_states: Dictionary = {}
+
+
+func set_fire_mode(next_fire_mode: FireMode) -> void:
+	if fire_mode == next_fire_mode:
+		return
+	fire_mode = next_fire_mode
+	_mount_states.clear()
 
 
 func configure(
@@ -108,6 +130,7 @@ func begin_tracking_target(target_ship: ShipUnit) -> bool:
 	_release_all_provider_bindings()
 	_group_states.clear()
 	_mount_group_lookup.clear()
+	_mount_states.clear()
 	fire_command_id += 1
 	tracking.reset_for_target(target_ship, target_ship.get_instance_id())
 	_tracking_state_reset_count += 1
@@ -124,6 +147,7 @@ func clear_tracking_target(reason: StringName = &"cleared") -> void:
 	_release_all_provider_bindings()
 	_group_states.clear()
 	_mount_group_lookup.clear()
+	_mount_states.clear()
 	tracking.reset_for_target(null, 0)
 	_last_observation = null
 	_frames_since_refresh = 1000000
@@ -164,12 +188,107 @@ func get_aim_point_for_mount(
 		return fallback
 	if not group.has_solution:
 		return fallback
+	if fire_mode == FireMode.INDEPENDENT_MOUNT:
+		# Each mount aims through its own bias, re-centred on the shared lead
+		# point so a lead refresh never re-rolls the mount's error.
+		var mount_solution := _mount_states.get(mount.get_instance_id()) \
+			as GunnerySalvoSolution
+		if mount_solution == null:
+			return group.ideal_aim_point
+		return (
+			group.ideal_aim_point
+			+ mount_solution.range_direction
+				* mount_solution.shared_range_error_m
+			+ mount_solution.lateral_direction
+				* mount_solution.shared_lateral_error_m
+		)
 	return group.biased_aim_point
 
 
 func has_solution_for_mount(mount: WeaponMount) -> bool:
 	var group := _find_group_for_mount(mount)
 	return group != null and group.has_solution
+
+
+## The weapon group's error-free predicted impact point. Every mount of a group
+## shares it: the expensive lead solve runs once per group per refresh, never
+## once per mount.
+func get_lead_point_for_mount(
+		mount: WeaponMount,
+		fallback: Vector3
+) -> Vector3:
+	var group := _find_group_for_mount(mount)
+	if group == null or not group.has_solution:
+		return fallback
+	return group.ideal_aim_point
+
+
+func get_lead_result_for_mount(mount: WeaponMount) -> NavalGunLeadResult:
+	var group := _find_group_for_mount(mount)
+	return group.current_lead_result if group != null else null
+
+
+## Resolves one mount's own aim point on top of the shared group lead.
+##
+## The caller owns the mount's GunneryTrackingState and fire sequence, so the
+## bias here is private to that gun: correcting one mount never moves another.
+## Returns null when the group has no ballistic solution.
+func resolve_independent_mount_accuracy(
+		mount: CannonMount,
+		tracking_state: GunneryTrackingState,
+		fire_sequence_index: int
+) -> GunneryAccuracyResult:
+	if mount == null or not is_instance_valid(mount):
+		return null
+	var group := _find_group_for_mount(mount)
+	if group == null or not group.has_solution:
+		return null
+	var context := _build_context(group, mount)
+	context.salvo_index = fire_sequence_index
+	if tracking_state != null:
+		context.salvo_correction_level = tracking_state.correction_level
+	var mount_id := mount.get_instance_id()
+	var solution := GunneryAccuracyResolver \
+		.create_independent_mount_solution(
+			context,
+			mount_id,
+			fire_sequence_index
+		)
+	_mount_states[mount_id] = solution
+	if tracking_state != null:
+		tracking_state.range_bias_m = solution.shared_range_error_m
+		tracking_state.lateral_bias_m = solution.shared_lateral_error_m
+	var result := GunneryAccuracyResult.new()
+	result.success = true
+	result.ideal_aim_point = solution.ideal_aim_point
+	result.actual_aim_point = solution.biased_salvo_center
+	result.salvo_bias_offset = (
+		solution.biased_salvo_center - solution.ideal_aim_point
+	)
+	result.range_error_m = solution.shared_range_error_m
+	result.lateral_error_m = solution.shared_lateral_error_m
+	result.range_sigma_m = solution.range_sigma_m
+	result.lateral_sigma_m = solution.lateral_sigma_m
+	result.shell_dispersion_sigma_m = solution.shell_dispersion_sigma_m
+	return result
+
+
+## Advances one mount's fall-of-shot correction after it fires. Mirrors the
+## salvo-mode _advance_correction but writes only that mount's tracking state.
+func advance_mount_correction(
+		tracking_state: GunneryTrackingState
+) -> void:
+	if tracking_state == null:
+		return
+	tracking_state.correction_level = clampf(
+		tracking_state.correction_level + _get_correction_strength(),
+		0.0,
+		1.0
+	)
+
+
+func release_mount_state(mount_instance_id: int) -> void:
+	_mount_states.erase(mount_instance_id)
 
 
 ## Duck-typed hook consumed by CannonMount at launch time: one deterministic
@@ -180,8 +299,15 @@ func get_shell_deviation_radians(
 		_shell_count: int
 ) -> Vector2:
 	var group := _find_group_for_mount(mount)
-	if group == null or not group.has_solution \
-			or group.current_salvo == null:
+	if group == null or not group.has_solution:
+		return Vector2.ZERO
+	if fire_mode == FireMode.INDEPENDENT_MOUNT:
+		return _resolve_independent_shell_deviation(
+			group,
+			mount,
+			shell_index
+		)
+	if group.current_salvo == null:
 		return Vector2.ZERO
 	if not group.salvo_active:
 		_begin_group_salvo(group)
@@ -206,6 +332,41 @@ func get_shell_deviation_radians(
 	if group.resolved_turret_ids.size() \
 			>= group.turrets_expected_in_salvo:
 		group.salvo_active = false
+	return GunneryAccuracyResolver.dispersion_to_launch_deviation(
+		lateral_offset,
+		range_offset,
+		group.horizontal_range_m,
+		group.projectile_speed_mps,
+		group.gravity_mps2,
+		group.elevation_rad
+	)
+
+
+## Per-shell dispersion for an independently firing mount: seeded from that
+## mount's own solution, so two guns firing on the same frame scatter
+## differently.
+func _resolve_independent_shell_deviation(
+		group: GunneryWeaponGroupSession,
+		mount: WeaponMount,
+		shell_index: int
+) -> Vector2:
+	var mount_solution := _mount_states.get(mount.get_instance_id()) \
+		as GunnerySalvoSolution
+	if mount_solution == null:
+		return Vector2.ZERO
+	var shell_seed := GunneryAccuracyResolver.make_shell_seed(
+		mount_solution.salvo_seed,
+		0,
+		shell_index
+	)
+	var range_offset := GunneryAccuracyResolver.sample_gaussian(
+		hash([shell_seed, &"range"]),
+		mount_solution.shell_dispersion_sigma_m
+	)
+	var lateral_offset := GunneryAccuracyResolver.sample_gaussian(
+		hash([shell_seed, &"lateral"]),
+		mount_solution.shell_dispersion_sigma_m
+	)
 	return GunneryAccuracyResolver.dispersion_to_launch_deviation(
 		lateral_offset,
 		range_offset,
@@ -353,6 +514,11 @@ func _refresh_group_solutions(target: ShipUnit) -> void:
 		group.flight_time_sec = lead.projectile_flight_time_sec
 		group.horizontal_range_m = lead.horizontal_distance_m
 		group.elevation_rad = lead.elevation_rad
+		if fire_mode == FireMode.INDEPENDENT_MOUNT:
+			# No shared salvo in independent mode: each mount owns its bias and
+			# re-centres on this fresh lead point via get_aim_point_for_mount.
+			group.biased_aim_point = group.ideal_aim_point
+			continue
 		if group.current_salvo == null:
 			_generate_salvo_bias(group, representative, false)
 		else:
@@ -494,11 +660,19 @@ func _generate_salvo_bias(
 
 
 func _advance_correction() -> void:
+	tracking.correction_level = clampf(
+		tracking.correction_level + _get_correction_strength(),
+		0.0,
+		1.0
+	)
+
+
+func _get_correction_strength() -> float:
 	var correction_skill := crew_stats.salvo_correction_skill
 	if is_nan(correction_skill) or is_inf(correction_skill):
 		correction_skill = 0.5
 	correction_skill = clampf(correction_skill, 0.0, 1.0)
-	var strength := (
+	return (
 		clampf(
 			_safe_nonnegative(
 				difficulty_profile.base_salvo_correction_strength,
@@ -512,11 +686,6 @@ func _advance_correction() -> void:
 			1.0
 		)
 		* lerpf(0.5, 1.5, correction_skill)
-	)
-	tracking.correction_level = clampf(
-		tracking.correction_level + strength,
-		0.0,
-		1.0
 	)
 #endregion
 

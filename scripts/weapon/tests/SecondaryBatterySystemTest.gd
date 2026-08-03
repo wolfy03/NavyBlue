@@ -58,9 +58,18 @@ func _test_carrier_mount_classification() -> void:
 	var controller := carrier.combat.get_secondary_battery_controller()
 	_check(controller != null and controller.is_configured(), "secondary controller is configured")
 	if controller != null:
+		# Assert against the WeaponData itself rather than a hardcoded metre
+		# value: the point is that the battery reads its range from the weapon,
+		# and a balance tweak should not fail this test.
+		var secondary_weapon := WeaponDatabase.new().get_weapon(
+			"naval_gun_100mm"
+		)
 		_check(
-			is_equal_approx(controller.get_max_secondary_range_m(), 8000.0),
-			"secondary range comes from carrier_secondary WeaponData"
+			secondary_weapon != null and is_equal_approx(
+				controller.get_max_secondary_range_m(),
+				secondary_weapon.range_meters
+			),
+			"secondary range comes from naval_gun_100mm WeaponData"
 		)
 	_end_arena()
 	await process_frame

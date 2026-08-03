@@ -7,8 +7,25 @@ enum IdleBehavior {
 	FACE_OUTBOARD,
 }
 
+## How the battery's mounts time their shots relative to each other.
+##   INDEPENDENT - every mount fires the moment it is individually ready.
+##   SALVO       - mounts wait and fire together (reserved, not implemented).
+##   RIPPLE      - mounts fire in a staggered sequence (reserved).
+## Only INDEPENDENT is implemented; the others validate but fall back to it.
+enum FireCoordinationMode {
+	INDEPENDENT,
+	SALVO,
+	RIPPLE,
+}
+
+const SUPPORTED_FIRE_COORDINATION_MODES: Array[int] = [
+	FireCoordinationMode.INDEPENDENT,
+]
+
 @export var enabled := true
 @export var hold_fire := false
+@export var fire_coordination_mode: FireCoordinationMode = \
+	FireCoordinationMode.INDEPENDENT
 
 @export_category("Targeting")
 @export var scan_interval_sec := 0.3
@@ -50,7 +67,21 @@ func validate() -> PackedStringArray:
 	for property_name: String in weights:
 		if not _is_finite_nonnegative(float(weights[property_name])):
 			errors.append("%s must not be negative." % property_name)
+	if not FireCoordinationMode.values().has(int(fire_coordination_mode)):
+		errors.append("fire_coordination_mode must be a valid enum value.")
 	return errors
+
+
+## The mode actually used at runtime. Values that are valid enum entries but
+## not implemented yet degrade to INDEPENDENT instead of disabling the battery.
+func get_effective_fire_coordination_mode() -> FireCoordinationMode:
+	if SUPPORTED_FIRE_COORDINATION_MODES.has(int(fire_coordination_mode)):
+		return fire_coordination_mode
+	return FireCoordinationMode.INDEPENDENT
+
+
+func is_fire_coordination_mode_supported() -> bool:
+	return SUPPORTED_FIRE_COORDINATION_MODES.has(int(fire_coordination_mode))
 
 
 func _is_finite_positive(value: float) -> bool:

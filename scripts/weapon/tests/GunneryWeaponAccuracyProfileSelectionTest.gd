@@ -8,7 +8,7 @@ func _initialize() -> void:
 	var destroyer := _database.get_weapon("destroyer_cannon")
 	var cruiser := _database.get_weapon("cruiser_cannon")
 	var battleship := _database.get_weapon("battleship_cannon")
-	var secondary := _database.get_weapon("carrier_secondary")
+	var secondary := _database.get_weapon("naval_gun_100mm")
 	var profiles := [
 		destroyer.gunnery_accuracy_profile,
 		cruiser.gunnery_accuracy_profile,

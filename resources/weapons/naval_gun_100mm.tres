@@ -1,15 +1,15 @@
 [gd_resource type="Resource" script_class="WeaponData" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/WeaponData.gd" id="1_weapon"]
-[ext_resource type="Resource" path="res://resources/projectiles/carrier_secondary_shell.tres" id="2_projectile"]
+[ext_resource type="Resource" path="res://resources/projectiles/secondary_100mm_shell.tres" id="2_projectile"]
 [ext_resource type="PackedScene" path="res://scenes/weapon/projectiles/shell_projectile.tscn" id="3_scene"]
 [ext_resource type="PackedScene" path="res://scenes/weapon/mounts/cannon_mount.tscn" id="4_mount"]
 [ext_resource type="Resource" path="res://resources/weapon_accuracy/secondary_gun_accuracy.tres" id="5_accuracy"]
 
 [resource]
 script = ExtResource("1_weapon")
-id = "carrier_secondary"
-display_name = "100 mm Secondary Battery"
+id = "naval_gun_100mm"
+display_name = "100 mm Naval Gun"
 weapon_type = 0
 mount_scene = ExtResource("4_mount")
 reload_seconds = 8.0

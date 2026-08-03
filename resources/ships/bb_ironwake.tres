@@ -20,7 +20,7 @@ damage_reduction = 0.1
 
 [sub_resource type="Resource" id="Resource_secondary_layout"]
 script = ExtResource("5_secondary_layout")
-weapon_id = "carrier_secondary"
+weapon_id = "naval_gun_100mm"
 port_mount_count = 15
 starboard_mount_count = 15
 lateral_offset_m = 14.5

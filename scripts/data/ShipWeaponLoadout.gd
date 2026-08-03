@@ -1,7 +1,21 @@
 extends Resource
 class_name ShipWeaponLoadout
 
+## Weapon ids that were renamed after Save version 2 shipped. Applied on load
+## only: saved data is translated to the current id, and to_dictionary always
+## writes the current id, so an alias is never persisted again. Renaming a
+## weapon therefore needs no save-version bump.
+const LEGACY_WEAPON_ID_ALIASES := {
+	"carrier_secondary": "naval_gun_100mm",
+}
+
 @export var entries: Array[WeaponLoadoutEntryData] = []
+
+
+## Translates a persisted weapon id to the current one. Unknown ids pass
+## through unchanged so validation and slot repair still report them.
+static func resolve_weapon_id(weapon_id: String) -> String:
+	return str(LEGACY_WEAPON_ID_ALIASES.get(weapon_id, weapon_id))
 
 
 func get_weapon_id(slot_id: StringName) -> String:
@@ -182,7 +196,9 @@ static func from_dictionary(data: Dictionary) -> ShipWeaponLoadout:
 		var entry_data := entry_value as Dictionary
 		var entry := WeaponLoadoutEntryData.new()
 		entry.slot_id = StringName(str(entry_data.get("slot_id", "")))
-		entry.weapon_id = str(entry_data.get("weapon_id", ""))
+		entry.weapon_id = resolve_weapon_id(
+			str(entry_data.get("weapon_id", ""))
+		)
 		loadout.entries.append(entry)
 	loadout.normalize()
 	return loadout

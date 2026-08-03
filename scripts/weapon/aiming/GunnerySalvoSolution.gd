@@ -22,3 +22,11 @@ var lateral_sigma_m := 0.0
 var shell_dispersion_sigma_m := 0.0
 
 var projectile_flight_time_sec := 0.0
+
+
+## True when the solution carries a usable range/lateral basis. It is false for
+## the degenerate early-out (missing profiles or a zero-length firing vector),
+## where the biased center is just the ideal point and re-biasing is invalid.
+func has_bias_basis() -> bool:
+	return range_sigma_m > 0.0 \
+		and range_direction.length_squared() > 0.0

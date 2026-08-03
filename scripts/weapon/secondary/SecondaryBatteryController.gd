@@ -1,5 +1,12 @@
 extends RefCounted
 class_name SecondaryBatteryController
+## Automatic secondary battery.
+##
+## Secondaries do not fire as a battery salvo: the whole battery shares one
+## target and one weapon-group lead solution, but every mount fires the moment
+## it is individually ready (reloaded, traversed, in arc, with a safe line of
+## fire). A slow gun never holds up a fast one, and each mount carries its own
+## aim bias and fall-of-shot correction.
 
 const DEFAULT_PROFILE: SecondaryBatteryProfile = preload(
 	"res://resources/settings/default_secondary_battery_profile.tres"
@@ -27,6 +34,9 @@ var target_switch_elapsed_sec := 0.0
 var _candidate_provider := Callable()
 var _debug_snapshot := SecondaryBatteryDebugSnapshot.new()
 var _configured := false
+## mount_instance_id -> SecondaryMountFireControlState
+var _mount_fire_control_states: Dictionary = {}
+var _elapsed_battle_time_sec := 0.0
 
 
 func setup(
@@ -61,6 +71,9 @@ func setup(
 		services.debug_settings if services != null else null,
 		SECONDARY_ACCURACY
 	)
+	fire_control.set_fire_mode(
+		ShipGunneryFireControl.FireMode.INDEPENDENT_MOUNT
+	)
 	scan_elapsed_sec = maxf(profile.scan_interval_sec, 0.01)
 	_configured = not secondary_mounts.is_empty()
 	_refresh_debug_snapshot(0, 0)
@@ -70,6 +83,7 @@ func setup(
 func shutdown() -> void:
 	_clear_target(&"shutdown")
 	fire_control.clear()
+	_mount_fire_control_states.clear()
 	secondary_mounts.clear()
 	_candidate_provider = Callable()
 	owner_ship = null
@@ -102,6 +116,7 @@ func update(delta: float) -> void:
 		return
 	target_switch_elapsed_sec += maxf(delta, 0.0)
 	scan_elapsed_sec += maxf(delta, 0.0)
+	_elapsed_battle_time_sec += maxf(delta, 0.0)
 	var current_target := get_current_target()
 	if not _is_valid_target(current_target) \
 			or count_engaging_mounts(current_target) \
@@ -117,29 +132,120 @@ func update(delta: float) -> void:
 		_update_idle_mounts(delta)
 		_refresh_debug_snapshot(0, 0)
 		return
-	_update_fire_control(current_target)
+	# One shared lead solve per weapon group, then every mount acts alone. No
+	# begin_salvo_for_mounts here: that is the main-battery salvo path.
+	_update_shared_lead_solutions(current_target)
 	var engaging := count_engaging_mounts(current_target)
 	var fired := 0
-	if not profile.hold_fire:
-		fire_control.begin_salvo_for_mounts(_as_weapon_mounts())
-		for mount in secondary_mounts:
-			if mount == null or not is_instance_valid(mount) \
-					or not fire_control.has_solution_for_mount(mount):
-				continue
-			var aim := fire_control.get_aim_point_for_mount(
-				mount,
-				current_target.global_position
-			)
-			if mount.get_fire_readiness_at(aim) \
-					!= WeaponFireReadiness.State.READY:
-				continue
-			var safety := line_of_fire.evaluate(mount, current_target, aim)
-			if not safety.safe:
-				_debug_snapshot.last_fire_control_failure = safety.blocked_reason
-				continue
-			if mount.fire():
-				fired += 1
-	_refresh_debug_snapshot(engaging, fired)
+	var ready := 0
+	for mount in secondary_mounts:
+		var outcome := _update_independent_mount(mount, current_target)
+		if outcome.was_ready:
+			ready += 1
+		if outcome.did_fire:
+			fired += 1
+	_refresh_debug_snapshot(engaging, fired, ready)
+
+
+class MountUpdateOutcome:
+	extends RefCounted
+	var was_ready := false
+	var did_fire := false
+
+
+## Drives one mount end to end. Nothing here consults any other mount, so a
+## reloading or still-traversing gun cannot delay a ready one.
+func _update_independent_mount(
+		mount: CannonMount,
+		target: ShipUnit
+) -> MountUpdateOutcome:
+	var outcome := MountUpdateOutcome.new()
+	if mount == null or not is_instance_valid(mount):
+		return outcome
+	if not mount.is_operational():
+		return outcome
+	if not fire_control.has_solution_for_mount(mount):
+		mount.clear_aim()
+		_set_mount_failure(mount, &"no_ballistic_solution")
+		return outcome
+	var state := _get_or_create_mount_state(mount)
+	var lead_point := fire_control.get_lead_point_for_mount(
+		mount,
+		target.global_position
+	)
+	if not mount.can_engage_world_point(lead_point):
+		mount.clear_aim()
+		state.last_failure_reason = &"out_of_arc_or_range"
+		return outcome
+	var accuracy := fire_control.resolve_independent_mount_accuracy(
+		mount,
+		state.tracking_state,
+		state.fire_sequence_index
+	)
+	if accuracy == null or not accuracy.success:
+		state.last_failure_reason = &"accuracy_solution_failed"
+		return outcome
+	var actual_aim := accuracy.actual_aim_point
+	mount.aim_at(actual_aim)
+	fire_control.bind_mount_provider(mount)
+	state.last_aim_point = actual_aim
+	if mount.get_fire_readiness_at(actual_aim) \
+			!= WeaponFireReadiness.State.READY:
+		state.last_failure_reason = &"not_ready"
+		return outcome
+	outcome.was_ready = true
+	var safety := line_of_fire.evaluate(mount, target, actual_aim)
+	if not safety.safe:
+		state.last_failure_reason = safety.blocked_reason
+		_debug_snapshot.last_fire_control_failure = safety.blocked_reason
+		return outcome
+	if profile.hold_fire:
+		state.last_failure_reason = &"hold_fire"
+		return outcome
+	if not mount.fire():
+		state.last_failure_reason = &"fire_rejected"
+		return outcome
+	# Only a shot advances this mount's sequence, so its next solution draws a
+	# fresh seed while every other mount keeps its own.
+	state.fire_sequence_index += 1
+	state.shots_fired += 1
+	state.last_fire_time_sec = _elapsed_battle_time_sec
+	state.last_failure_reason = &""
+	fire_control.advance_mount_correction(state.tracking_state)
+	outcome.did_fire = true
+	return outcome
+
+
+func _get_or_create_mount_state(
+		mount: CannonMount
+) -> SecondaryMountFireControlState:
+	var mount_id := mount.get_instance_id()
+	var existing := _mount_fire_control_states.get(mount_id) \
+		as SecondaryMountFireControlState
+	if existing != null:
+		return existing
+	var state := SecondaryMountFireControlState.create(mount)
+	var target := get_current_target()
+	if target != null:
+		state.reset_for_target(target, target.get_instance_id())
+	_mount_fire_control_states[mount_id] = state
+	return state
+
+
+func _set_mount_failure(mount: CannonMount, reason: StringName) -> void:
+	var state := _mount_fire_control_states.get(mount.get_instance_id()) \
+		as SecondaryMountFireControlState
+	if state != null:
+		state.last_failure_reason = reason
+
+
+func get_mount_fire_control_state(
+		mount: CannonMount
+) -> SecondaryMountFireControlState:
+	if mount == null or not is_instance_valid(mount):
+		return null
+	return _mount_fire_control_states.get(mount.get_instance_id()) \
+		as SecondaryMountFireControlState
 
 
 func count_engaging_mounts(target_ship: ShipUnit) -> int:
@@ -228,6 +334,15 @@ func _set_target(
 	target_switch_elapsed_sec = 0.0
 	_debug_snapshot.last_target_change_reason = reason
 	fire_control.begin_tracking_target(target_ship)
+	# Aim correction accumulated against the previous ship is meaningless now.
+	# fire_sequence_index deliberately keeps counting so seeds stay unique.
+	for state_value: Variant in _mount_fire_control_states.values():
+		var state := state_value as SecondaryMountFireControlState
+		if state != null:
+			state.reset_for_target(
+				target_ship,
+				target_ship.get_instance_id()
+			)
 
 
 func _clear_target(reason: StringName) -> void:
@@ -245,24 +360,12 @@ func _clear_target(reason: StringName) -> void:
 			mount.shell_deviation_provider = null
 
 
-func _update_fire_control(target_ship: ShipUnit) -> void:
-	var weapon_mounts := _as_weapon_mounts()
-	fire_control.update(owner_ship, target_ship, weapon_mounts)
-	for mount in secondary_mounts:
-		if mount == null or not is_instance_valid(mount):
-			continue
-		if not fire_control.has_solution_for_mount(mount):
-			mount.clear_aim()
-			continue
-		var aim := fire_control.get_aim_point_for_mount(
-			mount,
-			target_ship.global_position
-		)
-		if not mount.can_engage_world_point(aim):
-			mount.clear_aim()
-			continue
-		mount.aim_at(aim)
-		fire_control.bind_mount_provider(mount)
+## Refreshes the observation and the per-weapon-group ballistic lead once for
+## the whole battery. Mounts sharing a WeaponData (and therefore the same
+## muzzle velocity, gravity scale and accuracy profile) reuse one solve; the
+## expensive NavalGunLeadResolver never runs per mount.
+func _update_shared_lead_solutions(target_ship: ShipUnit) -> void:
+	fire_control.update(owner_ship, target_ship, _as_weapon_mounts())
 
 
 func _update_idle_mounts(delta: float) -> void:
@@ -277,10 +380,20 @@ func _update_idle_mounts(delta: float) -> void:
 
 
 func _prune_invalid_mounts() -> void:
+	var live_mount_ids: Dictionary = {}
 	for index in range(secondary_mounts.size() - 1, -1, -1):
 		var value: Variant = secondary_mounts[index]
 		if value == null or not is_instance_valid(value):
 			secondary_mounts.remove_at(index)
+			continue
+		live_mount_ids[(value as CannonMount).get_instance_id()] = true
+	# A destroyed mount must not leave its fire-control state behind.
+	for mount_id_value: Variant in _mount_fire_control_states.keys().duplicate():
+		var mount_id := int(mount_id_value)
+		if live_mount_ids.has(mount_id):
+			continue
+		_mount_fire_control_states.erase(mount_id)
+		fire_control.release_mount_state(mount_id)
 
 
 func _get_candidates() -> Array:
@@ -306,7 +419,37 @@ func _as_weapon_mounts() -> Array[WeaponMount]:
 	return result
 
 
-func _refresh_debug_snapshot(engaging: int, firing: int) -> void:
+func _refresh_debug_snapshot(
+		engaging: int,
+		firing: int,
+		ready: int = 0
+) -> void:
+	_debug_snapshot.fire_coordination_mode = int(
+		profile.get_effective_fire_coordination_mode()
+	) if profile != null else int(
+		SecondaryBatteryProfile.FireCoordinationMode.INDEPENDENT
+	)
+	_debug_snapshot.independently_ready_mount_count = ready
+	_debug_snapshot.independently_fired_mount_count = firing
+	_debug_snapshot.shared_salvo_active = false
+	_debug_snapshot.mount_fire_sequence_indices.clear()
+	_debug_snapshot.mount_shots_fired.clear()
+	_debug_snapshot.mount_last_failure_reasons.clear()
+	for mount_id_value: Variant in _mount_fire_control_states:
+		var state := _mount_fire_control_states[mount_id_value] \
+			as SecondaryMountFireControlState
+		if state == null:
+			continue
+		var mount_id := int(mount_id_value)
+		_debug_snapshot.mount_fire_sequence_indices[mount_id] = \
+			state.fire_sequence_index
+		_debug_snapshot.mount_shots_fired[mount_id] = state.shots_fired
+		_debug_snapshot.mount_last_failure_reasons[mount_id] = \
+			state.last_failure_reason
+	_refresh_battery_debug_snapshot(engaging, firing)
+
+
+func _refresh_battery_debug_snapshot(engaging: int, firing: int) -> void:
 	_debug_snapshot.enabled = _configured and profile != null and profile.enabled
 	_debug_snapshot.hold_fire = profile.hold_fire if profile != null else false
 	_debug_snapshot.current_target_instance_id = current_target_instance_id

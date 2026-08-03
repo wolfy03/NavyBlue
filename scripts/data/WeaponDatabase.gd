@@ -6,7 +6,7 @@ const WEAPON_PATHS := {
 	"destroyer_cannon": "res://resources/weapons/destroyer_cannon.tres",
 	"cruiser_cannon": "res://resources/weapons/cruiser_cannon.tres",
 	"battleship_cannon": "res://resources/weapons/battleship_cannon.tres",
-	"carrier_secondary": "res://resources/weapons/carrier_secondary.tres",
+	"naval_gun_100mm": "res://resources/weapons/naval_gun_100mm.tres",
 	"destroyer_torpedo_launcher": "res://resources/weapons/destroyer_torpedo_launcher.tres",
 	"cruiser_torpedo_launcher": "res://resources/weapons/cruiser_torpedo_launcher.tres",
 }

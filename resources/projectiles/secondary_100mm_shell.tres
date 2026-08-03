@@ -4,8 +4,8 @@
 
 [resource]
 script = ExtResource("1_projectile")
-id = "carrier_secondary_shell"
-display_name = "Carrier Secondary AP Shell"
+id = "secondary_100mm_shell"
+display_name = "100 mm AP Shell"
 damage = 22.0
 penetration = 70.0
 muzzle_velocity = 280.0

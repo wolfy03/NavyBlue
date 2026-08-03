@@ -88,7 +88,7 @@ func _test_ballistic_configuration(player: ShipUnit) -> void:
 		"destroyer_cannon",
 		"cruiser_cannon",
 		"battleship_cannon",
-		"carrier_secondary",
+		"naval_gun_100mm",
 	]:
 		var weapon := weapon_database.find_weapon(weapon_id)
 		var shell_data := weapon.projectile_data as ShellProjectileData \

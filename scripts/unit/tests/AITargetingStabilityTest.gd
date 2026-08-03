@@ -184,7 +184,7 @@ func _test_class_ranges_and_carrier_behavior() -> void:
 		"battleship uses 85% of its 20 km primary range"
 	)
 	_check(
-		carrier.ship_data.default_weapon_id == "carrier_secondary"
+		carrier.ship_data.default_weapon_id == "naval_gun_100mm"
 			and is_equal_approx(carrier.combat.get_primary_weapon_range_m(), 8000.0),
 		"carrier uses its dedicated low-threat secondary weapon"
 	)

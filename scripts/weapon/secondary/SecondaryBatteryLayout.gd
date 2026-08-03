@@ -2,7 +2,10 @@ extends Resource
 class_name SecondaryBatteryLayout
 
 @export_category("Loadout")
-@export var weapon_id := "carrier_secondary"
+## General-purpose naval gun. The secondary role comes from
+## slot_data.battery_role, not from the weapon identity, so the same WeaponData
+## can serve as a main battery on another hull.
+@export var weapon_id := "naval_gun_100mm"
 @export_range(0, 64, 1) var port_mount_count := 0
 @export_range(0, 64, 1) var starboard_mount_count := 0
 

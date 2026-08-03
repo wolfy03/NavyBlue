@@ -20,7 +20,7 @@ damage_reduction = 0.06
 
 [sub_resource type="Resource" id="Resource_secondary_layout"]
 script = ExtResource("4_secondary_layout")
-weapon_id = "carrier_secondary"
+weapon_id = "naval_gun_100mm"
 port_mount_count = 6
 starboard_mount_count = 6
 lateral_offset_m = 17.5
@@ -50,7 +50,7 @@ turret_count = 1
 turret_spacing = 1.0
 shell_muzzle_velocity = 280.0
 reload_seconds = 4.5
-default_weapon_id = "carrier_secondary"
+default_weapon_id = "naval_gun_100mm"
 defense_stats = SubResource("Resource_defense")
 ai_role_profile = ExtResource("3_role")
 strategic_value = 1.4
