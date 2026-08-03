@@ -21,11 +21,61 @@ func _run() -> void:
 	await _test_ai_leads_moving_target()
 	await _test_weapon_groups_use_different_leads()
 	await _test_player_manual_aim_unaffected()
+	await _test_freed_target_does_not_crash()
 	print(
 		"AI_GUNNERY_FIRE_CONTROL_INTEGRATION_TEST failures=%d"
 		% _failures.size()
 	)
 	quit(0 if _failures.is_empty() else 1)
+
+
+## Regression: a target destroyed mid-engagement leaves ShipCombat holding a
+## freed reference for at least one frame. Casting it before validating it
+## raised "Trying to cast a freed object" every physics frame.
+##
+## Note on the assertion: a failed cast still yields null, so the _check calls
+## below pass with or without the guard. The actual regression signal is the
+## engine error on stderr -- this case must run with a stderr free of
+## "Trying to cast a freed object" (5 occurrences before the fix, 0 after).
+func _test_freed_target_does_not_crash() -> void:
+	_arena = Node3D.new()
+	root.add_child(_arena)
+	var hunter := _spawn_ship("dd_bluewind", &"enemy", Vector3.ZERO, false)
+	var victim := _spawn_ship(
+		"dd_bluewind", &"ally", Vector3(0, 0, 3000), false
+	)
+	await physics_frame
+	hunter.combat.set_ai_engagement_target(victim)
+	for _frame in 3:
+		await physics_frame
+	_check(
+		hunter.combat.get_ai_fire_control() != null,
+		"freed target: fire control is active before the target dies"
+	)
+	# Free the target WITHOUT going through clear_target(), reproducing the
+	# window where targeting has not yet notified the combat component.
+	victim.free()
+	_check(
+		hunter.combat._get_ai_fire_control_target() == null,
+		"freed target: resolver reports no target instead of casting"
+	)
+	for _frame in 3:
+		await physics_frame
+	var cannons := hunter.combat.get_weapons_by_type(WeaponTypes.Type.CANNON)
+	var providers_released := true
+	for cannon in cannons:
+		if (cannon as CannonMount).shell_deviation_provider != null:
+			providers_released = false
+	_check(
+		providers_released,
+		"freed target: AI dispersion providers are released"
+	)
+	_check(
+		is_instance_valid(hunter),
+		"freed target: the shooter keeps running after the target is freed"
+	)
+	_cleanup_arena()
+	await process_frame
 
 
 func _test_ai_leads_moving_target() -> void:

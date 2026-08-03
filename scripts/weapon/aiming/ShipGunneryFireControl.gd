@@ -409,9 +409,13 @@ func _get_accuracy_profile(
 func _rebuild_groups(cannon_mounts: Array[WeaponMount]) -> void:
 	var seen_groups: Dictionary = {}
 	_mount_group_lookup.clear()
-	for mount_value in cannon_mounts:
+	for mount_value: Variant in cannon_mounts:
+		# Validity first: casting an already-freed mount raises
+		# "Trying to cast a freed object".
+		if mount_value == null or not is_instance_valid(mount_value):
+			continue
 		var cannon := mount_value as CannonMount
-		if cannon == null or not is_instance_valid(cannon):
+		if cannon == null:
 			continue
 		var group_key := _get_group_key(cannon)
 		var group: GroupState

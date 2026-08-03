@@ -255,10 +255,11 @@ func _get_ai_fire_control_target() -> ShipUnit:
 	if aim_source != AimSource.AI \
 			or aim_mode != AimMode.TRACK_WORLD_TARGET:
 		return null
-	var target_ship := target as ShipUnit
-	if target_ship == null or not is_instance_valid(target_ship):
+	# Validate before casting: `target` is untyped and a freed instance is not
+	# null, so casting it first raises "Trying to cast a freed object".
+	if target == null or not is_instance_valid(target):
 		return null
-	return target_ship
+	return target as ShipUnit
 
 
 func _update_ai_fire_control(target_ship: ShipUnit) -> void:
