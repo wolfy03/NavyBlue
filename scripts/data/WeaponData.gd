@@ -32,6 +32,9 @@ class_name WeaponData
 @export_category("AI")
 @export var preferred_engagement_range_ratio := 0.75
 @export var tactical_value := 1.0
+## Mechanical gunnery accuracy of this weapon. Null falls back to the shared
+## default profile inside ShipGunneryFireControl, so existing .tres stay valid.
+@export var gunnery_accuracy_profile: GunneryWeaponAccuracyProfile
 
 @export_category("Legacy")
 @export var damage: float = 10.0

@@ -8,6 +8,9 @@ var run_session := RunSessionReader.new()
 var game_flow := GameFlowService.new()
 var faction_palette: FactionPalette
 var debug_settings: BattleDebugSettings
+## AI gunnery difficulty for every AI ship in this battle. Optional: null
+## falls back to the normal profile inside ShipGunneryFireControl.
+var ai_gunnery_difficulty: AIGunneryDifficultyProfile
 var _configured := false
 
 
@@ -77,6 +80,7 @@ func shutdown() -> void:
 	game_flow.shutdown()
 	faction_palette = null
 	debug_settings = null
+	ai_gunnery_difficulty = null
 
 
 func is_configured() -> bool:

@@ -18,6 +18,11 @@ static var _warned_unreachable_range_ids: Dictionary = {}
 @export var bonus_projectile_spread_degrees := 0.6
 @export_range(1.0, 1.05, 0.001) var physical_range_tolerance_ratio := 1.005
 
+## Optional per-shell launch deviation source (AI gunnery dispersion).
+## Duck-typed to avoid a class reference cycle with the fire control:
+## must expose get_shell_deviation_radians(mount, shell_index, count) -> Vector2.
+var shell_deviation_provider: RefCounted
+
 @onready var base_mesh: MeshInstance3D = $Base
 @onready var barrel_pivot: Node3D = $BarrelPivot
 @onready var barrel_mesh: MeshInstance3D = $BarrelPivot/Barrel
@@ -120,6 +125,28 @@ func _launch_shell(index: int, total_count: int) -> bool:
 		Vector3.UP,
 		deg_to_rad(spread_offset_degrees)
 	)
+	if shell_deviation_provider != null \
+			and shell_deviation_provider.has_method(
+				&"get_shell_deviation_radians"
+			):
+		# AI gunnery dispersion: perturb the launch direction so every shell
+		# still flies with real ballistics; misses fall in the water and keep
+		# the existing splash/impact pipeline.
+		var deviation: Vector2 = shell_deviation_provider.call(
+			&"get_shell_deviation_radians",
+			self,
+			index,
+			total_count
+		)
+		if deviation != Vector2.ZERO:
+			launch_transform.basis = launch_transform.basis.rotated(
+				Vector3.UP,
+				deviation.x
+			)
+			launch_transform.basis = launch_transform.basis.rotated(
+				launch_transform.basis.x.normalized(),
+				deviation.y
+			)
 	var active_data := weapon_data.projectile_data if weapon_data != null else null
 	var context := ProjectileLaunchContext.new()
 	context.source_actor = owner_ship

@@ -18,6 +18,7 @@ class_name BattleDebugSettings
 @export_category("AI")
 @export var log_fleet_ai := false
 @export var log_battle_ai := false
+@export var log_gunnery_fire_control := false
 
 @export_category("Effects")
 @export var log_effect_spawns := false

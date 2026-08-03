@@ -152,7 +152,10 @@ func update_ai(
 	var to_target := target.global_position - owner_ship.global_position
 	to_target.y = 0.0
 	var distance_m := to_target.length()
-	combat.set_aim_point(target.global_position)
+	# Predictive fire control: the combat component leads the moving target
+	# with difficulty/crew accuracy error instead of aiming at its current
+	# position (legacy behavior was set_aim_point(target.global_position)).
+	combat.set_ai_engagement_target(target)
 	combat.fire_torpedoes_at(
 		target,
 		navigation.battlefield_bounds,

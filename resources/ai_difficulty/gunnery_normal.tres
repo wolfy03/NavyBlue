@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="AIGunneryDifficultyProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ai/difficulty/AIGunneryDifficultyProfile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+difficulty_id = &"normal"
+position_observation_error_multiplier = 1.0
+velocity_observation_error_multiplier = 1.0
+observation_delay_multiplier = 1.0
+base_position_observation_error_m = 25.0
+base_velocity_observation_error_mps = 1.5
+minimum_observation_delay_sec = 0.15
+maximum_observation_delay_sec = 1.0
+range_error_multiplier = 1.0
+lateral_error_multiplier = 1.0
+shell_dispersion_multiplier = 1.0
+salvo_correction_multiplier = 1.0
+minimum_error_multiplier = 1.0
+aim_solution_refresh_interval_sec = 0.2
+aim_solution_repath_threshold_m = 10.0
+base_salvo_correction_strength = 0.25
+minimum_corrected_bias_ratio = 0.4
+velocity_change_alert_mps = 3.0

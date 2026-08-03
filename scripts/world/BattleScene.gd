@@ -96,6 +96,8 @@ func _ready() -> void:
 			&"battle_services_setup_failed"
 		)
 		return
+	battle_services.ai_gunnery_difficulty = \
+		_resolve_ai_gunnery_difficulty_profile()
 	if combat_effect_presenter != null:
 		var typed_effect_controller := combat_effect_controller \
 			as CombatEffectController
@@ -551,6 +553,22 @@ func _resolve_ai_difficulty_profile() -> AIDifficultyProfile:
 	if difficulty > 1.25:
 		return load("res://resources/ai_difficulty/hard.tres") as AIDifficultyProfile
 	return load("res://resources/ai_difficulty/normal.tres") as AIDifficultyProfile
+
+
+func _resolve_ai_gunnery_difficulty_profile() -> AIGunneryDifficultyProfile:
+	# Same RunManager.difficulty thresholds as the fleet AI profile so both
+	# systems always agree on the selected difficulty tier.
+	var difficulty := 1.0
+	if has_node("/root/RunManager"):
+		difficulty = float(get_node("/root/RunManager").get(&"difficulty"))
+	if difficulty < 0.85:
+		return load("res://resources/ai_difficulty/gunnery_easy.tres") \
+			as AIGunneryDifficultyProfile
+	if difficulty > 1.25:
+		return load("res://resources/ai_difficulty/gunnery_hard.tres") \
+			as AIGunneryDifficultyProfile
+	return load("res://resources/ai_difficulty/gunnery_normal.tres") \
+		as AIGunneryDifficultyProfile
 
 func _update_impact_marker() -> void:
 	if impact_marker == null or player_ship == null:
