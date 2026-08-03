@@ -27,6 +27,24 @@ var solution_revision := 0
 var solution_locked := false
 
 
+## Returns the tracked target only while it is still a live instance, clearing
+## the field once it has been freed.
+##
+## A torpedo run is deliberately not aborted once it reaches RELEASING, so the
+## target can sink while the drop is still in flight. Reading the stale
+## reference is harmless, but assigning it to another typed slot raises
+## "Invalid assignment ... of type 'previously freed'". Every propagation of
+## this field must go through here.
+func get_live_target_ship() -> ShipUnit:
+	# is_instance_valid alone, with no `!= null` precondition: a freed
+	# reference does not reliably compare unequal to null, so guarding on that
+	# first lets the stale reference through. is_instance_valid(null) is false,
+	# so this covers the genuine-null case too.
+	if not is_instance_valid(target_ship):
+		target_ship = null
+	return target_ship
+
+
 func duplicate_command() -> TorpedoAttackCommand:
 	var copy := TorpedoAttackCommand.new()
 	copy.command_id = command_id
@@ -40,7 +58,7 @@ func duplicate_command() -> TorpedoAttackCommand:
 	copy.actual_run_distance_m = actual_run_distance_m
 	copy.minimum_run_distance_m = minimum_run_distance_m
 	copy.command_plane_height_m = command_plane_height_m
-	copy.target_ship = target_ship
+	copy.target_ship = get_live_target_ship()
 	copy.predicted_impact_position = predicted_impact_position
 	copy.predicted_collision_point = predicted_collision_point
 	copy.torpedo_safe_run_distance_m = torpedo_safe_run_distance_m

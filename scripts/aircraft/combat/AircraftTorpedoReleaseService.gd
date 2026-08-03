@@ -55,7 +55,9 @@ func release_ready_aircraft(
 		request.launch_direction = command.attack_direction
 		request.aircraft_velocity = aircraft.get_world_velocity()
 		request.target_point = command.escape_point
-		request.target_ship = command.target_ship
+		# The target can sink mid-run; the drop still completes, just without a
+		# tracked ship reference.
+		request.target_ship = command.get_live_target_ship()
 		request.torpedo_data = weapon.weapon_data.projectile_data \
 			as TorpedoProjectileData
 		request.command_id = command.command_id
