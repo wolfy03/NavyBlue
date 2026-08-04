@@ -27,6 +27,9 @@ var _last_dive_entry_position := Vector3.ZERO
 var _approach_repath_left := 0.0
 var _current_mission_destination := Vector3.ZERO
 var _active_destination_serial := -1
+## Current attack geometry, solved backwards from the bomb impact point.
+var _attack_solution: DiveBombAttackSolution
+var _solution_revision := 0
 
 
 func setup(
@@ -186,7 +189,12 @@ func _update_dive_entry(target: Node3D) -> void:
 			return
 		_finish_and_return(false)
 		return
+	var entry_solution := _solve_attack(target, false)
 	var predicted_position := _calculate_predicted_target_position(target)
+	if entry_solution != null and entry_solution.valid:
+		controller.set_planned_release_position(
+			entry_solution.release_position
+		)
 	var begin_result := controller.begin_dive_with_source(
 		predicted_position,
 		_get_target_velocity(target),
@@ -331,7 +339,13 @@ func _cancel_dive() -> void:
 			AircraftSquadron.DiveControlSource.NONE
 
 
+## Approach point of the current attack solution. Falls back to the previous
+## straight-line geometry only when the solver fails, so a failure still leaves
+## the squadron somewhere sane.
 func _calculate_approach_position(target: Node3D) -> Vector3:
+	var solution := _solve_attack(target, true)
+	if solution != null and solution.valid:
+		return solution.approach_position
 	var direction := _get_attack_direction(target)
 	var dive_data := _get_dive_data()
 	var result := target.global_position \
@@ -357,7 +371,12 @@ func _get_approach_repath_threshold() -> float:
 	)
 
 
+## Dive entry of the current attack solution: far enough behind the release
+## point to cover the aircraft's horizontal travel during the dive.
 func _calculate_dive_entry_position(target: Node3D) -> Vector3:
+	var solution := _solve_attack(target, true)
+	if solution != null and solution.valid:
+		return solution.dive_entry_position
 	var dive_data := _get_dive_data()
 	var height := maxf(dive_data.dive_entry_altitude_m, 1.0)
 	var tangent := tan(deg_to_rad(clampf(
@@ -377,9 +396,70 @@ func _calculate_dive_entry_position(target: Node3D) -> Vector3:
 	return result
 
 
+## Solves the attack backwards from the bomb impact point.
+##
+## Cheap pure-vector math, but still only called from the repath paths rather
+## than every physics frame. `include_approach_time` is false once the squadron
+## is at its dive entry, because the approach leg no longer delays the bomb.
+func _solve_attack(
+		target: Node3D,
+		include_approach_time: bool
+) -> DiveBombAttackSolution:
+	if target == null or not is_instance_valid(target):
+		return null
+	var dive_data := _get_dive_data()
+	var weapon_data := _get_bomb_weapon_data()
+	if dive_data == null or weapon_data == null:
+		return null
+	var solution := DiveBombAttackResolver.solve(
+		owner_squadron.formation_center,
+		owner_squadron.get_formation_forward(),
+		_get_formation_speed_mps(),
+		target.global_position,
+		_get_target_velocity(target),
+		target.global_position.y,
+		dive_data,
+		weapon_data,
+		_get_world_gravity(),
+		_get_attack_direction(target),
+		include_approach_time
+	)
+	if solution != null and solution.valid:
+		_solution_revision += 1
+		solution.revision = _solution_revision
+		_attack_solution = solution
+	return solution
+
+
+func _get_bomb_weapon_data() -> AircraftWeaponData:
+	var data := owner_squadron.squadron_data.aircraft_data 		if owner_squadron != null 		and owner_squadron.squadron_data != null else null
+	return data.weapon_data if data != null else null
+
+
+func _get_formation_speed_mps() -> float:
+	var velocity := owner_squadron.get_formation_velocity() 		if owner_squadron.has_method(&"get_formation_velocity") else Vector3.ZERO
+	var speed := velocity.length()
+	if speed > 0.1:
+		return speed
+	var data := owner_squadron.squadron_data.aircraft_data 		if owner_squadron != null 		and owner_squadron.squadron_data != null else null
+	return maxf(data.cruise_speed_mps, 1.0) if data != null else 1.0
+
+
+func _get_world_gravity() -> float:
+	return float(ProjectSettings.get_setting(
+		"physics/3d/default_gravity",
+		9.8
+	))
+
+
+## Impact point the bomb should reach. Prefers the full attack solution, which
+## accounts for dive time, release delay and bomb fall time; the old
+## fall-time-only estimate remains as a fallback.
 func _calculate_predicted_target_position(target: Node3D) -> Vector3:
 	if mission_data == null or not mission_data.target_prediction_enabled:
 		return target.global_position
+	if _attack_solution != null and _attack_solution.valid:
+		return _attack_solution.predicted_impact_position
 	var height := maxf(
 		owner_squadron.formation_center.y - target.global_position.y,
 		1.0

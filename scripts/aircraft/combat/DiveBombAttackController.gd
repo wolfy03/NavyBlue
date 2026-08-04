@@ -59,8 +59,15 @@ var dive_data: DiveBomberCombatData
 var payload_release_settings: AircraftPayloadReleaseSettings
 var release_policy := DiveReleasePolicy.new()
 var state: State = State.IDLE
+## Where the bomb should land. Kept distinct from the point the aircraft
+## actually flies to during the dive.
 var target_position := Vector3.ZERO
 var target_velocity := Vector3.ZERO
+## Where the aircraft must let the bomb go. Solved backwards from
+## target_position by DiveBombAttackResolver; falls back to the impact point
+## when a caller supplies no solution (player manual dives).
+var planned_release_position := Vector3.ZERO
+var has_planned_release_position := false
 var solution_locked := false
 var dive_elapsed_seconds := 0.0
 var release_block_reason: ReleaseBlockReason = ReleaseBlockReason.NONE
@@ -128,6 +135,8 @@ func reset() -> void:
 	state = State.IDLE
 	target_position = Vector3.ZERO
 	target_velocity = Vector3.ZERO
+	planned_release_position = Vector3.ZERO
+	has_planned_release_position = false
 	dive_elapsed_seconds = 0.0
 	release_block_reason = ReleaseBlockReason.NONE
 	solution_locked = false
@@ -202,6 +211,18 @@ func begin_dive_with_source(
 	_initialize_aircraft_release_states()
 	state = State.DIVE_ENTRY
 	return BeginDiveResult.STARTED
+
+
+## Supplies the solved release point. Optional: a caller that provides none
+## (player manual dives) keeps the previous behaviour of flying at the impact
+## point.
+func set_planned_release_position(next_release_position: Vector3) -> void:
+	if not next_release_position.is_finite():
+		return
+	if solution_locked:
+		return
+	planned_release_position = next_release_position
+	has_planned_release_position = true
 
 
 func update_target(
@@ -773,7 +794,12 @@ func _finish_release_pass(cancelled: bool) -> void:
 
 
 func _apply_dive_flight(delta: float) -> void:
-	var to_target := target_position - owner_squadron.formation_center
+	# Fly the dive toward the planned release point, not the impact point.
+	# Flying at the impact point makes the aircraft overfly the target, because
+	# the bomb still travels forward for its whole fall time after release.
+	var dive_aim_point := planned_release_position \
+		if has_planned_release_position else target_position
+	var to_target := dive_aim_point - owner_squadron.formation_center
 	var horizontal_direction := Vector3(to_target.x, 0.0, to_target.z)
 	if horizontal_direction.length_squared() <= EPSILON:
 		horizontal_direction = owner_squadron.get_formation_forward()
