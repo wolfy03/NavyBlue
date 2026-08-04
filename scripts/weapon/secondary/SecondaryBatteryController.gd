@@ -133,16 +133,23 @@ func update(delta: float) -> void:
 	scan_elapsed_sec += maxf(delta, 0.0)
 	_elapsed_battle_time_sec += maxf(delta, 0.0)
 	var current_target := get_current_target()
+	# One engagement scan per update. can_engage_world_point runs a ballistic
+	# pitch solve per mount, so counting twice used to cost an extra
+	# mount-count worth of sqrt/atan work every frame.
+	var engaging := count_engaging_mounts(current_target)
 	if not _is_valid_target(current_target) \
-			or count_engaging_mounts(current_target) \
-				< maxi(profile.minimum_engaging_mount_count, 1):
+			or engaging < maxi(profile.minimum_engaging_mount_count, 1):
 		_clear_target(&"target_unavailable")
 		current_target = null
+		engaging = 0
 		scan_elapsed_sec = maxf(profile.scan_interval_sec, 0.01)
 	if scan_elapsed_sec >= maxf(profile.scan_interval_sec, 0.01):
 		_scan_for_target()
 		scan_elapsed_sec = 0.0
-		current_target = get_current_target()
+		var rescanned_target := get_current_target()
+		if rescanned_target != current_target:
+			current_target = rescanned_target
+			engaging = count_engaging_mounts(current_target)
 	if current_target == null:
 		_update_idle_mounts(delta)
 		_refresh_debug_snapshot(0, 0)
@@ -150,7 +157,6 @@ func update(delta: float) -> void:
 	# One shared lead solve per weapon group, then every mount acts alone. No
 	# begin_salvo_for_mounts here: that is the main-battery salvo path.
 	_update_shared_lead_solutions(current_target)
-	var engaging := count_engaging_mounts(current_target)
 	var fired := 0
 	var ready := 0
 	var budget := _resolve_mount_evaluation_budget(delta)

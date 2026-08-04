@@ -76,6 +76,9 @@ var _performance_registered := false
 var _performance_registered_as_secondary := false
 var _trail_performance_registered := false
 var _launched_from_secondary_battery := false
+## Digest of the values _configure_trail derives its Resources from. Guards the
+## rebuild so a pooled relaunch with identical visuals allocates nothing.
+var _trail_configuration_signature := 0
 
 @onready var trail_particles: GPUParticles3D = get_node_or_null(
 	"TrailParticles"
@@ -596,6 +599,9 @@ func despawn_with_reason(reason: DespawnReason) -> void:
 	active = false
 	despawn_reason = reason
 	last_despawn_reason = reason
+	var despawn_counters := _get_performance_counters()
+	if despawn_counters != null:
+		despawn_counters.count_projectile_despawn(int(reason))
 	last_despawn_position = global_position
 	_log_despawn(reason, global_position)
 	recycle_projectile()
@@ -827,9 +833,25 @@ func _log_despawn(reason: DespawnReason, position: Vector3) -> void:
 	)
 
 
+## Rebuilds the trail's particle material, gradient and draw mesh.
+##
+## This allocates six Resources, so it must not run per launch. Pooled shells
+## are reconfigured from the same ProjectileData on every acquire, which left
+## the visual identical while still rebuilding everything; the signature guard
+## makes that case free and limits the rebuild to a genuine visual change.
 func _configure_trail() -> void:
 	if trail_particles == null:
 		return
+	var signature := hash([
+		trail_particle_count,
+		trail_lifetime_sec,
+		trail_width_m,
+		trail_color,
+		velocity_strength_reference,
+	])
+	if _trail_configuration_signature == signature:
+		return
+	_trail_configuration_signature = signature
 	trail_particles.amount = trail_particle_count
 	trail_particles.lifetime = trail_lifetime_sec
 	trail_particles.local_coords = false

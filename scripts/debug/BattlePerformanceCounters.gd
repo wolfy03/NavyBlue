@@ -38,6 +38,10 @@ var peak_active_projectiles := 0
 var peak_active_trails := 0
 var peak_secondary_mounts_evaluated := 0
 
+## Cumulative despawn accounting, keyed by Projectile.DespawnReason.
+var projectile_despawns_total := 0
+var projectile_despawns_by_reason: Dictionary = {}
+
 var _frame_times_ms: PackedFloat32Array = PackedFloat32Array()
 var _frame_sample_head := 0
 var _frame_sample_count := 0
@@ -176,6 +180,26 @@ func unregister_projectile(is_secondary: bool) -> void:
 		)
 
 
+## Despawn-reason tally, cumulative for the battle. A high lifetime-timeout
+## share means shells are outliving their real flight, which inflates the live
+## projectile count; it is diagnostic only and changes no behaviour.
+func count_projectile_despawn(reason: int) -> void:
+	if not enabled:
+		return
+	projectile_despawns_total += 1
+	projectile_despawns_by_reason[reason] = int(
+		projectile_despawns_by_reason.get(reason, 0)
+	) + 1
+
+
+func get_projectile_timeout_ratio() -> float:
+	if projectile_despawns_total <= 0:
+		return 0.0
+	# Projectile.DespawnReason.LIFETIME_EXPIRED == 2.
+	return float(projectile_despawns_by_reason.get(2, 0)) \
+		/ float(projectile_despawns_total)
+
+
 func register_trail() -> void:
 	if not enabled:
 		return
@@ -209,6 +233,8 @@ func reset_all() -> void:
 	peak_active_projectiles = 0
 	peak_active_trails = 0
 	peak_secondary_mounts_evaluated = 0
+	projectile_despawns_total = 0
+	projectile_despawns_by_reason.clear()
 	_frame_sample_head = 0
 	_frame_sample_count = 0
 
