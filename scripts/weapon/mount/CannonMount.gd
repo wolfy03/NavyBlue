@@ -23,6 +23,49 @@ static var _warned_unreachable_range_ids: Dictionary = {}
 ## must expose get_shell_deviation_radians(mount, shell_index, count) -> Vector2.
 var shell_deviation_provider: RefCounted
 
+## Cached integer digest of everything that decides which fire-control weapon
+## group this mount belongs to (weapon, projectile, muzzle speed, gravity,
+## range, accuracy profile). Recomputed only when the ballistic configuration
+## actually changes, so fire control never formats a long key string per frame.
+var _cached_ballistic_group_hash := 0
+var _cached_ballistic_revision := -1
+var _ballistic_configuration_revision := 0
+
+
+## Bumped whenever a value feeding the group hash changes. Runtime upgrades go
+## through set_runtime_stats/setup, both of which invalidate the cache.
+func invalidate_ballistic_configuration() -> void:
+	_ballistic_configuration_revision += 1
+
+
+func get_ballistic_configuration_revision() -> int:
+	return _ballistic_configuration_revision
+
+
+## Structured int hash instead of a formatted string. Resource instance ids
+## alone cannot distinguish runtime upgrades, so the quantized ballistic values
+## and the accuracy profile identity are folded in as well.
+func get_ballistic_group_hash() -> int:
+	if _cached_ballistic_revision == _ballistic_configuration_revision:
+		return _cached_ballistic_group_hash
+	_cached_ballistic_revision = _ballistic_configuration_revision
+	if weapon_data == null or weapon_data.id.is_empty():
+		_cached_ballistic_group_hash = hash([&"mount", get_instance_id()])
+		return _cached_ballistic_group_hash
+	var projectile_data := weapon_data.projectile_data
+	var accuracy_profile := weapon_data.gunnery_accuracy_profile
+	_cached_ballistic_group_hash = hash([
+		weapon_data.id,
+		weapon_data.get_instance_id(),
+		projectile_data.get_instance_id() if projectile_data != null else 0,
+		# Quantized so float noise cannot split an otherwise identical group.
+		roundi(get_modified_projectile_speed(muzzle_velocity) * 1000.0),
+		roundi(get_effective_gravity_mps2() * 1000.0),
+		roundi(get_range_m() * 1000.0),
+		accuracy_profile.get_instance_id() if accuracy_profile != null else 0,
+	])
+	return _cached_ballistic_group_hash
+
 @onready var base_mesh: MeshInstance3D = $Base
 @onready var barrel_pivot: Node3D = $BarrelPivot
 @onready var barrel_mesh: MeshInstance3D = $BarrelPivot/Barrel
@@ -37,6 +80,7 @@ func setup(
 		next_battle_services: BattleServices = null
 ) -> void:
 	super.setup(data, slot, ship, team, next_battle_services)
+	invalidate_ballistic_configuration()
 	if weapon_data != null:
 		reload_seconds = weapon_data.reload_seconds
 		muzzle_velocity = weapon_data.muzzle_velocity
@@ -175,6 +219,11 @@ func _launch_shell(index: int, total_count: int) -> bool:
 				deviation.y
 			)
 	var active_data := weapon_data.projectile_data if weapon_data != null else null
+	if _is_projectile_spawn_disabled_for_diagnostics(active_data):
+		# Diagnostic isolation: aiming, readiness and the fire request all ran;
+		# only the projectile instantiation is skipped. Report success so the
+		# reload cycle and per-mount fire sequence behave normally.
+		return true
 	var context := ProjectileLaunchContext.new()
 	context.source_actor = owner_ship
 	context.source_team = owner_team
@@ -185,6 +234,7 @@ func _launch_shell(index: int, total_count: int) -> bool:
 		* get_modified_projectile_speed(muzzle_velocity)
 	context.aim_point = aim_point
 	context.runtime_stats = runtime_stats.duplicate_stats()
+	context.from_secondary_battery = is_secondary_battery_mount()
 	if projectile_factory == null:
 		push_error("CannonMount requires an injected ProjectileFactory.")
 		return false
@@ -200,6 +250,24 @@ func _launch_shell(index: int, total_count: int) -> bool:
 		return false
 	fired.emit(projectile)
 	return true
+
+
+func _is_projectile_spawn_disabled_for_diagnostics(
+		_active_data: ProjectileData
+) -> bool:
+	if battle_services == null or battle_services.debug_settings == null:
+		return false
+	if not battle_services.debug_settings.disable_secondary_projectile_spawn:
+		return false
+	# Keyed on battery role, not projectile id: the same naval_gun_100mm serves
+	# as a main battery on some hulls, and this diagnostic must isolate only
+	# the automatic secondary battery.
+	return is_secondary_battery_mount()
+
+
+func is_secondary_battery_mount() -> bool:
+	return slot_data != null \
+		and slot_data.battery_role == BatteryRole.Type.SECONDARY
 
 
 func get_muzzle_velocity_vector() -> Vector3:

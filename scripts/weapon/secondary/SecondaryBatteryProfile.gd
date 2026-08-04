@@ -27,6 +27,20 @@ const SUPPORTED_FIRE_COORDINATION_MODES: Array[int] = [
 @export var fire_coordination_mode: FireCoordinationMode = \
 	FireCoordinationMode.INDEPENDENT
 
+@export_category("Evaluation Budget")
+## Longest a ready gun may wait for its turn when budgeted evaluation is on.
+## The budget is derived from this, so adding mounts raises the per-frame
+## budget instead of delaying shots.
+@export_range(0.016, 0.5, 0.001) var maximum_mount_evaluation_delay_sec := 0.1
+@export_range(1, 64, 1) var minimum_mount_evaluation_budget := 4
+@export_range(1, 256, 1) var maximum_mount_evaluation_budget := 64
+
+@export_category("Line of Fire")
+## A blocked/clear verdict is reused for this long unless the aim point moves
+## past the recheck distance, so the ray query does not run per mount per frame.
+@export_range(0.0, 1.0, 0.01) var line_of_fire_cache_interval_sec := 0.1
+@export_range(0.0, 200.0, 1.0) var line_of_fire_recheck_distance_m := 10.0
+
 @export_category("Targeting")
 @export var scan_interval_sec := 0.3
 @export var target_switch_cooldown_sec := 2.0

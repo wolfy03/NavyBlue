@@ -48,6 +48,14 @@ func setup(
 func set_runtime_stats(stats: WeaponRuntimeStats) -> void:
 	runtime_stats = stats.duplicate_stats() \
 		if stats != null else WeaponRuntimeStats.new()
+	# Upgrades change speed/range multipliers, which decide fire-control
+	# grouping; let subclasses drop any cached ballistic digest.
+	invalidate_ballistic_configuration()
+
+
+## Overridden by mounts that cache ballistic-configuration derived data.
+func invalidate_ballistic_configuration() -> void:
+	return
 
 
 func get_runtime_stats() -> WeaponRuntimeStats:

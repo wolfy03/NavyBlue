@@ -6,6 +6,9 @@ const MAX_SKIPPED_DYNAMIC_SOURCE_COLLIDERS := 16
 const DEFAULT_AP_SHELL: ShellStats = preload(
 	"res://scripts/combat/default_ap_shell.tres"
 )
+## Projectile id used by the automatic secondary battery. Only used to split
+## diagnostic counters and the trail isolation toggle.
+const SECONDARY_PROJECTILE_ID := "secondary_100mm_shell"
 
 enum DespawnReason {
 	NONE,
@@ -67,6 +70,12 @@ var last_despawn_reason: DespawnReason = DespawnReason.NONE
 var _despawn_requested := false
 var _default_splash_strength := 1.0
 var _collision_mask_warning_emitted := false
+## Paired-registration guards. Pooled projectiles are launched and recycled
+## repeatedly, so the gauges must never double-count or double-decrement.
+var _performance_registered := false
+var _performance_registered_as_secondary := false
+var _trail_performance_registered := false
+var _launched_from_secondary_battery := false
 
 @onready var trail_particles: GPUParticles3D = get_node_or_null(
 	"TrailParticles"
@@ -102,6 +111,7 @@ func _on_configured() -> void:
 
 func _on_launched(context: ProjectileLaunchContext) -> void:
 	team = context.source_team
+	_launched_from_secondary_battery = context.from_secondary_battery
 	target_aim_point = context.aim_point
 	if shell_stats != null:
 		shell_stats = shell_stats.duplicate(true) as ShellStats
@@ -139,6 +149,7 @@ func _begin_flight(
 	show()
 	set_physics_process(true)
 	_orient_to_velocity()
+	_register_projectile_performance()
 	_start_trail()
 
 
@@ -617,6 +628,7 @@ func on_spawned_from_pool() -> void:
 	hide()
 	set_physics_process(false)
 	_stop_trail()
+	_unregister_projectile_performance()
 
 
 func on_recycled_to_pool() -> void:
@@ -642,6 +654,7 @@ func on_recycled_to_pool() -> void:
 	hide()
 	set_physics_process(false)
 	_stop_trail()
+	_unregister_projectile_performance()
 	super.on_recycled_to_pool()
 
 
@@ -666,6 +679,7 @@ func _on_reset_for_pool() -> void:
 	base_water_splash_strength = _default_splash_strength
 	explosion_radius = 0.0
 	_stop_trail()
+	_unregister_projectile_performance()
 
 
 func _make_shell_stats(data: ShellProjectileData) -> ShellStats:
@@ -866,12 +880,67 @@ func _configure_trail() -> void:
 func _start_trail() -> void:
 	if trail_particles == null or not projectile_trail_enabled:
 		return
+	if _is_trail_disabled_for_diagnostics():
+		# Diagnostic isolation: the shell still flies, collides and damages
+		# normally; only its trail is skipped. The .tres is never mutated.
+		return
 	trail_particles.restart()
 	trail_particles.emitting = true
+	if not _trail_performance_registered:
+		_trail_performance_registered = true
+		var counters := _get_performance_counters()
+		if counters != null:
+			counters.register_trail()
 
 
 func _stop_trail() -> void:
+	if _trail_performance_registered:
+		_trail_performance_registered = false
+		var counters := _get_performance_counters()
+		if counters != null:
+			counters.unregister_trail()
 	if trail_particles == null:
 		return
 	trail_particles.emitting = false
 	trail_particles.restart()
+
+
+func _is_trail_disabled_for_diagnostics() -> bool:
+	if battle_services == null or battle_services.debug_settings == null:
+		return false
+	if not battle_services.debug_settings.disable_secondary_projectile_trails:
+		return false
+	return _is_secondary_projectile()
+
+
+func _is_secondary_projectile() -> bool:
+	return projectile_data != null \
+		and projectile_data.id == SECONDARY_PROJECTILE_ID
+
+
+func _get_performance_counters() -> BattlePerformanceCounters:
+	return battle_services.performance_counters \
+		if battle_services != null else null
+
+
+## Paired register/unregister with an explicit flag so a pooled projectile that
+## is recycled and relaunched can never double-count.
+func _register_projectile_performance() -> void:
+	if _performance_registered:
+		return
+	var counters := _get_performance_counters()
+	if counters == null:
+		return
+	_performance_registered = true
+	_performance_registered_as_secondary = _is_secondary_projectile()
+	counters.register_projectile(_performance_registered_as_secondary)
+
+
+func _unregister_projectile_performance() -> void:
+	if not _performance_registered:
+		return
+	_performance_registered = false
+	var counters := _get_performance_counters()
+	if counters != null:
+		counters.unregister_projectile(_performance_registered_as_secondary)
+	_performance_registered_as_secondary = false

@@ -37,6 +37,11 @@ var _configured := false
 ## mount_instance_id -> SecondaryMountFireControlState
 var _mount_fire_control_states: Dictionary = {}
 var _elapsed_battle_time_sec := 0.0
+var _counters: BattlePerformanceCounters
+var _debug_settings: BattleDebugSettings
+## Round-robin cursor for budgeted mount evaluation. Wrapped against the live
+## mount count every frame so pruning a mount cannot leave it out of range.
+var _next_mount_evaluation_index := 0
 
 
 func setup(
@@ -58,6 +63,8 @@ func setup(
 	secondary_mounts.assign(next_mounts)
 	_candidate_provider = candidate_provider
 	var services := owner_ship.battle_services
+	_counters = services.performance_counters if services != null else null
+	_debug_settings = services.debug_settings if services != null else null
 	var difficulty := PLAYER_AUTO_DIFFICULTY \
 		if owner_ship.player_controlled \
 		else (services.ai_gunnery_difficulty if services != null else null)
@@ -74,6 +81,7 @@ func setup(
 	fire_control.set_fire_mode(
 		ShipGunneryFireControl.FireMode.INDEPENDENT_MOUNT
 	)
+	fire_control.performance_counters = _counters
 	_initialize_mount_fire_control_states()
 	scan_elapsed_sec = maxf(profile.scan_interval_sec, 0.01)
 	_configured = not secondary_mounts.is_empty()
@@ -111,10 +119,16 @@ func update(delta: float) -> void:
 		_clear_target(&"all_mounts_lost")
 		_configured = false
 		return
-	if profile == null or not profile.enabled:
+	if profile == null or not profile.enabled \
+			or (_debug_settings != null
+				and _debug_settings.disable_secondary_battery_runtime):
+		# Diagnostic isolation: the whole secondary runtime stops here while
+		# main batteries and every other system keep running.
 		_clear_target(&"disabled")
 		_update_idle_mounts(delta)
 		return
+	if _counters != null:
+		_counters.add_secondary_structure(1, secondary_mounts.size())
 	target_switch_elapsed_sec += maxf(delta, 0.0)
 	scan_elapsed_sec += maxf(delta, 0.0)
 	_elapsed_battle_time_sec += maxf(delta, 0.0)
@@ -139,13 +153,47 @@ func update(delta: float) -> void:
 	var engaging := count_engaging_mounts(current_target)
 	var fired := 0
 	var ready := 0
-	for mount in secondary_mounts:
+	var budget := _resolve_mount_evaluation_budget(delta)
+	if _next_mount_evaluation_index >= secondary_mounts.size():
+		_next_mount_evaluation_index = 0
+	for _slot in budget:
+		var mount := secondary_mounts[_next_mount_evaluation_index]
+		_next_mount_evaluation_index = (
+			_next_mount_evaluation_index + 1
+		) % secondary_mounts.size()
 		var outcome := _update_independent_mount(mount, current_target)
 		if outcome.was_ready:
 			ready += 1
 		if outcome.did_fire:
 			fired += 1
 	_refresh_debug_snapshot(engaging, fired, ready)
+
+
+## How many mounts get the expensive fire decision this frame.
+##
+## Unbudgeted (the default) evaluates every mount, preserving the original
+## behaviour exactly. Budgeted mode derives the count from the configured
+## maximum delay, so a ready gun still fires within
+## maximum_mount_evaluation_delay_sec no matter how many mounts the ship has.
+## Turret traverse and elevation keep interpolating every frame either way;
+## only the fire decision is spread.
+func _resolve_mount_evaluation_budget(delta: float) -> int:
+	var mount_count := secondary_mounts.size()
+	if _debug_settings == null \
+			or not _debug_settings.use_budgeted_secondary_mount_updates:
+		return mount_count
+	var maximum_delay := maxf(
+		profile.maximum_mount_evaluation_delay_sec,
+		0.016
+	)
+	var required := ceili(
+		float(mount_count) * maxf(delta, 0.0001) / maximum_delay
+	)
+	return clampi(
+		required,
+		mini(profile.minimum_mount_evaluation_budget, mount_count),
+		mini(profile.maximum_mount_evaluation_budget, mount_count)
+	)
 
 
 class MountUpdateOutcome:
@@ -165,6 +213,8 @@ func _update_independent_mount(
 		return outcome
 	if not mount.is_operational():
 		return outcome
+	if _counters != null:
+		_counters.count_secondary_mount_evaluated()
 	if not fire_control.has_solution_for_mount(mount):
 		mount.clear_aim()
 		_set_mount_failure(mount, &"no_ballistic_solution")
@@ -195,10 +245,14 @@ func _update_independent_mount(
 		state.last_failure_reason = &"not_ready"
 		return outcome
 	outcome.was_ready = true
-	var safety := line_of_fire.evaluate(mount, target, actual_aim)
-	if not safety.safe:
-		state.last_failure_reason = safety.blocked_reason
-		_debug_snapshot.last_fire_control_failure = safety.blocked_reason
+	if _counters != null:
+		_counters.count_secondary_mount_ready()
+	# The ray query runs only when the cached verdict has expired or the aim
+	# point moved far enough to invalidate it.
+	if not _is_line_of_fire_safe(mount, target, actual_aim, state):
+		state.last_failure_reason = state.last_line_of_fire_reason
+		_debug_snapshot.last_fire_control_failure = \
+			state.last_line_of_fire_reason
 		return outcome
 	if profile.hold_fire:
 		state.last_failure_reason = &"hold_fire"
@@ -214,7 +268,40 @@ func _update_independent_mount(
 	state.last_failure_reason = &""
 	fire_control.advance_mount_correction(state.tracking_state)
 	outcome.did_fire = true
+	if _counters != null:
+		_counters.count_secondary_mount_fired()
 	return outcome
+
+
+## Cached line-of-fire test. A mount that is ready every frame while its own
+## reload cycles would otherwise re-run a physics ray query each frame; the
+## verdict is stable over that interval unless the aim point really moved.
+func _is_line_of_fire_safe(
+		mount: CannonMount,
+		target: ShipUnit,
+		aim_point: Vector3,
+		state: SecondaryMountFireControlState
+) -> bool:
+	var interval := maxf(profile.line_of_fire_cache_interval_sec, 0.0)
+	var recheck_distance := maxf(
+		profile.line_of_fire_recheck_distance_m,
+		0.0
+	)
+	var age := _elapsed_battle_time_sec - state.last_line_of_fire_check_time_sec
+	if state.has_line_of_fire_result \
+			and age < interval \
+			and state.last_line_of_fire_aim_point.distance_to(aim_point) \
+				<= recheck_distance:
+		return state.last_line_of_fire_result
+	if _counters != null:
+		_counters.count_line_of_fire_check()
+	var safety := line_of_fire.evaluate(mount, target, aim_point)
+	state.has_line_of_fire_result = true
+	state.last_line_of_fire_result = safety.safe
+	state.last_line_of_fire_reason = safety.blocked_reason
+	state.last_line_of_fire_check_time_sec = _elapsed_battle_time_sec
+	state.last_line_of_fire_aim_point = aim_point
+	return safety.safe
 
 
 func _get_or_create_mount_state(

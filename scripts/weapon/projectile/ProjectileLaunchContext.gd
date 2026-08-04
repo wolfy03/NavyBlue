@@ -17,6 +17,9 @@ var initial_velocity := Vector3.ZERO
 var aim_point := Vector3.ZERO
 var target: Node3D
 var runtime_stats := WeaponRuntimeStats.new()
+## True when an automatic secondary battery fired this shell. Used only by
+## diagnostic counters and the trail isolation toggle.
+var from_secondary_battery := false
 var torpedo_launch_mode: TorpedoLaunchMode.Type = \
 	TorpedoLaunchMode.Type.SURFACE
 var intended_launch_direction := Vector3.ZERO

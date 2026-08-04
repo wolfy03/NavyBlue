@@ -11,6 +11,10 @@ var debug_settings: BattleDebugSettings
 ## AI gunnery difficulty for every AI ship in this battle. Optional: null
 ## falls back to the normal profile inside ShipGunneryFireControl.
 var ai_gunnery_difficulty: AIGunneryDifficultyProfile
+## Development instrumentation. Always present so call sites need no null
+## checks; it stays disabled (and effectively free) unless the overlay or a
+## benchmark enables it.
+var performance_counters := BattlePerformanceCounters.new()
 var _configured := false
 
 
@@ -81,6 +85,9 @@ func shutdown() -> void:
 	faction_palette = null
 	debug_settings = null
 	ai_gunnery_difficulty = null
+	# Live gauges must not leak into the next battle.
+	performance_counters.reset_all()
+	performance_counters.set_enabled(false)
 
 
 func is_configured() -> bool:

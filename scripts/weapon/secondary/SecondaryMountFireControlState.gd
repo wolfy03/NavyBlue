@@ -24,6 +24,23 @@ var last_solution_revision := 0
 var shots_fired := 0
 var last_failure_reason: StringName = &""
 
+## Cached line-of-fire verdict for this mount.
+var has_line_of_fire_result := false
+var last_line_of_fire_result := false
+var last_line_of_fire_reason: StringName = &""
+var last_line_of_fire_check_time_sec := -1000000.0
+var last_line_of_fire_aim_point := Vector3.ZERO
+
+
+## Drops the cached ray-query verdict. Called whenever the geometry it was
+## measured against is no longer valid.
+func invalidate_line_of_fire() -> void:
+	has_line_of_fire_result = false
+	last_line_of_fire_result = false
+	last_line_of_fire_reason = &""
+	last_line_of_fire_check_time_sec = -1000000.0
+	last_line_of_fire_aim_point = Vector3.ZERO
+
 
 static func create(mount: CannonMount) -> SecondaryMountFireControlState:
 	var state := SecondaryMountFireControlState.new()
@@ -53,6 +70,7 @@ func reset_for_weapon(mount: CannonMount) -> void:
 	last_aim_point = Vector3.ZERO
 	last_solution_revision = 0
 	last_failure_reason = &""
+	invalidate_line_of_fire()
 
 
 ## Called when the battery switches target. The accumulated aim correction is
@@ -63,3 +81,4 @@ func reset_for_target(target: Node, target_instance_id: int) -> void:
 	last_aim_point = Vector3.ZERO
 	last_solution_revision = 0
 	last_failure_reason = &""
+	invalidate_line_of_fire()

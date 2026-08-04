@@ -53,6 +53,10 @@ var _bound_mount_refs: Dictionary = {}
 ## mount_instance_id -> GunnerySalvoSolution. Only populated in
 ## INDEPENDENT_MOUNT mode: each entry is one mount's own bias solution.
 var _mount_states: Dictionary = {}
+var performance_counters: BattlePerformanceCounters
+## Digest of the mount roster and their ballistic configuration. Rebuilds are
+## skipped while it is unchanged.
+var _group_configuration_signature := 0
 
 
 func set_fire_mode(next_fire_mode: FireMode) -> void:
@@ -131,6 +135,9 @@ func begin_tracking_target(target_ship: ShipUnit) -> bool:
 	_group_states.clear()
 	_mount_group_lookup.clear()
 	_mount_states.clear()
+	# Force the next _rebuild_groups to run: the cached digest no longer
+	# describes any live group map.
+	_group_configuration_signature = 0
 	fire_command_id += 1
 	tracking.reset_for_target(target_ship, target_ship.get_instance_id())
 	_tracking_state_reset_count += 1
@@ -148,6 +155,9 @@ func clear_tracking_target(reason: StringName = &"cleared") -> void:
 	_group_states.clear()
 	_mount_group_lookup.clear()
 	_mount_states.clear()
+	# Force the next _rebuild_groups to run: the cached digest no longer
+	# describes any live group map.
+	_group_configuration_signature = 0
 	tracking.reset_for_target(null, 0)
 	_last_observation = null
 	_frames_since_refresh = 1000000
@@ -243,28 +253,57 @@ func resolve_independent_mount_accuracy(
 	var group := _find_group_for_mount(mount)
 	if group == null or not group.has_solution:
 		return null
+	var mount_id := mount.get_instance_id()
+	# The bias only changes when the shot identity changes: a new fire
+	# sequence, a new target, or a new correction level. While a gun reloads or
+	# traverses, its cached bias is reused and simply re-centred on the fresh
+	# lead point by get_aim_point_for_mount.
+	var correction_level := tracking_state.correction_level \
+		if tracking_state != null else 0.0
+	var cached := _mount_states.get(mount_id) as GunnerySalvoSolution
+	if cached != null \
+			and cached.salvo_index == fire_sequence_index \
+			and cached.command_id == fire_command_id \
+			and is_equal_approx(
+				cached.cached_correction_level,
+				correction_level
+			) \
+			and cached.weapon_group_id == group.group_key:
+		return _make_mount_accuracy_result(group, cached)
 	var context := _build_context(group, mount)
 	context.salvo_index = fire_sequence_index
-	if tracking_state != null:
-		context.salvo_correction_level = tracking_state.correction_level
-	var mount_id := mount.get_instance_id()
+	context.salvo_correction_level = correction_level
+	if performance_counters != null:
+		performance_counters.count_accuracy_solve()
 	var solution := GunneryAccuracyResolver \
 		.create_independent_mount_solution(
 			context,
 			mount_id,
 			fire_sequence_index
 		)
+	solution.cached_correction_level = correction_level
 	_mount_states[mount_id] = solution
 	if tracking_state != null:
 		tracking_state.range_bias_m = solution.shared_range_error_m
 		tracking_state.lateral_bias_m = solution.shared_lateral_error_m
+	return _make_mount_accuracy_result(group, solution)
+
+
+## Builds the caller-facing result. The aim point is re-derived from the
+## group's current lead so a cached bias still tracks a moving target.
+func _make_mount_accuracy_result(
+		group: GunneryWeaponGroupSession,
+		solution: GunnerySalvoSolution
+) -> GunneryAccuracyResult:
 	var result := GunneryAccuracyResult.new()
 	result.success = true
-	result.ideal_aim_point = solution.ideal_aim_point
-	result.actual_aim_point = solution.biased_salvo_center
-	result.salvo_bias_offset = (
-		solution.biased_salvo_center - solution.ideal_aim_point
+	result.ideal_aim_point = group.ideal_aim_point
+	result.actual_aim_point = (
+		group.ideal_aim_point
+		+ solution.range_direction * solution.shared_range_error_m
+		+ solution.lateral_direction * solution.shared_lateral_error_m
 	)
+	result.salvo_bias_offset = result.actual_aim_point - group.ideal_aim_point
 	result.range_error_m = solution.shared_range_error_m
 	result.lateral_error_m = solution.shared_lateral_error_m
 	result.range_sigma_m = solution.range_sigma_m
@@ -494,6 +533,8 @@ func _refresh_group_solutions(target: ShipUnit) -> void:
 				representative.muzzle_velocity
 			)
 		group.gravity_mps2 = representative.get_effective_gravity_mps2()
+		if performance_counters != null:
+			performance_counters.count_lead_solve()
 		var lead := NavalGunLeadResolver.solve(
 			representative.get_muzzle_position(),
 			_last_observation.observed_position,
@@ -729,7 +770,45 @@ func _get_accuracy_profile(
 	)
 
 
+## Rebuilds the weapon-group map only when the mount roster or any mount's
+## ballistic configuration actually changed. Target motion and lead refreshes
+## are not rebuild triggers, so a steady battery rebuilds zero times per frame.
 func _rebuild_groups(cannon_mounts: Array[WeaponMount]) -> void:
+	if performance_counters != null:
+		performance_counters.count_group_rebuild_requested()
+	var signature := _compute_group_configuration_signature(cannon_mounts)
+	if signature == _group_configuration_signature \
+			and not _group_states.is_empty():
+		return
+	_group_configuration_signature = signature
+	if performance_counters != null:
+		performance_counters.count_group_rebuild_changed()
+	_rebuild_groups_now(cannon_mounts)
+
+
+## Cheap integer digest of everything _get_group_key depends on. Uses each
+## mount's cached ballistic revision so no long strings are built per frame.
+func _compute_group_configuration_signature(
+		cannon_mounts: Array[WeaponMount]
+) -> int:
+	var digest := 0
+	for mount_value: Variant in cannon_mounts:
+		if mount_value == null or not is_instance_valid(mount_value):
+			continue
+		var cannon := mount_value as CannonMount
+		if cannon == null:
+			continue
+		# Order-sensitive mix: roster changes and per-mount config changes both
+		# alter the digest.
+		digest = hash([
+			digest,
+			cannon.get_instance_id(),
+			cannon.get_ballistic_group_hash(),
+		])
+	return digest
+
+
+func _rebuild_groups_now(cannon_mounts: Array[WeaponMount]) -> void:
 	var seen_groups: Dictionary = {}
 	var active_mount_ids: Dictionary = {}
 	_mount_group_lookup.clear()
@@ -778,34 +857,41 @@ func _rebuild_groups(cannon_mounts: Array[WeaponMount]) -> void:
 	_release_stale_provider_bindings(active_mount_ids)
 
 
+## Group identity as an int, not a formatted string.
+##
+## A weapon id alone is not a complete ballistic contract: runtime upgrades can
+## change range or muzzle velocity independently on otherwise identical mounts,
+## so only mounts with matching projectile, speed, gravity, range and accuracy
+## data may share one NavalGunLeadResolver result. CannonMount caches this
+## digest against its ballistic revision, so a steady battery does no string
+## work per frame. Use get_group_debug_signature() when a human-readable form
+## is needed for the overlay or a log.
 func _get_group_key(cannon: CannonMount) -> StringName:
-	if cannon.weapon_data == null or cannon.weapon_data.id.is_empty():
-		return StringName("mount_%d" % cannon.get_instance_id())
+	# Short key derived from the mount's cached int digest. It stays a
+	# StringName because begin_salvo() and the accuracy RNG seed take one, but
+	# no long signature string is formatted here any more, and this runs only
+	# during a real rebuild rather than every frame.
+	return StringName("g%d" % cannon.get_ballistic_group_hash())
+
+
+## Human-readable group identity, built only on demand for debug output.
+func get_group_debug_signature(cannon: CannonMount) -> String:
+	if cannon == null or not is_instance_valid(cannon) \
+			or cannon.weapon_data == null \
+			or cannon.weapon_data.id.is_empty():
+		return "mount_%d" % cannon.get_instance_id() \
+			if cannon != null and is_instance_valid(cannon) else "invalid"
 	var projectile_data := cannon.weapon_data.projectile_data
-	var projectile_id := projectile_data.id \
-		if projectile_data != null else "missing_projectile"
-	var projectile_path := projectile_data.resource_path \
-		if projectile_data != null else ""
-	var weapon_path := cannon.weapon_data.resource_path
-	var accuracy_profile := _get_accuracy_profile(cannon)
-	var accuracy_signature := _get_accuracy_profile_signature(
-		accuracy_profile
-	)
-	# A weapon id alone is not a complete ballistic contract: runtime upgrades
-	# can change range or muzzle velocity independently on otherwise identical
-	# mounts. Only mounts with matching projectile, speed, gravity, range and
-	# accuracy data may share one NavalGunLeadResolver result.
-	return StringName(
-		"%s|w=%s|p=%s@%s|v=%.6f|g=%.6f|r=%.3f|a=%s"
+	return (
+		"%s|p=%s|v=%.3f|g=%.3f|r=%.1f|a=%s"
 		% [
 			cannon.weapon_data.id,
-			weapon_path,
-			projectile_id,
-			projectile_path,
+			projectile_data.id if projectile_data != null \
+				else "missing_projectile",
 			cannon.get_modified_projectile_speed(cannon.muzzle_velocity),
 			cannon.get_effective_gravity_mps2(),
 			cannon.get_range_m(),
-			accuracy_signature,
+			_get_accuracy_profile_signature(_get_accuracy_profile(cannon)),
 		]
 	)
 

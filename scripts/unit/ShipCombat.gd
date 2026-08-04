@@ -331,6 +331,8 @@ func _ensure_ai_fire_control() -> void:
 			and owner_ship.ship_data != null else null,
 		services.debug_settings if services != null else null
 	)
+	_ai_fire_control.performance_counters = services.performance_counters \
+		if services != null else null
 
 
 func _release_ai_fire_control_hooks() -> void:

@@ -73,6 +73,10 @@ var enemy_fleet_ai: FleetAIController
 var _fleet_controllers: Dictionary = {}
 var _validated_stage_ids: Dictionary = {}
 var battle_services := BattleServices.new()
+## Development-only overlay. BattleScene is the battle root, so its
+## _physics_process runs before every ship, which is where per-frame counters
+## are cleared.
+var performance_overlay: PerformanceOverlay
 var _shutdown_started := false
 var _shutdown_completed := false
 var initialization_result := BattleInitializationResult.new()
@@ -98,6 +102,7 @@ func _ready() -> void:
 		return
 	battle_services.ai_gunnery_difficulty = \
 		_resolve_ai_gunnery_difficulty_profile()
+	_setup_performance_overlay()
 	if combat_effect_presenter != null:
 		var typed_effect_controller := combat_effect_controller \
 			as CombatEffectController
@@ -559,6 +564,25 @@ func _resolve_ai_difficulty_profile() -> AIDifficultyProfile:
 	if difficulty > 1.25:
 		return load("res://resources/ai_difficulty/hard.tres") as AIDifficultyProfile
 	return load("res://resources/ai_difficulty/normal.tres") as AIDifficultyProfile
+
+
+## Attaches the F3 performance overlay. Counters stay enabled while the
+## overlay node exists so the ring buffer is populated the moment it is shown.
+func _setup_performance_overlay() -> void:
+	if performance_overlay == null:
+		performance_overlay = PerformanceOverlay.new()
+		performance_overlay.name = "PerformanceOverlay"
+		add_child(performance_overlay)
+	performance_overlay.setup(
+		battle_services.performance_counters,
+		debug_settings.show_performance_overlay \
+			if debug_settings != null else false
+	)
+
+
+func _physics_process(_delta: float) -> void:
+	# Per-frame counters are cleared once, before any battle system runs.
+	battle_services.performance_counters.begin_frame()
 
 
 func _resolve_ai_gunnery_difficulty_profile() -> AIGunneryDifficultyProfile:

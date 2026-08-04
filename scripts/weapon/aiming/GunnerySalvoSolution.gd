@@ -22,6 +22,9 @@ var lateral_sigma_m := 0.0
 var shell_dispersion_sigma_m := 0.0
 
 var projectile_flight_time_sec := 0.0
+## Correction level this solution was drawn at. Independent-mount fire control
+## compares it to decide whether a cached bias is still valid.
+var cached_correction_level := 0.0
 
 
 ## True when the solution carries a usable range/lateral basis. It is false for
