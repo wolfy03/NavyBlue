@@ -31,6 +31,17 @@ var pull_out_aircraft_ratio: float = 0.5
 @export var dive_entry_distance_m: float = 900.0
 @export var automatic_release_distance_m: float = 180.0
 
+@export_category("Release Window")
+## Horizontal distance from the reference aircraft to the planned release
+## point within which the squadron may drop.
+@export var release_position_tolerance_m := 60.0
+## Maximum horizontal error between the impact predicted from the reference
+## aircraft's current state and the planned impact point.
+@export var maximum_predicted_impact_error_m := 90.0
+## Maximum angle between the reference aircraft's actual horizontal track and
+## the locked attack direction.
+@export var maximum_release_heading_error_degrees := 12.0
+
 @export_category("Bombing Accuracy")
 # Dispersion radius (metres) bombs scatter within, resolved through
 # DiveBombAccuracyResolver. base_dispersion_radius_m is a lone bomber's spread;

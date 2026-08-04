@@ -30,6 +30,34 @@ var _active_destination_serial := -1
 ## Current attack geometry, solved backwards from the bomb impact point.
 var _attack_solution: DiveBombAttackSolution
 var _solution_revision := 0
+## Central reference aircraft for this attack pass. Selected once per pass and
+## kept while it survives; only its loss triggers a reselection.
+var _reference_aircraft_ref: WeakRef
+var _reference_aircraft_instance_id := 0
+
+
+## The pass's reference aircraft. Reselects only when the current one is gone,
+## and forces an early repath so the solution is recomputed once for the new
+## center — never per frame.
+func _get_reference_aircraft() -> AircraftUnit:
+	var current: Variant = _reference_aircraft_ref.get_ref() \
+		if _reference_aircraft_ref != null else null
+	if current != null and is_instance_valid(current):
+		var aircraft := current as AircraftUnit
+		if aircraft != null and aircraft.is_alive():
+			return aircraft
+	var selected := owner_squadron.select_dive_bomb_reference_aircraft() \
+		if owner_squadron != null else null
+	var previous_id := _reference_aircraft_instance_id
+	_reference_aircraft_ref = weakref(selected) if selected != null else null
+	_reference_aircraft_instance_id = selected.get_instance_id() \
+		if selected != null else 0
+	if selected != null and previous_id != 0 \
+			and previous_id != _reference_aircraft_instance_id:
+		# Reference lost mid-pass: recompute the solution once from the new
+		# center by letting the next approach update repath immediately.
+		_approach_repath_left = 0.0
+	return selected
 
 
 func setup(
@@ -134,7 +162,30 @@ func get_debug_snapshot() -> Dictionary:
 			and is_instance_valid(owner_squadron) else false,
 		"controller_state": controller_state,
 		"controller_result": controller_result,
+	}.merged(_get_solution_debug_snapshot())
+
+
+## Central-solution diagnostics: reference aircraft identity and the current
+## attack geometry. Dictionary built only on demand.
+func _get_solution_debug_snapshot() -> Dictionary:
+	var reference: Variant = _reference_aircraft_ref.get_ref() \
+		if _reference_aircraft_ref != null else null
+	var reference_alive := reference != null \
+		and is_instance_valid(reference) \
+		and (reference as AircraftUnit).is_alive()
+	var snapshot := {
+		"reference_aircraft_id": _reference_aircraft_instance_id,
+		"reference_aircraft_alive": reference_alive,
+		"reference_aircraft_position":
+			(reference as AircraftUnit).global_position \
+			if reference_alive else Vector3.ZERO,
+		"reference_aircraft_velocity":
+			(reference as AircraftUnit).velocity \
+			if reference_alive else Vector3.ZERO,
 	}
+	if _attack_solution != null:
+		snapshot.merge(_attack_solution.to_debug_dictionary())
+	return snapshot
 
 
 func _update_approaching(target: Node3D, delta: float) -> void:
@@ -189,17 +240,23 @@ func _update_dive_entry(target: Node3D) -> void:
 			return
 		_finish_and_return(false)
 		return
+	# One solution drives everything: impact, release, entry, direction. The
+	# snapshot is applied inside begin_dive_with_solution after its internal
+	# reset, so a second attack pass cannot lose the planned positions.
 	var entry_solution := _solve_attack(target, false)
-	var predicted_position := _calculate_predicted_target_position(target)
+	var begin_result: DiveBombAttackController.BeginDiveResult
 	if entry_solution != null and entry_solution.valid:
-		controller.set_planned_release_position(
-			entry_solution.release_position
+		begin_result = controller.begin_dive_with_solution(
+			entry_solution,
+			AircraftSquadron.DiveControlSource.AI
 		)
-	var begin_result := controller.begin_dive_with_source(
-		predicted_position,
-		_get_target_velocity(target),
-		AircraftSquadron.DiveControlSource.AI
-	)
+	else:
+		# Solver failure: keep the legacy point-based dive as a safe fallback.
+		begin_result = controller.begin_dive_with_source(
+			_calculate_predicted_target_position(target),
+			_get_target_velocity(target),
+			AircraftSquadron.DiveControlSource.AI
+		)
 	match begin_result:
 		DiveBombAttackController.BeginDiveResult.STARTED, \
 				DiveBombAttackController.BeginDiveResult \
@@ -221,10 +278,18 @@ func _update_diving(target: Node3D) -> void:
 		_finish_and_return(false)
 		return
 	if target != null and not controller.is_solution_locked():
-		controller.update_target(
-			_calculate_predicted_target_position(target),
-			_get_target_velocity(target)
-		)
+		# Final refresh, then lock. The solve is re-anchored to the reference
+		# aircraft's ACTUAL position: whatever entry error the approach left
+		# becomes honest miss distance on a flyable trajectory, instead of a
+		# release point the fixed-direction dive can never reach.
+		var final_solution := _solve_locked_dive_state(target, controller)
+		if final_solution != null and final_solution.valid:
+			controller.update_attack_solution(final_solution)
+		else:
+			controller.update_target(
+				_calculate_predicted_target_position(target),
+				_get_target_velocity(target)
+			)
 		if owner_squadron.dive_control_source \
 				== AircraftSquadron.DiveControlSource.AI:
 			controller.lock_solution()
@@ -411,9 +476,16 @@ func _solve_attack(
 	var weapon_data := _get_bomb_weapon_data()
 	if dive_data == null or weapon_data == null:
 		return null
+	# One solve per squadron, anchored on the central reference aircraft.
+	# Individual aircraft never run their own resolver.
+	var reference := _get_reference_aircraft()
+	var solve_position := reference.global_position \
+		if reference != null else owner_squadron.formation_center
+	var solve_forward := -reference.global_transform.basis.z \
+		if reference != null else owner_squadron.get_formation_forward()
 	var solution := DiveBombAttackResolver.solve(
-		owner_squadron.formation_center,
-		owner_squadron.get_formation_forward(),
+		solve_position,
+		solve_forward,
 		_get_formation_speed_mps(),
 		target.global_position,
 		_get_target_velocity(target),
@@ -423,6 +495,40 @@ func _solve_attack(
 		_get_world_gravity(),
 		_get_attack_direction(target),
 		include_approach_time
+	)
+	if solution != null and solution.valid:
+		_solution_revision += 1
+		solution.revision = _solution_revision
+		_attack_solution = solution
+	return solution
+
+
+## The lock-time solve: forward-projects the already-committed attack
+## direction from the reference aircraft's real position.
+func _solve_locked_dive_state(
+		target: Node3D,
+		controller: DiveBombAttackController
+) -> DiveBombAttackSolution:
+	if target == null or not is_instance_valid(target):
+		return null
+	var dive_data := _get_dive_data()
+	var weapon_data := _get_bomb_weapon_data()
+	if dive_data == null or weapon_data == null:
+		return null
+	var reference := _get_reference_aircraft()
+	if reference == null:
+		return null
+	var attack_direction := controller.locked_attack_direction \
+		if controller.has_attack_solution else _get_attack_direction(target)
+	var solution := DiveBombAttackResolver.solve_from_current_dive_state(
+		reference.global_position,
+		target.global_position,
+		_get_target_velocity(target),
+		target.global_position.y,
+		dive_data,
+		weapon_data,
+		_get_world_gravity(),
+		attack_direction
 	)
 	if solution != null and solution.valid:
 		_solution_revision += 1

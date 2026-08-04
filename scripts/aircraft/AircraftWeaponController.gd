@@ -382,12 +382,14 @@ func _spawn_projectile(
 	context.initial_transform = initial_transform_override as Transform3D \
 		if initial_transform_override is Transform3D \
 		else owner_aircraft.get_payload_release_transform()
-	context.initial_velocity = initial_velocity_override as Vector3 \
-		if initial_velocity_override is Vector3 \
-		else owner_aircraft.get_world_velocity()
-	context.initial_velocity.y = minf(
-		context.initial_velocity.y,
-		-maxf(weapon_data.downward_release_speed_mps, 0.0)
+	# Single ballistic contract shared with DiveBombAttackResolver and the
+	# impact-prediction tests. Changing the release velocity rule means
+	# changing DiveBombBallistics, never this call site.
+	context.initial_velocity = DiveBombBallistics.resolve_bomb_initial_velocity(
+		initial_velocity_override as Vector3 \
+			if initial_velocity_override is Vector3 \
+			else owner_aircraft.get_world_velocity(),
+		weapon_data
 	)
 	context.aim_point = target_position
 	if weapon_data.weapon_type \

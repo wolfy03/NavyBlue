@@ -257,6 +257,25 @@ func get_alive_aircraft() -> Array[AircraftUnit]:
 	return result
 
 
+## Central reference aircraft for dive-bombing: the alive unit horizontally
+## closest to the formation center, independent of array order. The whole
+## squadron's attack solution and release window are judged from this one
+## aircraft.
+func select_dive_bomb_reference_aircraft() -> AircraftUnit:
+	var selected: AircraftUnit = null
+	var best_distance_squared := INF
+	for aircraft in get_alive_aircraft():
+		if aircraft == null or not is_instance_valid(aircraft):
+			continue
+		var offset := aircraft.global_position - formation_center
+		offset.y = 0.0
+		var distance_squared := offset.length_squared()
+		if distance_squared < best_distance_squared:
+			best_distance_squared = distance_squared
+			selected = aircraft
+	return selected
+
+
 func assign_strike_mission(
 		target_ship: Node3D,
 		mission_data: AirMissionData

@@ -50,6 +50,10 @@ enum ReleaseBlockReason {
 	NO_RELEASE_CAPABLE_AIRCRAFT,
 	SAFETY_ALTITUDE_REACHED,
 	CANCELLED,
+	RELEASE_POSITION_MISSED,
+	HEADING_NOT_ALIGNED,
+	IMPACT_SOLUTION_INVALID,
+	REFERENCE_AIRCRAFT_LOST,
 }
 
 const EPSILON := 0.0001
@@ -68,6 +72,18 @@ var target_velocity := Vector3.ZERO
 ## when a caller supplies no solution (player manual dives).
 var planned_release_position := Vector3.ZERO
 var has_planned_release_position := false
+## One central attack solution per squadron. When present, the dive flies a
+## locked direction and the release window is judged from the reference
+## aircraft; the legacy per-aircraft altitude policy remains for solutionless
+## dives (player manual runs).
+var attack_solution: DiveBombAttackSolution
+var has_attack_solution := false
+var predicted_impact_position := Vector3.ZERO
+var planned_dive_entry_position := Vector3.ZERO
+var locked_attack_direction := Vector3.FORWARD
+var locked_dive_direction := Vector3.ZERO
+var _reference_aircraft_ref: WeakRef
+var _reference_aircraft_instance_id := 0
 var solution_locked := false
 var dive_elapsed_seconds := 0.0
 var release_block_reason: ReleaseBlockReason = ReleaseBlockReason.NONE
@@ -137,6 +153,14 @@ func reset() -> void:
 	target_velocity = Vector3.ZERO
 	planned_release_position = Vector3.ZERO
 	has_planned_release_position = false
+	attack_solution = null
+	has_attack_solution = false
+	predicted_impact_position = Vector3.ZERO
+	planned_dive_entry_position = Vector3.ZERO
+	locked_attack_direction = Vector3.FORWARD
+	locked_dive_direction = Vector3.ZERO
+	_reference_aircraft_ref = null
+	_reference_aircraft_instance_id = 0
 	dive_elapsed_seconds = 0.0
 	release_block_reason = ReleaseBlockReason.NONE
 	solution_locked = false
@@ -211,6 +235,122 @@ func begin_dive_with_source(
 	_initialize_aircraft_release_states()
 	state = State.DIVE_ENTRY
 	return BeginDiveResult.STARTED
+
+
+## Starts a dive from one complete attack solution. This is the AI entry
+## point: every position (impact, release, dive entry), the attack direction
+## and the locked dive direction come from the same solution.
+##
+## The snapshot is applied AFTER begin_dive_with_source, whose internal
+## reset() would otherwise wipe positions set beforehand — that ordering bug
+## is why individual setters must not be combined with begin_dive.
+func begin_dive_with_solution(
+		solution: DiveBombAttackSolution,
+		source: AircraftSquadron.DiveControlSource,
+		next_dispersion_radius_m: float = 0.0
+) -> BeginDiveResult:
+	if solution == null or not solution.valid:
+		return BeginDiveResult.INVALID_CONFIGURATION
+	var result := begin_dive_with_source(
+		solution.predicted_impact_position,
+		solution.target_velocity,
+		source,
+		next_dispersion_radius_m
+	)
+	if result in [
+		BeginDiveResult.STARTED,
+		BeginDiveResult.ALREADY_ACTIVE_SAME_SOURCE,
+	]:
+		_apply_solution_snapshot(solution)
+		_select_reference_aircraft()
+	return result
+
+
+## Whole-solution update: impact, release, entry, directions and timing always
+## change together. Ignored once the dive is locked.
+func update_attack_solution(
+		next_solution: DiveBombAttackSolution
+) -> void:
+	if solution_locked:
+		return
+	if next_solution == null or not next_solution.valid:
+		return
+	if state not in [State.DIVE_ENTRY, State.DIVING, State.RELEASING]:
+		return
+	_apply_solution_snapshot(next_solution)
+
+
+func _apply_solution_snapshot(solution: DiveBombAttackSolution) -> void:
+	attack_solution = solution.duplicate_solution()
+	has_attack_solution = true
+	predicted_impact_position = solution.predicted_impact_position
+	# Legacy consumers (pass-abort checks, pull-out floor) read
+	# target_position; keep it aligned with the solved impact point.
+	target_position = solution.predicted_impact_position
+	target_velocity = solution.target_velocity
+	planned_release_position = solution.release_position
+	has_planned_release_position = true
+	planned_dive_entry_position = solution.dive_entry_position
+	locked_attack_direction = solution.attack_direction
+	locked_dive_direction = _build_locked_dive_direction(
+		solution.attack_direction
+	)
+
+
+## Fixed dive direction: computed once per solution, never re-normalized
+## toward the release point in flight, so the dive angle cannot wander.
+func _build_locked_dive_direction(attack_direction: Vector3) -> Vector3:
+	var horizontal := attack_direction
+	horizontal.y = 0.0
+	if horizontal.length_squared() <= EPSILON:
+		horizontal = owner_squadron.get_formation_forward() \
+			if owner_squadron != null else Vector3.FORWARD
+		horizontal.y = 0.0
+	horizontal = horizontal.normalized() \
+		if horizontal.length_squared() > EPSILON else Vector3.FORWARD
+	var angle_rad := deg_to_rad(clampf(
+		dive_data.dive_angle_degrees if dive_data != null else 55.0,
+		1.0,
+		89.0
+	))
+	return (
+		horizontal * cos(angle_rad)
+		+ Vector3.DOWN * sin(angle_rad)
+	).normalized()
+
+
+#region Reference aircraft
+## The squadron's central aircraft: closest alive unit to the formation
+## center. It anchors the release-window judgement for the whole squadron.
+func get_reference_aircraft() -> AircraftUnit:
+	var current: Variant = _reference_aircraft_ref.get_ref() \
+		if _reference_aircraft_ref != null else null
+	if current != null and is_instance_valid(current):
+		var aircraft := current as AircraftUnit
+		if aircraft != null and aircraft.is_alive():
+			return aircraft
+	# The reference was lost: pick a new central aircraft but keep the locked
+	# solution — the dive trajectory itself does not change (spec policy).
+	_select_reference_aircraft()
+	var replacement: Variant = _reference_aircraft_ref.get_ref() \
+		if _reference_aircraft_ref != null else null
+	if replacement != null and is_instance_valid(replacement):
+		return replacement as AircraftUnit
+	return null
+
+
+func _select_reference_aircraft() -> void:
+	var selected: AircraftUnit = null
+	if owner_squadron != null and is_instance_valid(owner_squadron):
+		selected = owner_squadron.select_dive_bomb_reference_aircraft()
+	_reference_aircraft_ref = weakref(selected) if selected != null else null
+	_reference_aircraft_instance_id = selected.get_instance_id() \
+		if selected != null else 0
+
+
+func get_reference_aircraft_instance_id() -> int:
+	return _reference_aircraft_instance_id
+#endregion
 
 
 ## Supplies the solved release point. Optional: a caller that provides none
@@ -468,6 +608,16 @@ func get_debug_snapshot() -> Dictionary:
 			and is_instance_valid(owner_squadron) else 0,
 		"release_failure_reason":
 			ReleaseBlockReason.keys()[int(release_block_reason)],
+		"has_attack_solution": has_attack_solution,
+		"solution_locked": solution_locked,
+		"predicted_impact_position": predicted_impact_position,
+		"planned_release_position": planned_release_position,
+		"planned_dive_entry_position": planned_dive_entry_position,
+		"locked_attack_direction": locked_attack_direction,
+		"locked_dive_direction": locked_dive_direction,
+		"reference_aircraft_id": _reference_aircraft_instance_id,
+		"solution_revision": attack_solution.revision \
+			if attack_solution != null else 0,
 	}
 
 
@@ -487,6 +637,142 @@ func _update_attack_descent(delta: float) -> void:
 
 
 func _update_individual_aircraft_release() -> void:
+	if has_attack_solution:
+		_update_central_release_window()
+		return
+	_update_legacy_altitude_release()
+
+
+#region Central release window
+## Judges the whole squadron's release from the reference aircraft. When the
+## window opens every pending aircraft drops its real bomb at once; when the
+## reference falls below the minimum release altitude without a valid window,
+## the pass is abandoned with ammunition intact instead of force-dropping.
+func _update_central_release_window() -> void:
+	if not _has_pending_aircraft_release():
+		return
+	var reference := get_reference_aircraft()
+	if reference == null:
+		release_block_reason = ReleaseBlockReason.REFERENCE_AIRCRAFT_LOST
+		_skip_all_pending_releases()
+		return
+	var reason := _evaluate_reference_release_window(reference)
+	release_block_reason = reason
+	if reason == ReleaseBlockReason.NONE:
+		for aircraft_id_value in _aircraft_release_states.keys():
+			var aircraft_id := int(aircraft_id_value)
+			if int(_aircraft_release_states[aircraft_id]) \
+					!= AircraftReleaseState.PENDING:
+				continue
+			var aircraft := _find_alive_aircraft(aircraft_id)
+			if aircraft == null:
+				_aircraft_release_states[aircraft_id] = \
+					AircraftReleaseState.FAILED
+				continue
+			_attempt_individual_release(aircraft)
+		_update_release_state_counts()
+		return
+	var reference_altitude := reference.global_position.y \
+		- predicted_impact_position.y
+	if reference_altitude < maxf(dive_data.minimum_release_altitude_m, 0.0):
+		# The last altitude at which a drop was allowed has passed without a
+		# valid horizontal solution: give up rather than waste bombs.
+		_skip_all_pending_releases()
+
+
+## Everything the reference aircraft must satisfy before the squadron drops.
+## Ordered cheapest-first; the first violated condition is reported.
+func _evaluate_reference_release_window(
+		reference: AircraftUnit
+) -> ReleaseBlockReason:
+	if dive_elapsed_seconds \
+			< maxf(dive_data.minimum_dive_time_before_release_sec, 0.0):
+		return ReleaseBlockReason.TOO_EARLY
+	var altitude := reference.global_position.y - predicted_impact_position.y
+	if altitude > dive_data.automatic_release_altitude_m \
+			+ maxf(dive_data.release_altitude_tolerance_m, 0.0):
+		return ReleaseBlockReason.TOO_EARLY
+	var release_offset := reference.global_position \
+		- planned_release_position
+	release_offset.y = 0.0
+	if release_offset.length() \
+			> maxf(dive_data.release_position_tolerance_m, 0.0):
+		return ReleaseBlockReason.RELEASE_POSITION_MISSED
+	var reference_forward := reference.velocity
+	reference_forward.y = 0.0
+	if reference_forward.length_squared() <= EPSILON:
+		reference_forward = -reference.global_transform.basis.z
+		reference_forward.y = 0.0
+	if reference_forward.length_squared() > EPSILON:
+		reference_forward = reference_forward.normalized()
+		var heading_dot := clampf(
+			reference_forward.dot(locked_attack_direction),
+			-1.0,
+			1.0
+		)
+		if rad_to_deg(acos(heading_dot)) > maxf(
+			dive_data.maximum_release_heading_error_degrees,
+			0.0
+		):
+			return ReleaseBlockReason.HEADING_NOT_ALIGNED
+	var weapon_data := _get_bomb_weapon_data()
+	if weapon_data != null:
+		var predicted_now := DiveBombBallistics \
+			.predict_impact_from_release_state(
+				reference.global_position,
+				DiveBombBallistics.resolve_bomb_initial_velocity(
+					reference.velocity,
+					weapon_data
+				),
+				predicted_impact_position.y,
+				weapon_data,
+				_get_world_gravity()
+			)
+		if not predicted_now.is_finite():
+			return ReleaseBlockReason.IMPACT_SOLUTION_INVALID
+		var impact_offset := predicted_now - predicted_impact_position
+		impact_offset.y = 0.0
+		if impact_offset.length() \
+				> maxf(dive_data.maximum_predicted_impact_error_m, 0.0):
+			return ReleaseBlockReason.IMPACT_SOLUTION_INVALID
+	return ReleaseBlockReason.NONE
+
+
+## Marks every pending aircraft as skipped: no release request is sent, so
+## ammunition stays aboard and the pass resolves into a pull-out.
+func _skip_all_pending_releases() -> void:
+	for aircraft_id_value in _aircraft_release_states.keys():
+		var aircraft_id := int(aircraft_id_value)
+		if int(_aircraft_release_states[aircraft_id]) \
+				== AircraftReleaseState.PENDING:
+			_aircraft_release_states[aircraft_id] = \
+				AircraftReleaseState.SKIPPED
+	_update_release_state_counts()
+
+
+func _has_pending_aircraft_release() -> bool:
+	for value in _aircraft_release_states.values():
+		if int(value) == AircraftReleaseState.PENDING:
+			return true
+	return false
+
+
+func _get_bomb_weapon_data() -> AircraftWeaponData:
+	var data := owner_squadron.squadron_data.aircraft_data \
+		if owner_squadron != null \
+		and owner_squadron.squadron_data != null else null
+	return data.weapon_data if data != null else null
+
+
+func _get_world_gravity() -> float:
+	return float(ProjectSettings.get_setting(
+		"physics/3d/default_gravity",
+		9.8
+	))
+#endregion
+
+
+func _update_legacy_altitude_release() -> void:
 	for aircraft_id_value in _aircraft_release_states.keys():
 		var aircraft_id := int(aircraft_id_value)
 		var release_state := int(_aircraft_release_states[aircraft_id])
@@ -795,6 +1081,23 @@ func _finish_release_pass(cancelled: bool) -> void:
 
 func _apply_dive_flight(delta: float) -> void:
 	# Fly the dive toward the planned release point, not the impact point.
+	if has_attack_solution \
+			and locked_dive_direction.length_squared() > EPSILON:
+		# Central-solution dive: fly the fixed direction computed at lock
+		# time. The release point is a waypoint on this fixed trajectory,
+		# never a per-frame steering target, so heading and dive angle stay
+		# constant and match what the resolver assumed.
+		owner_squadron.apply_direct_flight(
+			locked_dive_direction,
+			dive_data.dive_speed_mps,
+			delta,
+			target_position.y + maxf(
+				dive_data.automatic_pull_out_altitude_m,
+				0.0
+			)
+		)
+		return
+	# Legacy (solutionless) dive: steer toward the aim point each frame.
 	# Flying at the impact point makes the aircraft overfly the target, because
 	# the bomb still travels forward for its whole fall time after release.
 	var dive_aim_point := planned_release_position \

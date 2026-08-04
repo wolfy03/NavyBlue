@@ -109,10 +109,10 @@ static func solve(
 	var vertical_drop := entry_altitude - release_altitude
 	var dive_time := vertical_drop / dive_vertical_speed
 	var dive_travel := attack_direction * (dive_horizontal_speed * dive_time)
-	var release_delay := maxf(
-		weapon_data.release_interval_sec if weapon_data != null else 0.0,
-		0.0
-	)
+	# release_interval_sec is the stagger between bombs of one squadron, not
+	# a mechanical fuse: the central solution is planned for the first bomb,
+	# so no release delay enters the ballistic timing.
+	var release_delay := 0.0
 	var approach_distance := maxf(dive_data.approach_distance_m, 0.0)
 
 	# Iterate: the impact point sets the total flight time, which moves the
@@ -165,6 +165,102 @@ static func solve(
 	solution.bomb_horizontal_travel_m = bomb_travel.length()
 	solution.predicted_bomb_velocity = bomb_velocity
 	solution.solution_iteration_count = iteration_count
+	if not _is_finite_solution(solution):
+		return DiveBombAttackSolution.failed(&"non_finite_solution")
+	solution.valid = true
+	return solution
+
+
+## Descriptive solve for the moment the dive locks: instead of prescribing
+## where the aircraft should be, it forward-projects the fixed dive direction
+## from where the reference aircraft actually is. The returned release and
+## impact points are the ones this dive WILL produce, so the release window
+## opens exactly when the aircraft passes the release altitude and the
+## planned-vs-predicted impact check stays consistent. Entry positioning error
+## therefore turns into honest miss distance instead of a refused drop.
+static func solve_from_current_dive_state(
+		reference_position: Vector3,
+		target_position: Vector3,
+		target_velocity: Vector3,
+		target_world_y: float,
+		dive_data: DiveBomberCombatData,
+		weapon_data: AircraftWeaponData,
+		gravity_mps2: float,
+		locked_attack_direction: Vector3
+) -> DiveBombAttackSolution:
+	var validation := _validate_inputs(
+		reference_position,
+		target_position,
+		dive_data,
+		weapon_data,
+		gravity_mps2
+	)
+	if not validation.is_empty():
+		return DiveBombAttackSolution.failed(validation)
+	var attack_direction := locked_attack_direction
+	attack_direction.y = 0.0
+	if attack_direction.length_squared() <= EPSILON:
+		return DiveBombAttackSolution.failed(&"invalid_attack_direction")
+	attack_direction = attack_direction.normalized()
+	var release_altitude := maxf(dive_data.automatic_release_altitude_m, 0.0)
+	var dive_speed := maxf(dive_data.dive_speed_mps, 0.0)
+	if dive_speed <= EPSILON:
+		return DiveBombAttackSolution.failed(&"invalid_dive_speed")
+	var reference_altitude := reference_position.y - target_world_y
+	if reference_altitude <= release_altitude:
+		return DiveBombAttackSolution.failed(&"invalid_dive_geometry")
+	var bomb_gravity := DiveBombBallistics.resolve_bomb_gravity(
+		weapon_data,
+		gravity_mps2
+	)
+	if bomb_gravity <= EPSILON:
+		return DiveBombAttackSolution.failed(&"invalid_gravity")
+	var dive_angle_rad := deg_to_rad(clampf(
+		dive_data.dive_angle_degrees,
+		1.0,
+		89.0
+	))
+	var dive_vertical_speed := dive_speed * sin(dive_angle_rad)
+	var dive_horizontal_speed := dive_speed * cos(dive_angle_rad)
+	if dive_vertical_speed <= EPSILON:
+		return DiveBombAttackSolution.failed(&"invalid_dive_geometry")
+	var dive_time := (reference_altitude - release_altitude) \
+		/ dive_vertical_speed
+	var release_position := reference_position \
+		+ attack_direction * (dive_horizontal_speed * dive_time)
+	release_position.y = target_world_y + release_altitude
+	var bomb_velocity := DiveBombBallistics.resolve_bomb_initial_velocity(
+		attack_direction * dive_horizontal_speed
+			+ Vector3.DOWN * dive_vertical_speed,
+		weapon_data
+	)
+	var bomb_fall_time := DiveBombBallistics.solve_fall_time(
+		release_altitude,
+		bomb_velocity.y,
+		bomb_gravity
+	)
+	if bomb_fall_time < 0.0:
+		return DiveBombAttackSolution.failed(&"invalid_bomb_ballistics")
+	var bomb_travel := Vector3(bomb_velocity.x, 0.0, bomb_velocity.z) \
+		* bomb_fall_time
+	var solution := DiveBombAttackSolution.new()
+	solution.target_position_at_solve = target_position
+	solution.target_velocity = target_velocity
+	solution.attack_direction = attack_direction
+	solution.release_position = release_position
+	solution.predicted_impact_position = release_position + bomb_travel
+	solution.predicted_impact_position.y = target_world_y
+	solution.dive_entry_position = reference_position
+	solution.approach_position = reference_position
+	solution.dive_time_to_release_sec = dive_time
+	solution.bomb_fall_time_sec = bomb_fall_time
+	solution.total_time_to_impact_sec = dive_time + bomb_fall_time
+	solution.release_altitude_m = release_altitude
+	solution.dive_entry_altitude_m = reference_altitude
+	solution.horizontal_dive_distance_m = dive_horizontal_speed * dive_time
+	solution.bomb_horizontal_travel_m = bomb_travel.length()
+	solution.predicted_bomb_velocity = bomb_velocity
+	solution.solution_iteration_count = 1
 	if not _is_finite_solution(solution):
 		return DiveBombAttackSolution.failed(&"non_finite_solution")
 	solution.valid = true
