@@ -1,9 +1,13 @@
-[gd_resource type="Resource" script_class="DiveBomberCombatData" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="DiveBomberCombatData" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/aircraft/DiveBomberCombatData.gd" id="1_dive"]
+[ext_resource type="Resource" path="res://resources/aircraft/dive_bomber/default_dive_bomb_accuracy_profile.tres" id="2_accuracy"]
 
 [resource]
 script = ExtResource("1_dive")
+accuracy_profile = ExtResource("2_accuracy")
+auto_acquire_ship_near_designation = true
+target_acquisition_radius_m = 250.0
 dive_entry_altitude_m = 350.0
 dive_angle_degrees = 55.0
 dive_speed_mps = 210.0

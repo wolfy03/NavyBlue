@@ -68,6 +68,8 @@ func setup(
 	set_weapon_runtime_stats_save_data(runtime_stats_data)
 	name = "%s_%s" % [ship_data.id, String(team)]
 	_register_groups()
+	if battle_services != null:
+		battle_services.ship_registry.register_ship(self)
 
 func _ready() -> void:
 	if ship_data == null:
@@ -555,8 +557,17 @@ func sink() -> void:
 	collision_layer = 0
 	collision_mask = 0
 	if battle_services != null:
+		battle_services.ship_registry.unregister_ship(self)
 		battle_services.events.emit_ship_destroyed(self)
 	call_deferred(&"queue_free")
+
+
+func _exit_tree() -> void:
+	# Despawn without sinking (battle teardown, save restore) must also leave
+	# the registry; double-unregister is harmless.
+	if battle_services != null:
+		battle_services.ship_registry.unregister_ship(self)
+
 
 func _register_groups() -> void:
 	add_to_group("ships")

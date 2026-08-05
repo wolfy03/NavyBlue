@@ -293,13 +293,25 @@ func handle_dive_targeting_input(event: InputEvent) -> bool:
 				"Dive attack could not be ordered."
 			)
 		return true
-	var commands := dive_targeting_session.confirm(point as Vector3)
+	# A click directly on a ship makes it the explicit dive target; ocean
+	# clicks rely on the resolver's radius acquisition around the point.
+	var clicked_ship: ShipUnit = null
+	if world_pointer_resolver != null:
+		clicked_ship = world_pointer_resolver.pick_ship(
+			camera,
+			mouse_event.position
+		)
+	var commands := dive_targeting_session.confirm(
+		point as Vector3,
+		clicked_ship
+	)
 	var issued_count := mini(squadrons.size(), commands.size())
 	var ordered := 0
 	for index in issued_count:
 		if squadrons[index].begin_manual_dive_at(
 			commands[index].target_point,
-			commands[index].dispersion_radius_m
+			commands[index].dispersion_radius_m,
+			commands[index].get_target_ship()
 		):
 			ordered += 1
 	if selection_controller != null:

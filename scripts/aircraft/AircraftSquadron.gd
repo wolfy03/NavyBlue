@@ -261,6 +261,26 @@ func get_alive_aircraft() -> Array[AircraftUnit]:
 ## closest to the formation center, independent of array order. The whole
 ## squadron's attack solution and release window are judged from this one
 ## aircraft.
+## Candidate ships for dive-bomb target resolution. Primary source is the
+## battle-wide ship registry (maintained on spawn/despawn); the group lookup
+## is a fallback for harnesses that build ships without BattleServices. Only
+## called at resolve events (command, pass start, repath, target loss) —
+## never per physics frame.
+func get_dive_bomb_candidate_ships() -> Array[ShipUnit]:
+	if battle_services != null:
+		var registered := battle_services.ship_registry.get_alive_ships()
+		if not registered.is_empty():
+			return registered
+	var result: Array[ShipUnit] = []
+	if not is_inside_tree():
+		return result
+	for value in get_tree().get_nodes_in_group(&"ships"):
+		var ship := value as ShipUnit
+		if ship != null and is_instance_valid(ship) and ship.is_alive():
+			result.append(ship)
+	return result
+
+
 func select_dive_bomb_reference_aircraft() -> AircraftUnit:
 	var selected: AircraftUnit = null
 	var best_distance_squared := INF
@@ -405,23 +425,53 @@ func can_begin_manual_dive() -> bool:
 		and has_any_ammunition()
 
 
+## Shared target selection for player dive orders: the same resolver and the
+## same rules the AI mission uses. The explicit ship (clicked or manually
+## targeted) wins, then the nearest hostile ship inside the acquisition
+## radius around the designation, then the designated position itself.
+func resolve_player_dive_target(
+		designated_position: Vector3,
+		explicit_target: ShipUnit = null
+) -> DiveBombResolvedTarget:
+	var dive_data := get_dive_bomber_combat_data()
+	var request := DiveBombTargetRequest.new()
+	request.source = DiveBombTargetRequest.Source.PLAYER
+	request.set_explicit_target(explicit_target)
+	request.designated_world_position = designated_position
+	request.acquisition_radius_m = \
+		dive_data.get_target_acquisition_radius_m() \
+		if dive_data != null else 0.0
+	request.requesting_team = get_team()
+	request.allow_position_fallback = true
+	return DiveBombTargetResolver.resolve(
+		request,
+		get_dive_bomb_candidate_ships()
+	)
+
+
+## Immediate dive from the squadron's current position. The geometry is
+## whatever the player commanded, so the legacy point-based dive is kept; the
+## target itself still comes from the shared resolver.
 func begin_manual_dive() -> bool:
 	if not can_begin_manual_dive():
 		return false
 	cancel_current_mission_for_player_command()
-	var target_ship := get_manual_attack_target()
-	var target := target_ship.global_position \
-		if target_ship != null else (
-			_manual_move_target if _has_manual_move_target \
-			else formation_center \
-				+ get_formation_forward() * 600.0
-		)
-	target.y = target_ship.global_position.y \
-		if target_ship != null else 0.0
-	var target_velocity := _get_target_world_velocity(target_ship)
+	var designation := _manual_move_target if _has_manual_move_target \
+		else formation_center + get_formation_forward() * 600.0
+	designation.y = 0.0
+	var resolved := resolve_player_dive_target(
+		designation,
+		get_manual_attack_target()
+	)
+	if not resolved.is_valid():
+		return false
+	# Keep the manual-target tracking aligned with the resolver's choice so
+	# the per-frame lead prediction follows the acquired ship.
+	_manual_attack_target_ref = weakref(resolved.get_ship()) \
+		if resolved.get_ship() != null else null
 	var begin_result := dive_bomb_controller.begin_dive_with_source(
-		target,
-		target_velocity,
+		resolved.get_aim_position(),
+		resolved.get_target_velocity(),
 		DiveControlSource.PLAYER
 	)
 	if begin_result != DiveBombAttackController.BeginDiveResult.STARTED:
@@ -433,13 +483,14 @@ func begin_manual_dive() -> bool:
 
 func begin_manual_dive_at(
 		target_point: Vector3,
-		dispersion_radius_m: float = 0.0
+		dispersion_radius_m: float = 0.0,
+		explicit_target: ShipUnit = null
 ) -> bool:
 	if not can_begin_manual_dive():
 		return false
 	cancel_current_mission_for_player_command()
 	var run := PlayerDiveBombRun.new()
-	if not run.setup(self, target_point, dispersion_radius_m):
+	if not run.setup(self, target_point, dispersion_radius_m, explicit_target):
 		return false
 	_player_dive_run = run
 	set_physics_process(true)

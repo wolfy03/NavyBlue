@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="DiveBombAccuracyProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/DiveBombAccuracyProfile.gd" id="1_profile"]
+
+[resource]
+script = ExtResource("1_profile")
+base_accuracy = 1.0
+perfect_accuracy_dispersion_m = 0.0
+minimum_accuracy_dispersion_m = 150.0
+formation_size_multiplier = 0.0
+damage_state_multiplier = 0.0
+target_evasion_multiplier = 0.0

@@ -34,4 +34,5 @@ script = ExtResource("4_weapon")
 [node name="FighterCombatController" type="Node" parent="." unique_id=1046265608]
 script = ExtResource("5_fighter")
 
-[node name="AircraftVisualSample" parent="." unique_id=1110505041 instance=ExtResource("6_t87gh")]
+[node name="VisualRoot" parent="." unique_id=1110505041 instance=ExtResource("6_t87gh")]
+unique_name_in_owner = true

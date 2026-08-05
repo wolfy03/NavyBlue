@@ -8,6 +8,9 @@ var run_session := RunSessionReader.new()
 var game_flow := GameFlowService.new()
 var faction_palette: FactionPalette
 var debug_settings: BattleDebugSettings
+## Battle-wide ship roster, maintained on ship spawn/despawn so target
+## selection never walks the SceneTree.
+var ship_registry := ShipRegistryService.new()
 ## AI gunnery difficulty for every AI ship in this battle. Optional: null
 ## falls back to the normal profile inside ShipGunneryFireControl.
 var ai_gunnery_difficulty: AIGunneryDifficultyProfile
@@ -85,6 +88,7 @@ func shutdown() -> void:
 	faction_palette = null
 	debug_settings = null
 	ai_gunnery_difficulty = null
+	ship_registry.clear()
 	# Live gauges must not leak into the next battle.
 	performance_counters.reset_all()
 	performance_counters.set_enabled(false)

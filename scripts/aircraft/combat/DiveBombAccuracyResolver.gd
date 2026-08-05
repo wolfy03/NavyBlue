@@ -1,6 +1,11 @@
 extends RefCounted
 class_name DiveBombAccuracyResolver
 
+# DEPRECATED: runtime dive-bomb accuracy now lives in DiveBombAccuracyProfile
+# (rolled once per pass by DiveBombAttackPlanner); the targeting preview reads
+# the same profile. This legacy formation-count radius is kept only for
+# resources/tools that still reference the old dispersion fields.
+#
 # Resolves the bombing dispersion radius: the circle the preview draws and the
 # area bombs actually scatter within. Base accuracy comes from the dive bomber's
 # combat data and tightens as more aircraft survive the run.

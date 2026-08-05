@@ -2,9 +2,9 @@ extends Resource
 class_name AircraftBankVisualSettings
 ## Visual-only banking of the aircraft model during horizontal turns.
 ##
-## Applied exclusively to the visual model child (AircraftVisualSample):
-## the physics root, collision shape and weapon transforms never roll, so
-## flight behaviour and hit detection are unaffected by any of these values.
+## Applied exclusively to the aircraft's %VisualRoot child: the physics
+## root, collision shape and weapon transforms never roll, so flight
+## behaviour and hit detection are unaffected by any of these values.
 
 ## Bank angle the model shows at (and beyond) the full-bank turn rate.
 @export_range(0.0, 85.0, 0.5)

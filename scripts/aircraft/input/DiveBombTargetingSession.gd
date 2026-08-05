@@ -18,7 +18,6 @@ enum State {
 
 var state: State = State.INACTIVE
 var _battle_environment: BattleEnvironment
-var _accuracy_resolver := DiveBombAccuracyResolver.new()
 var _squadron_refs: Array[WeakRef] = []
 var _squadron_callbacks: Dictionary = {}
 var _cursor_point := Vector3.ZERO
@@ -78,7 +77,10 @@ func update_cursor(world_point: Vector3) -> void:
 	_refresh_preview()
 
 
-func confirm(world_point: Vector3) -> Array[DiveBombCommand]:
+func confirm(
+		world_point: Vector3,
+		clicked_ship: ShipUnit = null
+) -> Array[DiveBombCommand]:
 	var commands: Array[DiveBombCommand] = []
 	if state != State.ARMED:
 		return commands
@@ -93,6 +95,9 @@ func confirm(world_point: Vector3) -> Array[DiveBombCommand]:
 		command.target_point = _cursor_point
 		command.target_velocity = Vector3.ZERO
 		command.dispersion_radius_m = _resolve_radius_for(squadron)
+		# A directly clicked ship is the explicit target; validity and
+		# hostility are judged by the shared DiveBombTargetResolver.
+		command.set_target_ship(clicked_ship)
 		commands.append(command)
 	state = State.INACTIVE
 	set_process(false)
@@ -151,11 +156,14 @@ func _refresh_preview() -> void:
 	preview_changed.emit(preview)
 
 
+## Preview circle radius: the accuracy profile's dispersion disc for the
+## squadron's current accuracy — the same single source the attack planner
+## rolls the real aim offset from, so the preview is honest.
 func _resolve_radius_for(squadron: AircraftSquadron) -> float:
-	return _accuracy_resolver.resolve_dispersion_radius_m(
-		squadron.get_dive_bomber_combat_data(),
-		squadron.get_alive_aircraft_count()
-	)
+	var dive_data := squadron.get_dive_bomber_combat_data()
+	if dive_data == null:
+		return 0.0
+	return dive_data.get_accuracy_profile().resolve_dispersion_radius_m()
 
 
 func _on_ground_plane(point: Vector3) -> Vector3:

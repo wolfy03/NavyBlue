@@ -90,7 +90,12 @@ func _test_ai_leads_moving_target() -> void:
 		Callable(self, &"_get_provider_units")
 	)
 	target.set_player_commands(1.0, 0.0, false)
-	for _frame in 150:
+	# Long enough for tracking confidence to saturate: the observation noise
+	# is seeded from instance ids, so at low confidence the lead direction is
+	# one arbitrary draw and the assertion below flips whenever an unrelated
+	# code change shifts allocation order. At saturated confidence the error
+	# is small and the lead robustly points along the travel direction.
+	for _frame in 300:
 		await physics_frame
 	var target_velocity := target.get_world_velocity()
 	_check(
