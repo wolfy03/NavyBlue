@@ -17,10 +17,27 @@ var failure_reason: StringName = &""
 var target_position_at_solve := Vector3.ZERO
 var target_velocity := Vector3.ZERO
 
+## Where the target ship will actually be when the bomb lands: the point the
+## attack is trying to hit (with any intentional accuracy offset applied).
+var intended_target_impact_position := Vector3.ZERO
+## Where the bomb will land if released from the currently solved trajectory.
+## Comparing this against the intended point is the release-window impact
+## check; the two must NEVER be derived from the same projection.
+var trajectory_predicted_impact_position := Vector3.ZERO
+## Compatibility alias: always equals intended_target_impact_position.
 var predicted_impact_position := Vector3.ZERO
 var release_position := Vector3.ZERO
 var dive_entry_position := Vector3.ZERO
 var approach_position := Vector3.ZERO
+
+## Accuracy snapshot. exact_* is the pure physics prediction; dispersion is
+## the deliberate, deterministic balance offset; final aim = exact + offset.
+var exact_intended_impact_position := Vector3.ZERO
+var dispersion_offset := Vector3.ZERO
+var final_aim_impact_position := Vector3.ZERO
+var base_accuracy := 1.0
+var final_accuracy := 1.0
+var dispersion_radius_m := 0.0
 
 var attack_direction := Vector3.FORWARD
 
@@ -55,6 +72,14 @@ func duplicate_solution() -> DiveBombAttackSolution:
 	copy.failure_reason = failure_reason
 	copy.target_position_at_solve = target_position_at_solve
 	copy.target_velocity = target_velocity
+	copy.intended_target_impact_position = intended_target_impact_position
+	copy.trajectory_predicted_impact_position = trajectory_predicted_impact_position
+	copy.exact_intended_impact_position = exact_intended_impact_position
+	copy.dispersion_offset = dispersion_offset
+	copy.final_aim_impact_position = final_aim_impact_position
+	copy.base_accuracy = base_accuracy
+	copy.final_accuracy = final_accuracy
+	copy.dispersion_radius_m = dispersion_radius_m
 	copy.predicted_impact_position = predicted_impact_position
 	copy.release_position = release_position
 	copy.dive_entry_position = dive_entry_position
@@ -80,6 +105,12 @@ func to_debug_dictionary() -> Dictionary:
 	return {
 		"solution_valid": valid,
 		"solution_failure_reason": failure_reason,
+		"intended_target_impact_position": intended_target_impact_position,
+		"trajectory_predicted_impact_position": trajectory_predicted_impact_position,
+		"exact_intended_impact_position": exact_intended_impact_position,
+		"dispersion_offset": dispersion_offset,
+		"final_aim_impact_position": final_aim_impact_position,
+		"final_accuracy": final_accuracy,
 		"predicted_impact_position": predicted_impact_position,
 		"planned_release_position": release_position,
 		"planned_dive_entry_position": dive_entry_position,

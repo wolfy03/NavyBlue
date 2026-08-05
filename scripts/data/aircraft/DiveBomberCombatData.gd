@@ -41,6 +41,18 @@ var pull_out_aircraft_ratio: float = 0.5
 ## Maximum angle between the reference aircraft's actual horizontal track and
 ## the locked attack direction.
 @export var maximum_release_heading_error_degrees := 12.0
+## The squadron drops when the live-predicted impact has swept to within this
+## forward distance of the intended point. Small values release closer to the
+## exact crossing; too small can miss the crossing between physics frames.
+@export var release_impact_trigger_margin_m := 12.0
+
+@export_category("Bombing Skill")
+## 1.0 aims exactly at the solved impact point; lower values add a
+## deterministic offset up to accuracy_maximum_dispersion_radius_m. Pure
+## balance: the ballistic solution itself is never degraded.
+@export_range(0.0, 1.0, 0.01) var base_bombing_accuracy := 1.0
+@export var accuracy_minimum_dispersion_radius_m := 0.0
+@export var accuracy_maximum_dispersion_radius_m := 150.0
 
 @export_category("Bombing Accuracy")
 # Dispersion radius (metres) bombs scatter within, resolved through

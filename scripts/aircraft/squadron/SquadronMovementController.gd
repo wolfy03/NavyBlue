@@ -129,9 +129,21 @@ func advance_formation_center(target: Vector3, delta: float) -> void:
 		var angle := owner_squadron._formation_forward.angle_to(
 			desired_forward
 		)
-		var weight := minf(1.0, turn_step / maxf(angle, EPSILON))
-		owner_squadron._formation_forward = owner_squadron \
-			._formation_forward.slerp(desired_forward, weight).normalized()
+		var rotation_axis := owner_squadron._formation_forward.cross(
+			desired_forward
+		)
+		if rotation_axis.length_squared() <= EPSILON and angle > PI * 0.5:
+			# Antiparallel headings give slerp no rotation axis (Godot falls
+			# back to lerp, which normalizes back to the start vector and the
+			# squadron never turns around). Yaw a fixed step to break the tie.
+			owner_squadron._formation_forward = owner_squadron \
+				._formation_forward.rotated(
+					Vector3.UP, minf(turn_step, angle)
+				).normalized()
+		else:
+			var weight := minf(1.0, turn_step / maxf(angle, EPSILON))
+			owner_squadron._formation_forward = owner_squadron \
+				._formation_forward.slerp(desired_forward, weight).normalized()
 		var travel_distance := minf(
 			get_effective_speed() * delta,
 			horizontal_offset.length()

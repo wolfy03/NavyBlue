@@ -37,3 +37,6 @@ enum AircraftRole {
 
 @export_category("Visual")
 @export var aircraft_scene: PackedScene
+## Visual-only turn banking of the aircraft model. Null uses built-in
+## defaults; the physics root never rolls either way.
+@export var bank_visual_settings: AircraftBankVisualSettings

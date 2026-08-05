@@ -35,6 +35,34 @@ var _solution_revision := 0
 var _reference_aircraft_ref: WeakRef
 var _reference_aircraft_instance_id := 0
 
+const DIVE_ENTRY_REPATH_INTERVAL_SEC := 0.25
+const DIVE_ENTRY_REPATH_THRESHOLD_M := 40.0
+## Kept tighter than release_impact_trigger_margin_m: on a fixed dive path
+## the predicted impact barely moves (the shorter bomb fall almost exactly
+## cancels the aircraft's advance), so the commit moment IS the accuracy
+## control and must land inside the release window's tolerance.
+const DIVE_COMMIT_MARGIN_M := 8.0
+
+## Deterministic per-pass accuracy offset (XZ). Zero at full accuracy; the
+## solver aims at exact + offset so a low-skill crew misses precisely where
+## the roll says, with untouched ballistics.
+var _pass_dispersion_offset := Vector3.ZERO
+var _attack_pass_index := 0
+var _dive_entry_repath_left := 0.0
+
+## Last distance-gate probe, for the arrival fallback: when the waypoint is
+## reached but the reference aircraft is still short of dive range, the
+## destination is pushed further along the attack line instead of committing
+## a dive whose fixed trajectory could never reach the aim point.
+var _gate_probe_valid := false
+var _gate_distance_m := 0.0
+var _gate_required_travel_m := 0.0
+var _gate_final_aim := Vector3.ZERO
+var _gate_attack_direction := Vector3.FORWARD
+
+## How far beyond the aim point the keep-closing waypoint is pushed.
+const DIVE_ENTRY_PUSH_THROUGH_M := 200.0
+
 
 ## The pass's reference aircraft. Reselects only when the current one is gone,
 ## and forces an early repath so the solution is recomputed once for the new
@@ -73,6 +101,9 @@ func setup(
 	state = State.APPROACHING
 	successful = false
 	_finished = false
+	# One deterministic accuracy roll per attack pass (§36): the offset stays
+	# constant through every re-solve of this pass.
+	_roll_pass_dispersion_offset(target_ship)
 	_destination_initialized = false
 	_last_approach_position = Vector3.ZERO
 	_last_dive_entry_position = Vector3.ZERO
@@ -97,7 +128,7 @@ func update(delta: float) -> void:
 		State.APPROACHING:
 			_update_approaching(target, delta)
 		State.DIVE_ENTRY:
-			_update_dive_entry(target)
+			_update_dive_entry(target, delta)
 		State.DIVING:
 			_update_diving(target)
 		State.PULLING_OUT:
@@ -216,19 +247,7 @@ func _update_approaching(target: Node3D, delta: float) -> void:
 	_active_destination_serial = -1
 
 
-func _update_dive_entry(target: Node3D) -> void:
-	if not _destination_initialized:
-		_last_dive_entry_position = _calculate_dive_entry_position(target)
-		_active_destination_serial = \
-			owner_squadron.set_mission_destination(
-				_last_dive_entry_position,
-				true
-			)
-		_destination_initialized = true
-	if not owner_squadron.has_reached_mission_destination(
-		_active_destination_serial
-	):
-		return
+func _update_dive_entry(target: Node3D, delta: float) -> void:
 	var controller := owner_squadron.dive_bomb_controller
 	if controller == null:
 		_finish_and_return(false)
@@ -240,15 +259,131 @@ func _update_dive_entry(target: Node3D) -> void:
 			return
 		_finish_and_return(false)
 		return
+	# Repath the entry point while a moving target drags it around. Without
+	# this the destination is computed once and goes stale during the transit,
+	# which was the measured cause of the ~100-150 m forward miss: the dive
+	# then starts from the wrong spot and the locked trajectory cannot fix it.
+	_dive_entry_repath_left = maxf(_dive_entry_repath_left - delta, 0.0)
+	if not _destination_initialized or _dive_entry_repath_left <= 0.0:
+		var navigation_solution := _solve_attack(target, false)
+		if navigation_solution != null and navigation_solution.valid:
+			# Aim the waypoint at the RELEASE point's ground track, not the
+			# entry: the formation center is a kinematic phantom the real
+			# aircraft chase from ~100+ m behind, so a center-based arrival at
+			# the entry fires while the reference aircraft is still short of
+			# dive range. Flying through the entry toward the release keeps
+			# everyone moving until the reference-distance gate commits the
+			# dive at true geometry. The waypoint keeps the ENTRY altitude -
+			# the squadron must stay level until the dive itself descends.
+			var next_entry := navigation_solution.release_position
+			next_entry.y = navigation_solution.dive_entry_position.y
+			if not _destination_initialized \
+					or _last_dive_entry_position.distance_to(next_entry) \
+						>= DIVE_ENTRY_REPATH_THRESHOLD_M:
+				_last_dive_entry_position = next_entry
+				_active_destination_serial = \
+					owner_squadron.set_mission_destination(next_entry, true)
+				_destination_initialized = true
+		elif not _destination_initialized:
+			_last_dive_entry_position = _calculate_dive_entry_position(target)
+			_active_destination_serial = \
+				owner_squadron.set_mission_destination(
+					_last_dive_entry_position,
+					true
+				)
+			_destination_initialized = true
+		_dive_entry_repath_left = DIVE_ENTRY_REPATH_INTERVAL_SEC
+	# Commit the dive on geometry, not on waypoint arrival: start exactly when
+	# the horizontal distance to the intended impact matches the fixed
+	# trajectory's total horizontal travel. Waypoint arrival stays as a
+	# fallback for solver failures.
+	if not _try_begin_dive_on_distance_gate(target, controller):
+		if not owner_squadron.has_reached_mission_destination(
+			_active_destination_serial
+		):
+			return
+		if _gate_probe_valid \
+				and _gate_distance_m > _gate_required_travel_m \
+					+ DIVE_COMMIT_MARGIN_M:
+			# Waypoint reached, but the REFERENCE aircraft (which trails the
+			# kinematic formation center) is still short of dive range. On the
+			# fixed dive path the predicted impact barely moves, so beginning
+			# now would leave a forward error the release window can never
+			# recover. Push the waypoint through the aim point and keep
+			# closing until the distance gate commits at true geometry.
+			var push_destination := _gate_final_aim \
+				+ _gate_attack_direction * DIVE_ENTRY_PUSH_THROUGH_M
+			push_destination.y = _last_dive_entry_position.y
+			_last_dive_entry_position = push_destination
+			_active_destination_serial = \
+				owner_squadron.set_mission_destination(push_destination, true)
+			_destination_initialized = true
+			return
+		_begin_dive_from_entry(target, controller)
+
+
+## Distance-gated dive commit: begins the dive the moment the reference
+## aircraft's horizontal distance to the intended impact point equals the
+## fixed trajectory's total horizontal travel (dive + bomb), so the release
+## window's impact sweep crosses the target near its center.
+func _try_begin_dive_on_distance_gate(
+		target: Node3D,
+		controller: DiveBombAttackController
+) -> bool:
+	_gate_probe_valid = false
+	var reference := _get_reference_aircraft()
+	if reference == null:
+		return false
+	var gate_solution := _solve_current_state(target, reference)
+	if gate_solution == null or not gate_solution.valid:
+		return false
+	var required_travel := gate_solution.horizontal_dive_distance_m \
+		+ gate_solution.bomb_horizontal_travel_m
+	var to_intended := gate_solution.intended_target_impact_position \
+		- reference.global_position
+	to_intended.y = 0.0
+	_gate_probe_valid = true
+	_gate_distance_m = to_intended.length()
+	_gate_required_travel_m = required_travel
+	_gate_final_aim = gate_solution.final_aim_impact_position
+	_gate_attack_direction = gate_solution.attack_direction
+	if to_intended.length() > required_travel + DIVE_COMMIT_MARGIN_M:
+		return false
+	var begin_result := controller.begin_dive_with_solution(
+		gate_solution,
+		AircraftSquadron.DiveControlSource.AI,
+		0.0,
+		reference
+	)
+	match begin_result:
+		DiveBombAttackController.BeginDiveResult.STARTED, \
+				DiveBombAttackController.BeginDiveResult \
+					.ALREADY_ACTIVE_SAME_SOURCE:
+			state = State.DIVING
+			return true
+	return false
+
+
+func _begin_dive_from_entry(
+		target: Node3D,
+		controller: DiveBombAttackController
+) -> void:
 	# One solution drives everything: impact, release, entry, direction. The
 	# snapshot is applied inside begin_dive_with_solution after its internal
 	# reset, so a second attack pass cannot lose the planned positions.
-	var entry_solution := _solve_attack(target, false)
+	# Anchor on the reference aircraft's REAL position: the prescriptive
+	# solve's carrier->target axis ignores the reference's lateral formation
+	# offset, which becomes a full-width lateral miss on the parallel dive.
+	var reference := _get_reference_aircraft()
+	var entry_solution := _solve_current_state(target, reference) \
+		if reference != null else _solve_attack(target, false)
 	var begin_result: DiveBombAttackController.BeginDiveResult
 	if entry_solution != null and entry_solution.valid:
 		begin_result = controller.begin_dive_with_solution(
 			entry_solution,
-			AircraftSquadron.DiveControlSource.AI
+			AircraftSquadron.DiveControlSource.AI,
+			0.0,
+			reference
 		)
 	else:
 		# Solver failure: keep the legacy point-based dive as a safe fallback.
@@ -509,17 +644,28 @@ func _solve_locked_dive_state(
 		target: Node3D,
 		controller: DiveBombAttackController
 ) -> DiveBombAttackSolution:
+	var reference := _get_reference_aircraft()
+	if reference == null:
+		return null
+	var locked_direction := controller.locked_attack_direction \
+		if controller.has_attack_solution else Vector3.ZERO
+	return _solve_current_state(target, reference, locked_direction)
+
+
+## Current-state solve shared by the dive commit gate and the lock
+## refresh. Aims at the intended point (plus the pass's deterministic
+## accuracy offset) unless a committed dive supplies its locked heading.
+func _solve_current_state(
+		target: Node3D,
+		reference: AircraftUnit,
+		locked_direction: Vector3 = Vector3.ZERO
+) -> DiveBombAttackSolution:
 	if target == null or not is_instance_valid(target):
 		return null
 	var dive_data := _get_dive_data()
 	var weapon_data := _get_bomb_weapon_data()
 	if dive_data == null or weapon_data == null:
 		return null
-	var reference := _get_reference_aircraft()
-	if reference == null:
-		return null
-	var attack_direction := controller.locked_attack_direction \
-		if controller.has_attack_solution else _get_attack_direction(target)
 	var solution := DiveBombAttackResolver.solve_from_current_dive_state(
 		reference.global_position,
 		target.global_position,
@@ -528,15 +674,41 @@ func _solve_locked_dive_state(
 		dive_data,
 		weapon_data,
 		_get_world_gravity(),
-		attack_direction
+		locked_direction,
+		_pass_dispersion_offset
 	)
 	if solution != null and solution.valid:
+		solution.base_accuracy = dive_data.base_bombing_accuracy
+		solution.final_accuracy = dive_data.base_bombing_accuracy
+		solution.dispersion_radius_m = _pass_dispersion_offset.length()
 		_solution_revision += 1
 		solution.revision = _solution_revision
 		_attack_solution = solution
 	return solution
 
 
+## Deterministic per-pass accuracy roll (never global randf, never time
+## or frame based). Radius shrinks linearly with accuracy; direction and
+## magnitude come from one seeded RNG so identical setups reproduce.
+func _roll_pass_dispersion_offset(target: Node3D) -> void:
+	_attack_pass_index += 1
+	_pass_dispersion_offset = Vector3.ZERO
+	var dive_data := _get_dive_data()
+	if dive_data == null or target == null \
+			or not is_instance_valid(target):
+		return
+	_pass_dispersion_offset = \
+		DiveBombAttackResolver.resolve_accuracy_dispersion_offset(
+			dive_data.base_bombing_accuracy,
+			dive_data.accuracy_minimum_dispersion_radius_m,
+			dive_data.accuracy_maximum_dispersion_radius_m,
+			hash([
+				owner_squadron.get_instance_id(),
+				target.get_instance_id(),
+				_attack_pass_index,
+				_solution_revision,
+			])
+		)
 func _get_bomb_weapon_data() -> AircraftWeaponData:
 	var data := owner_squadron.squadron_data.aircraft_data 		if owner_squadron != null 		and owner_squadron.squadron_data != null else null
 	return data.weapon_data if data != null else null

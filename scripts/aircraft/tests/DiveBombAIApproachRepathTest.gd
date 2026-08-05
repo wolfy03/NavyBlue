@@ -65,12 +65,12 @@ func _run() -> void:
 		"approach arrival advances to fixed dive entry"
 	)
 	behavior.update(0.0)
-	var fixed_entry := squadron.destination
+	var first_entry := squadron.destination
 	target.global_position.x += 500.0
 	behavior.update(0.5)
 	_check(
-		squadron.destination == fixed_entry,
-		"dive entry destination remains fixed while target moves"
+		squadron.destination != first_entry,
+		"dive entry destination repaths while the target moves"
 	)
 	var controller := squadron.dive_bomb_controller
 	_check(

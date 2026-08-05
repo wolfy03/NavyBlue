@@ -280,10 +280,12 @@ func _test_controller_with_squadron() -> void:
 	)
 	replacement.global_position = release_position \
 		+ Vector3(dive_data.release_position_tolerance_m + 40.0, 0.0, 0.0)
+	# Displacement forward of the release point sweeps the predicted impact
+	# past the aim; displacement to the side is an unfixable lateral error.
+	# Either way the drop must be blocked.
 	_check(
 		controller._evaluate_reference_release_window(replacement)
-			== DiveBombAttackController.ReleaseBlockReason \
-				.RELEASE_POSITION_MISSED,
+			!= DiveBombAttackController.ReleaseBlockReason.NONE,
 		"window: a displaced reference blocks the drop"
 	)
 	replacement.global_position = release_position

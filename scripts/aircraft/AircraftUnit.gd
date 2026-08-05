@@ -23,6 +23,11 @@ signal destroyed(aircraft: AircraftUnit)
 @onready var payload_hardpoint: Marker3D = get_node_or_null(
 	"PayloadHardpoint"
 ) as Marker3D
+## Visual model layer: the ONLY node banking is ever applied to. Cached once;
+## the physics root, collision shape and weapon transforms never roll.
+@onready var visual_model: Node3D = get_node_or_null(
+	"AircraftVisualSample"
+) as Node3D
 
 var aircraft_data: AircraftData
 var team: StringName = &"neutral"
@@ -31,6 +36,10 @@ var active := false
 var weapon_updates_managed_by_squadron := false
 var _destroyed_emitted := false
 var battle_services: BattleServices
+
+var _default_bank_settings: AircraftBankVisualSettings
+var _previous_horizontal_velocity := Vector3.ZERO
+var _current_bank_angle_rad := 0.0
 
 
 func setup(
@@ -67,9 +76,69 @@ func setup(
 func _physics_process(delta: float) -> void:
 	if active and movement != null:
 		movement.update_movement(delta)
+	if active:
+		update_visual_bank(delta)
 	if active and weapon_controller != null \
 			and not weapon_updates_managed_by_squadron:
 		weapon_controller.update_weapon(delta)
+
+
+## Rolls the visual model into horizontal turns. Reads only this aircraft's
+## own velocity; writes only the visual child's absolute rotation.z, so the
+## physics root, collision and weapon transforms are untouched.
+func update_visual_bank(delta: float) -> void:
+	if visual_model == null or delta <= 0.0:
+		return
+	var settings := _get_bank_settings()
+	var horizontal_velocity := velocity
+	horizontal_velocity.y = 0.0
+	var target_bank_rad := 0.0
+	var minimum_speed := maxf(settings.minimum_horizontal_speed_mps, 0.0)
+	if horizontal_velocity.length() >= minimum_speed \
+			and _previous_horizontal_velocity.length() >= minimum_speed:
+		# Turn direction and rate from the signed change of the aircraft's own
+		# horizontal track. Flying straight (or diving without turning) gives
+		# zero rate, so the model levels out on its own.
+		var turn_rate_rad := _previous_horizontal_velocity.signed_angle_to(
+			horizontal_velocity,
+			Vector3.UP
+		) / delta
+		var full_bank_rate_rad := deg_to_rad(maxf(
+			settings.turn_rate_for_full_bank_deg_sec,
+			0.001
+		))
+		var maximum_bank_rad := deg_to_rad(clampf(
+			settings.maximum_bank_angle_degrees,
+			0.0,
+			85.0
+		))
+		# Left turn (positive yaw about UP) banks left, which is a positive
+		# roll about +Z for a -Z-forward model.
+		target_bank_rad = clampf(
+			turn_rate_rad / full_bank_rate_rad,
+			-1.0,
+			1.0
+		) * maximum_bank_rad
+	_previous_horizontal_velocity = horizontal_velocity
+	var bank_speed_deg := settings.bank_response_speed_deg_sec \
+		if absf(target_bank_rad) > absf(_current_bank_angle_rad) \
+		else settings.bank_return_speed_deg_sec
+	_current_bank_angle_rad = move_toward(
+		_current_bank_angle_rad,
+		target_bank_rad,
+		deg_to_rad(maxf(bank_speed_deg, 0.0)) * delta
+	)
+	# Absolute assignment: never accumulated with rotate_z, so the model can
+	# never wind up or drift.
+	visual_model.rotation.z = _current_bank_angle_rad
+
+
+func _get_bank_settings() -> AircraftBankVisualSettings:
+	if aircraft_data != null and aircraft_data.bank_visual_settings != null:
+		return aircraft_data.bank_visual_settings
+	if _default_bank_settings == null:
+		_default_bank_settings = AircraftBankVisualSettings.new()
+	return _default_bank_settings
 
 
 func set_weapon_updates_managed_by_squadron(managed: bool) -> void:

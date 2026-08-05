@@ -146,6 +146,12 @@ static func solve(
 	solution.target_position_at_solve = target_position
 	solution.target_velocity = flat_target_velocity
 	solution.attack_direction = attack_direction
+	solution.intended_target_impact_position = predicted_impact
+	solution.exact_intended_impact_position = predicted_impact
+	solution.final_aim_impact_position = predicted_impact
+	# The release point is derived from the impact, so the solved trajectory
+	# lands on the intended point by construction here.
+	solution.trajectory_predicted_impact_position = predicted_impact
 	solution.predicted_impact_position = predicted_impact
 	solution.release_position = predicted_impact - bomb_travel
 	solution.release_position.y = target_world_y + release_altitude
@@ -171,13 +177,18 @@ static func solve(
 	return solution
 
 
-## Descriptive solve for the moment the dive locks: instead of prescribing
-## where the aircraft should be, it forward-projects the fixed dive direction
-## from where the reference aircraft actually is. The returned release and
-## impact points are the ones this dive WILL produce, so the release window
-## opens exactly when the aircraft passes the release altitude and the
-## planned-vs-predicted impact check stays consistent. Entry positioning error
-## therefore turns into honest miss distance instead of a refused drop.
+## Lock-time solve anchored on the reference aircraft's real position.
+##
+## Two impact points are returned and MUST stay distinct:
+##   intended_target_impact_position  - target future position at bomb impact
+##                                      (target lead only, computed from the
+##                                      remaining dive + fall time; §7)
+##   trajectory_predicted_impact_position - where the bomb lands if the fixed
+##                                      dive proceeds from here
+## The attack direction is aimed AT the intended point (unless a locked
+## direction is supplied), so with correct entry geometry the two coincide;
+## the release window then verifies their real difference instead of
+## comparing a projection against itself.
 static func solve_from_current_dive_state(
 		reference_position: Vector3,
 		target_position: Vector3,
@@ -186,7 +197,8 @@ static func solve_from_current_dive_state(
 		dive_data: DiveBomberCombatData,
 		weapon_data: AircraftWeaponData,
 		gravity_mps2: float,
-		locked_attack_direction: Vector3
+		locked_attack_direction: Vector3 = Vector3.ZERO,
+		aim_offset: Vector3 = Vector3.ZERO
 ) -> DiveBombAttackSolution:
 	var validation := _validate_inputs(
 		reference_position,
@@ -197,11 +209,6 @@ static func solve_from_current_dive_state(
 	)
 	if not validation.is_empty():
 		return DiveBombAttackSolution.failed(validation)
-	var attack_direction := locked_attack_direction
-	attack_direction.y = 0.0
-	if attack_direction.length_squared() <= EPSILON:
-		return DiveBombAttackSolution.failed(&"invalid_attack_direction")
-	attack_direction = attack_direction.normalized()
 	var release_altitude := maxf(dive_data.automatic_release_altitude_m, 0.0)
 	var dive_speed := maxf(dive_data.dive_speed_mps, 0.0)
 	if dive_speed <= EPSILON:
@@ -226,6 +233,42 @@ static func solve_from_current_dive_state(
 		return DiveBombAttackSolution.failed(&"invalid_dive_geometry")
 	var dive_time := (reference_altitude - release_altitude) \
 		/ dive_vertical_speed
+	# §7 DIVING: remaining dive time + fall time, nothing else. The fall time
+	# does not depend on heading, so the intended point is exact before the
+	# direction is chosen.
+	var probe_bomb_velocity := DiveBombBallistics \
+		.resolve_bomb_initial_velocity(
+			Vector3.FORWARD * dive_horizontal_speed
+				+ Vector3.DOWN * dive_vertical_speed,
+			weapon_data
+		)
+	var bomb_fall_time := DiveBombBallistics.solve_fall_time(
+		release_altitude,
+		probe_bomb_velocity.y,
+		bomb_gravity
+	)
+	if bomb_fall_time < 0.0:
+		return DiveBombAttackSolution.failed(&"invalid_bomb_ballistics")
+	var flat_target_velocity := target_velocity
+	flat_target_velocity.y = 0.0
+	if flat_target_velocity.length() < STATIONARY_SPEED_MPS:
+		flat_target_velocity = Vector3.ZERO
+	var exact_intended := target_position \
+		+ flat_target_velocity * (dive_time + bomb_fall_time)
+	exact_intended.y = target_world_y
+	# The deliberate accuracy offset moves only the aim, never the physics.
+	var final_aim := exact_intended + aim_offset
+	final_aim.y = target_world_y
+	# Aim the dive at the point we are trying to hit; a pre-locked direction
+	# (already committed dive) keeps its heading.
+	var attack_direction := _resolve_attack_direction(
+		locked_attack_direction,
+		final_aim,
+		reference_position,
+		Vector3.ZERO
+	)
+	if attack_direction == Vector3.ZERO:
+		return DiveBombAttackSolution.failed(&"invalid_attack_direction")
 	var release_position := reference_position \
 		+ attack_direction * (dive_horizontal_speed * dive_time)
 	release_position.y = target_world_y + release_altitude
@@ -234,22 +277,21 @@ static func solve_from_current_dive_state(
 			+ Vector3.DOWN * dive_vertical_speed,
 		weapon_data
 	)
-	var bomb_fall_time := DiveBombBallistics.solve_fall_time(
-		release_altitude,
-		bomb_velocity.y,
-		bomb_gravity
-	)
-	if bomb_fall_time < 0.0:
-		return DiveBombAttackSolution.failed(&"invalid_bomb_ballistics")
 	var bomb_travel := Vector3(bomb_velocity.x, 0.0, bomb_velocity.z) \
 		* bomb_fall_time
+	var trajectory_impact := release_position + bomb_travel
+	trajectory_impact.y = target_world_y
 	var solution := DiveBombAttackSolution.new()
 	solution.target_position_at_solve = target_position
-	solution.target_velocity = target_velocity
+	solution.target_velocity = flat_target_velocity
 	solution.attack_direction = attack_direction
+	solution.exact_intended_impact_position = exact_intended
+	solution.dispersion_offset = aim_offset
+	solution.final_aim_impact_position = final_aim
+	solution.intended_target_impact_position = final_aim
+	solution.trajectory_predicted_impact_position = trajectory_impact
+	solution.predicted_impact_position = final_aim
 	solution.release_position = release_position
-	solution.predicted_impact_position = release_position + bomb_travel
-	solution.predicted_impact_position.y = target_world_y
 	solution.dive_entry_position = reference_position
 	solution.approach_position = reference_position
 	solution.dive_time_to_release_sec = dive_time
@@ -311,6 +353,32 @@ static func _validate_inputs(
 	if not aircraft_position.is_finite() or not target_position.is_finite():
 		return &"non_finite_solution"
 	return &""
+
+
+## Deterministic accuracy dispersion: one aim offset per attack pass, uniform
+## on a horizontal disc whose radius shrinks linearly from the maximum (at
+## accuracy 0) to the minimum (at accuracy 1). Pure function of its inputs -
+## no global RNG, time or frame state - so a given squadron/target/pass seed
+## always produces the same offset. The offset moves only the AIM point; the
+## ballistic solution itself is never degraded.
+static func resolve_accuracy_dispersion_offset(
+		accuracy: float,
+		minimum_radius_m: float,
+		maximum_radius_m: float,
+		deterministic_seed: int
+) -> Vector3:
+	var radius := lerpf(
+		maxf(maximum_radius_m, 0.0),
+		maxf(minimum_radius_m, 0.0),
+		clampf(accuracy, 0.0, 1.0)
+	)
+	if radius <= 0.001:
+		return Vector3.ZERO
+	var rng := RandomNumberGenerator.new()
+	rng.seed = deterministic_seed
+	var angle := rng.randf_range(0.0, TAU)
+	var distance := radius * sqrt(rng.randf())
+	return Vector3(cos(angle) * distance, 0.0, sin(angle) * distance)
 
 
 static func _resolve_attack_direction(

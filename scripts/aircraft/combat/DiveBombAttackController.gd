@@ -84,6 +84,10 @@ var locked_attack_direction := Vector3.FORWARD
 var locked_dive_direction := Vector3.ZERO
 var _reference_aircraft_ref: WeakRef
 var _reference_aircraft_instance_id := 0
+## Live release-window diagnostics, updated per evaluation for tests/debug.
+var last_window_forward_error_m := 0.0
+var last_window_lateral_error_m := 0.0
+var last_window_altitude_m := 0.0
 var solution_locked := false
 var dive_elapsed_seconds := 0.0
 var release_block_reason: ReleaseBlockReason = ReleaseBlockReason.NONE
@@ -247,7 +251,8 @@ func begin_dive_with_source(
 func begin_dive_with_solution(
 		solution: DiveBombAttackSolution,
 		source: AircraftSquadron.DiveControlSource,
-		next_dispersion_radius_m: float = 0.0
+		next_dispersion_radius_m: float = 0.0,
+		reference_override: AircraftUnit = null
 ) -> BeginDiveResult:
 	if solution == null or not solution.valid:
 		return BeginDiveResult.INVALID_CONFIGURATION
@@ -262,7 +267,18 @@ func begin_dive_with_solution(
 		BeginDiveResult.ALREADY_ACTIVE_SAME_SOURCE,
 	]:
 		_apply_solution_snapshot(solution)
-		_select_reference_aircraft()
+		# The solution's geometry is anchored on the aircraft the caller
+		# solved from; judging the release window from a different aircraft
+		# turns that anchor offset into a real-world miss. Re-selecting is
+		# only for callers that did not anchor on a specific aircraft.
+		if reference_override != null \
+				and is_instance_valid(reference_override) \
+				and reference_override.is_alive():
+			_reference_aircraft_ref = weakref(reference_override)
+			_reference_aircraft_instance_id = \
+				reference_override.get_instance_id()
+		else:
+			_select_reference_aircraft()
 	return result
 
 
@@ -283,7 +299,12 @@ func update_attack_solution(
 func _apply_solution_snapshot(solution: DiveBombAttackSolution) -> void:
 	attack_solution = solution.duplicate_solution()
 	has_attack_solution = true
-	predicted_impact_position = solution.predicted_impact_position
+	# The point the attack must hit (accuracy offset already applied); the
+	# bombs are aimed here and the release window is judged against it.
+	predicted_impact_position = solution.final_aim_impact_position \
+		if solution.final_aim_impact_position.is_finite() \
+		and solution.final_aim_impact_position != Vector3.ZERO \
+		else solution.predicted_impact_position
 	# Legacy consumers (pass-abort checks, pull-out floor) read
 	# target_position; keep it aligned with the solved impact point.
 	target_position = solution.predicted_impact_position
@@ -681,7 +702,15 @@ func _update_central_release_window() -> void:
 
 
 ## Everything the reference aircraft must satisfy before the squadron drops.
-## Ordered cheapest-first; the first violated condition is reported.
+##
+## The decisive gate is the impact crossing: as the fixed-direction dive
+## proceeds, the impact predicted from the aircraft's LIVE position and
+## velocity sweeps forward and crosses the intended point exactly once.
+## Releasing at that crossing (inside the altitude band) is what makes the
+## reference bomb land on the moving ship; a fixed release altitude alone
+## cannot correct any forward error. Both sides of the comparison come from
+## different sources - live flight state vs the target-lead prediction -
+## never from the same projection.
 func _evaluate_reference_release_window(
 		reference: AircraftUnit
 ) -> ReleaseBlockReason:
@@ -689,15 +718,11 @@ func _evaluate_reference_release_window(
 			< maxf(dive_data.minimum_dive_time_before_release_sec, 0.0):
 		return ReleaseBlockReason.TOO_EARLY
 	var altitude := reference.global_position.y - predicted_impact_position.y
-	if altitude > dive_data.automatic_release_altitude_m \
-			+ maxf(dive_data.release_altitude_tolerance_m, 0.0):
+	if altitude > maxf(
+		dive_data.maximum_release_altitude_m,
+		dive_data.automatic_release_altitude_m
+	):
 		return ReleaseBlockReason.TOO_EARLY
-	var release_offset := reference.global_position \
-		- planned_release_position
-	release_offset.y = 0.0
-	if release_offset.length() \
-			> maxf(dive_data.release_position_tolerance_m, 0.0):
-		return ReleaseBlockReason.RELEASE_POSITION_MISSED
 	var reference_forward := reference.velocity
 	reference_forward.y = 0.0
 	if reference_forward.length_squared() <= EPSILON:
@@ -716,25 +741,51 @@ func _evaluate_reference_release_window(
 		):
 			return ReleaseBlockReason.HEADING_NOT_ALIGNED
 	var weapon_data := _get_bomb_weapon_data()
-	if weapon_data != null:
-		var predicted_now := DiveBombBallistics \
-			.predict_impact_from_release_state(
-				reference.global_position,
-				DiveBombBallistics.resolve_bomb_initial_velocity(
-					reference.velocity,
-					weapon_data
-				),
-				predicted_impact_position.y,
-				weapon_data,
-				_get_world_gravity()
-			)
-		if not predicted_now.is_finite():
-			return ReleaseBlockReason.IMPACT_SOLUTION_INVALID
-		var impact_offset := predicted_now - predicted_impact_position
-		impact_offset.y = 0.0
-		if impact_offset.length() \
-				> maxf(dive_data.maximum_predicted_impact_error_m, 0.0):
-			return ReleaseBlockReason.IMPACT_SOLUTION_INVALID
+	if weapon_data == null:
+		return ReleaseBlockReason.IMPACT_SOLUTION_INVALID
+	var predicted_now := DiveBombBallistics \
+		.predict_impact_from_release_state(
+			reference.global_position,
+			DiveBombBallistics.resolve_bomb_initial_velocity(
+				reference.velocity,
+				weapon_data
+			),
+			predicted_impact_position.y,
+			weapon_data,
+			_get_world_gravity()
+		)
+	if not predicted_now.is_finite():
+		return ReleaseBlockReason.IMPACT_SOLUTION_INVALID
+	var impact_offset := predicted_now - predicted_impact_position
+	impact_offset.y = 0.0
+	var lateral_error := impact_offset.dot(Vector3(
+		-locked_attack_direction.z,
+		0.0,
+		locked_attack_direction.x
+	))
+	if absf(lateral_error) \
+			> maxf(dive_data.maximum_predicted_impact_error_m, 0.0):
+		# The locked heading cannot correct lateral error; this dive will
+		# never line up, so waiting is pointless.
+		return ReleaseBlockReason.IMPACT_SOLUTION_INVALID
+	var forward_error := impact_offset.dot(locked_attack_direction)
+	last_window_forward_error_m = forward_error
+	last_window_lateral_error_m = lateral_error
+	last_window_altitude_m = altitude
+	var trigger_margin := maxf(
+		dive_data.release_impact_trigger_margin_m,
+		0.0
+	)
+	if forward_error < -trigger_margin:
+		# Still short of the intended point: the sweep is approaching it, so
+		# keep diving.
+		return ReleaseBlockReason.TOO_EARLY
+	if forward_error > maxf(
+		dive_data.maximum_predicted_impact_error_m,
+		trigger_margin
+	):
+		# Already swept past: it can only get worse from here.
+		return ReleaseBlockReason.RELEASE_POSITION_MISSED
 	return ReleaseBlockReason.NONE
 
 

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="AircraftBankVisualSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/aircraft/AircraftBankVisualSettings.gd" id="1_bank"]
+
+[resource]
+script = ExtResource("1_bank")
+maximum_bank_angle_degrees = 40.0
+turn_rate_for_full_bank_deg_sec = 40.0
+bank_response_speed_deg_sec = 90.0
+bank_return_speed_deg_sec = 55.0
+minimum_horizontal_speed_mps = 15.0

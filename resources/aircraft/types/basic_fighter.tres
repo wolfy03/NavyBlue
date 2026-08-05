@@ -1,9 +1,10 @@
-[gd_resource type="Resource" script_class="AircraftData" load_steps=5 format=3]
+[gd_resource type="Resource" script_class="AircraftData" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/data/aircraft/AircraftData.gd" id="1_aircraft"]
 [ext_resource type="PackedScene" path="res://scenes/aircraft/aircraft_unit.tscn" id="2_scene"]
 [ext_resource type="Resource" path="res://resources/aircraft/weapons/basic_fighter_gun.tres" id="3_weapon"]
 [ext_resource type="Resource" path="res://resources/aircraft/fighter/basic_fighter_combat.tres" id="4_fighter"]
+[ext_resource type="Resource" path="res://resources/aircraft/settings/default_bank_visual_settings.tres" id="9_bank"]
 
 [resource]
 script = ExtResource("1_aircraft")
@@ -20,3 +21,4 @@ maximum_hp = 24.0
 weapon_data = ExtResource("3_weapon")
 fighter_combat_data = ExtResource("4_fighter")
 aircraft_scene = ExtResource("2_scene")
+bank_visual_settings = ExtResource("9_bank")
