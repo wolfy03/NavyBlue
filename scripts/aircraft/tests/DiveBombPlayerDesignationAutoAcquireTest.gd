@@ -66,7 +66,6 @@ func _run() -> void:
 	# The entry waypoint must track the ship, not the clicked point: move the
 	# ship far enough to force an entry repath.
 	enemy.global_position += Vector3(0.0, 0.0, 400.0)
-	run._entry_repath_left = 0.0
 	run.update(0.5)
 	_check(
 		squadron.destination != first_destination,

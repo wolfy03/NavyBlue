@@ -54,7 +54,6 @@ func _run() -> void:
 		"the assigned ship is the resolved target"
 	)
 	behavior.update(0.0)
-	behavior._approach_repath_left = 0.0
 	behavior.update(0.5)
 	_check(
 		behavior.get_resolved_target().get_ship() == assigned,

@@ -26,5 +26,3 @@ target_pass_margin_m = 75.0
 target_pass_check_max_altitude_m = 160.0
 require_release_attempt_before_pass_abort = true
 maximum_dive_target_angle_degrees = 25.0
-dive_entry_distance_m = 900.0
-automatic_release_distance_m = 180.0

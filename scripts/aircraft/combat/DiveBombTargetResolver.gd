@@ -83,15 +83,16 @@ static func _acquire_nearest_in_radius(
 	return best
 
 
-## Deterministic tie-break for equal scores: persistent ship id first, then
-## instance id, so the same battle state always selects the same ship.
+## Deterministic tie-break for equal scores: authored ship id first, then the
+## stable combat identity. Runtime allocation order never affects selection.
 static func _breaks_tie_before(
 		candidate: ShipUnit,
 		incumbent: ShipUnit
 ) -> bool:
 	if candidate.ship_id != incumbent.ship_id:
 		return candidate.ship_id < incumbent.ship_id
-	return candidate.get_instance_id() < incumbent.get_instance_id()
+	return CombatIdentity.for_ship(candidate) \
+		< CombatIdentity.for_ship(incumbent)
 
 
 static func _is_attackable(
@@ -127,6 +128,7 @@ static func _ship_result(
 	result.target_velocity = ship.get_world_velocity()
 	result.ship_ref = weakref(ship)
 	result.ship_instance_id = ship.get_instance_id()
+	result.target_combat_id = CombatIdentity.for_ship(ship)
 	result.distance_from_designation_m = sqrt(horizontal_distance_squared(
 		request.designated_world_position,
 		ship.global_position

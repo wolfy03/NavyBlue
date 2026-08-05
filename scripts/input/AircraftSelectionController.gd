@@ -235,8 +235,7 @@ func execute_special_action() -> bool:
 					+ "aircraft's safe altitude."
 				)
 				handled = true
-		elif squadron.dive_bomb_controller != null \
-				and squadron.dive_bomb_controller.is_active():
+		elif squadron.is_dive_bomb_attack_active():
 			command_feedback.emit(
 				"Dive attack already in progress"
 			)
@@ -262,40 +261,40 @@ func get_debug_snapshot() -> Dictionary:
 
 
 func _connect_dive_feedback(squadron: AircraftSquadron) -> void:
-	if squadron == null or squadron.dive_bomb_controller == null:
+	if squadron == null:
 		return
-	var controller := squadron.dive_bomb_controller
-	var completed_callback := \
-		_on_aircraft_automatic_release_completed.bind(squadron)
-	if not controller.aircraft_automatic_release_completed.is_connected(
-		completed_callback
-	):
-		controller.aircraft_automatic_release_completed.connect(
-			completed_callback
-		)
-	var pass_callback := _on_automatic_release_pass_completed.bind(
+	var release_callback := _on_aircraft_weapon_release_finished.bind(
 		squadron
 	)
-	if not controller.automatic_release_pass_completed.is_connected(
+	if not squadron.aircraft_weapon_release_finished.is_connected(
+		release_callback
+	):
+		squadron.aircraft_weapon_release_finished.connect(
+			release_callback
+		)
+	var pass_callback := _on_dive_release_pass_finished.bind(
+		squadron
+	)
+	if not squadron.dive_release_pass_finished.is_connected(
 		pass_callback
 	):
-		controller.automatic_release_pass_completed.connect(pass_callback)
+		squadron.dive_release_pass_finished.connect(pass_callback)
 
 
-func _on_aircraft_automatic_release_completed(
+func _on_aircraft_weapon_release_finished(
 		_aircraft_id: int,
-		released_count: int,
-		total_count: int,
+		_aircraft: AircraftUnit,
+		success: bool,
+		_cancelled: bool,
+		_reason: int,
 		squadron: AircraftSquadron
 ) -> void:
-	if not selected_squadrons.has(squadron):
+	if not success or not selected_squadrons.has(squadron):
 		return
-	command_feedback.emit(
-		"Bomb release: %d/%d" % [released_count, total_count]
-	)
+	command_feedback.emit("Bomb released")
 
 
-func _on_automatic_release_pass_completed(
+func _on_dive_release_pass_finished(
 		released_count: int,
 		failed_count: int,
 		_skipped_count: int,

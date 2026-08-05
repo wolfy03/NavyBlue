@@ -51,14 +51,13 @@
 
 ## Dive Attack
 
-- Extracted altitude-window decisions to the pure `DiveReleasePolicy`.
-- Moved timeout, retry, and completion-wait tuning to
-  `AircraftPayloadReleaseSettings`.
-- Replaced Dictionary attack results with `DiveAttackResult`.
-- Removed the unused `begin_dive` compatibility wrapper. All callers now pass
-  an explicit `DiveControlSource` to `begin_dive_with_source`.
-- Migrated tests away from removed whole-squadron release counters and private
-  request dictionaries.
+- Replaced the central reference-aircraft and altitude-only release paths with
+  one squadron coordinator and an independent controller, solution, release
+  window, pull-out, and regroup lifecycle for each aircraft.
+- Unified AI missions and player normal/quick commands behind the same target
+  resolver, accuracy profile, coordinator, and real projectile release path.
+- Removed whole-squadron release counters, solutionless execution, and legacy
+  dispersion fields from production resources and tests.
 
 ## Composition Root
 

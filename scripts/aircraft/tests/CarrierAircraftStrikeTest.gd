@@ -201,11 +201,14 @@ func _test_strike_lifecycle(
 	var released := false
 	var entered_dive := false
 	var release_before_dive := false
+	var last_dive_debug := {}
 	for _frame in 900:
 		if not is_instance_valid(squadron):
 			break
 		var behavior := squadron.mission_controller.dive_bomb_behavior \
 			as DiveBombMissionBehavior
+		if behavior != null:
+			last_dive_debug = behavior.get_debug_snapshot()
 		if behavior != null and behavior.state in [
 			DiveBombMissionBehavior.State.DIVING,
 			DiveBombMissionBehavior.State.PULLING_OUT,
@@ -218,6 +221,8 @@ func _test_strike_lifecycle(
 			break
 		await physics_frame
 	_check(entered_dive, "AI strike enters a physical dive state")
+	if not entered_dive:
+		print("Strike coordinator diagnostic=%s" % last_dive_debug)
 	if not entered_dive and is_instance_valid(squadron):
 		print(
 			(
@@ -238,6 +243,8 @@ func _test_strike_lifecycle(
 		"AI strike does not release bombs before diving"
 	)
 	if not released and is_instance_valid(squadron):
+		var behavior := squadron.mission_controller.dive_bomb_behavior \
+			as DiveBombMissionBehavior
 		print(
 			(
 				"Strike release diagnostic released=%d alive=%d ammo=%d "
@@ -247,7 +254,7 @@ func _test_strike_lifecycle(
 				_released_count,
 				squadron.get_alive_aircraft_count(),
 				squadron.get_total_remaining_ammunition(),
-				squadron.dive_bomb_controller.get_debug_snapshot(),
+				behavior.get_debug_snapshot() if behavior != null else {},
 			]
 		)
 	_check(released, "strike releases bombs from surviving aircraft")
@@ -258,7 +265,7 @@ func _test_strike_lifecycle(
 	var recovered := await _wait_until(
 		func() -> bool:
 			return carrier.carrier_air_group.get_active_squadrons().is_empty(),
-		1500
+		2400
 	)
 	_check(recovered, "completed strike returns through Stage 1 recovery")
 	_check(
@@ -353,7 +360,6 @@ func _make_fast_air_group(
 	dive_data.minimum_release_altitude_m = 50.0
 	dive_data.maximum_release_altitude_m = 130.0
 	dive_data.automatic_pull_out_altitude_m = 30.0
-	dive_data.automatic_release_distance_m = 180.0
 	aircraft.dive_bomber_combat_data = dive_data
 	template.aircraft_data = aircraft
 	return result

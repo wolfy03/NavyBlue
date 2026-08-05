@@ -1,7 +1,7 @@
 extends SceneTree
-## Equidistant hostile ships are tie-broken deterministically (persistent
-## ship id, then instance id): repeated resolves and shuffled candidate
-## orders always select the same ship.
+## Equidistant hostile ships are tie-broken deterministically (authored ship
+## id, then stable combat identity): allocation and candidate order do not
+## influence the winner.
 
 var _failures: Array[String] = []
 
@@ -18,6 +18,12 @@ func _run() -> void:
 	)
 	var second := DiveBombTargetingTestSupport.spawn_ship(
 		root, &"enemy", Vector3(-120.0, 0.0, 0.0)
+	)
+	first.combat_spawn_id = CombatIdentity.for_stage_spawn(
+		&"tie_break_test", &"enemy", 0
+	)
+	second.combat_spawn_id = CombatIdentity.for_stage_spawn(
+		&"tie_break_test", &"enemy", 1
 	)
 	var request := DiveBombTargetingTestSupport.make_request(
 		designation, 250.0
@@ -36,10 +42,11 @@ func _run() -> void:
 		"candidate order never changes the tie-break winner"
 	)
 	var expected := first \
-		if first.get_instance_id() < second.get_instance_id() else second
+		if CombatIdentity.for_ship(first) < CombatIdentity.for_ship(second) \
+		else second
 	_check(
 		forward.get_ship() == expected,
-		"equal ship ids tie-break on the lower instance id"
+		"equal ship ids tie-break on stable combat identity"
 	)
 	for _round in 8:
 		var repeat := DiveBombTargetResolver.resolve(

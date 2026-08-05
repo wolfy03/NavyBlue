@@ -1,1 +1,1 @@
-extends "res://scripts/aircraft/tests/DiveBombAIApproachRepathTest.gd"
+extends "res://scripts/aircraft/tests/DiveBombAIDesignationAutoAcquireTest.gd"

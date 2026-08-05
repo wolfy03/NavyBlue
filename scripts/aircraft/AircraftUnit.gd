@@ -34,6 +34,12 @@ signal destroyed(aircraft: AircraftUnit)
 var aircraft_data: AircraftData
 var team: StringName = &"neutral"
 var formation_offset: Vector3 = Vector3.ZERO
+## Stable sortie identity used by deterministic combat RNG. The slot is
+## assigned by SquadronLifecycleController and does not depend on allocation
+## order or Object instance ids.
+var aircraft_slot_id := -1
+var aircraft_combat_id := 0
+var movement_owner := AircraftMovementOwner.Type.FORMATION
 var active := false
 var weapon_updates_managed_by_squadron := false
 var _destroyed_emitted := false
@@ -122,12 +128,45 @@ func set_direct_flight(
 		movement.set_direct_flight(direction, speed_mps)
 
 
+func acquire_movement_owner(next_owner: int) -> bool:
+	if next_owner == AircraftMovementOwner.Type.FORMATION:
+		return false
+	if movement_owner != AircraftMovementOwner.Type.FORMATION \
+			and movement_owner != next_owner:
+		return false
+	movement_owner = next_owner
+	return true
+
+
+func release_movement_owner(current_owner: int) -> void:
+	if movement_owner != current_owner:
+		return
+	movement_owner = AircraftMovementOwner.Type.FORMATION
+	set_formation_flight()
+
+
+func set_direct_flight_owned(
+		direction: Vector3,
+		speed_mps: float,
+		current_owner: int
+) -> bool:
+	if movement_owner != current_owner:
+		return false
+	set_direct_flight(direction, speed_mps)
+	return true
+
+
+func is_movement_owned_by(current_owner: int) -> bool:
+	return movement_owner == current_owner
+
+
 func set_formation_flight() -> void:
 	if movement != null:
 		movement.set_formation_mode()
 
 
 func activate() -> void:
+	movement_owner = AircraftMovementOwner.Type.FORMATION
 	active = true
 	visible = true
 	set_physics_process(true)
@@ -139,6 +178,7 @@ func activate() -> void:
 
 
 func deactivate() -> void:
+	movement_owner = AircraftMovementOwner.Type.FORMATION
 	active = false
 	velocity = Vector3.ZERO
 	set_physics_process(false)

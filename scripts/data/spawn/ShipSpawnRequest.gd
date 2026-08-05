@@ -5,6 +5,7 @@ var ship_id: StringName
 var team: StringName = FactionRelations.NEUTRAL
 var fleet_id: StringName
 var display_name: String
+var combat_spawn_id := 0
 var transform := Transform3D.IDENTITY
 var is_player := false
 var color := Color.WHITE

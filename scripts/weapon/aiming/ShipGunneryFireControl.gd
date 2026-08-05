@@ -39,6 +39,9 @@ var tracking := GunneryTrackingState.new()
 var fire_command_id := 0
 
 var _shooter_instance_id := 0
+var _shooter_combat_id := 0
+var _target_combat_id := 0
+var _owner_ship_ref: WeakRef
 var _group_states: Dictionary = {}
 var _mount_group_lookup: Dictionary = {}
 var _frames_since_refresh := 1000000
@@ -96,6 +99,8 @@ func update(
 		clear_tracking_target(&"invalid_target")
 		return
 	_shooter_instance_id = owner_ship.get_instance_id()
+	_shooter_combat_id = CombatIdentity.for_ship(owner_ship)
+	_owner_ship_ref = weakref(owner_ship)
 	if not is_tracking_target(target):
 		begin_tracking_target(target)
 	_elapsed_time_sec += 1.0 / maxf(
@@ -140,6 +145,7 @@ func begin_tracking_target(target_ship: ShipUnit) -> bool:
 	_group_configuration_signature = 0
 	fire_command_id += 1
 	tracking.reset_for_target(target_ship, target_ship.get_instance_id())
+	_target_combat_id = CombatIdentity.for_ship(target_ship)
 	_tracking_state_reset_count += 1
 	_last_tracking_reset_reason = &"new_target"
 	_last_observation = null
@@ -159,6 +165,7 @@ func clear_tracking_target(reason: StringName = &"cleared") -> void:
 	# describes any live group map.
 	_group_configuration_signature = 0
 	tracking.reset_for_target(null, 0)
+	_target_combat_id = 0
 	_last_observation = null
 	_frames_since_refresh = 1000000
 	if had_tracking:
@@ -278,7 +285,7 @@ func resolve_independent_mount_accuracy(
 	var solution := GunneryAccuracyResolver \
 		.create_independent_mount_solution(
 			context,
-			mount_id,
+			_get_mount_combat_id(mount),
 			fire_sequence_index
 		)
 	solution.cached_correction_level = correction_level
@@ -501,8 +508,8 @@ func _refresh_observation(
 	tracking.previous_actual_velocity = flat_velocity
 	tracking.observation_epoch += 1
 	var observation_seed := hash([
-		_shooter_instance_id,
-		tracking.target_instance_id,
+		_shooter_combat_id,
+		_target_combat_id,
 		fire_command_id,
 		tracking.observation_epoch,
 	])
@@ -744,6 +751,8 @@ func _build_context(
 	var context := GunneryAccuracyContext.new()
 	context.shooter_instance_id = _shooter_instance_id
 	context.target_instance_id = tracking.target_instance_id
+	context.shooter_combat_id = _shooter_combat_id
+	context.target_combat_id = _target_combat_id
 	context.fire_command_id = fire_command_id
 	context.salvo_index = group.salvo_index
 	context.weapon_group_id = group.group_key
@@ -758,6 +767,15 @@ func _build_context(
 	context.difficulty_profile = difficulty_profile
 	context.crew_stats = crew_stats
 	return context
+
+
+func _get_mount_combat_id(mount: CannonMount) -> int:
+	var owner_ship: ShipUnit = null
+	if _owner_ship_ref != null:
+		var owner_value: Variant = _owner_ship_ref.get_ref()
+		if owner_value != null and is_instance_valid(owner_value):
+			owner_ship = owner_value as ShipUnit
+	return CombatIdentity.for_mount(owner_ship, mount)
 
 
 func _get_accuracy_profile(

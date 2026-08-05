@@ -24,7 +24,7 @@ func _run() -> void:
 	var context := DiveBombAttackContext.new()
 	context.squadron_combat_id = 777
 	context.reset_for_new_pass()
-	var solution := DiveBombAttackPlanner.build_commit_solution(
+	var solution := DiveBombAttackPlanner.build_aircraft_commit_solution(
 		null, reference, target, dive_data, weapon, context
 	)
 	_check(solution != null and solution.valid, "commit solution solves")
@@ -49,7 +49,7 @@ func _run() -> void:
 	var offset_after_first := context.pass_dispersion_offset
 	# Re-solve the same pass (repath): the offset must neither change nor
 	# stack a second application.
-	var repath := DiveBombAttackPlanner.build_commit_solution(
+	var repath := DiveBombAttackPlanner.build_aircraft_commit_solution(
 		null, reference, target, dive_data, weapon, context
 	)
 	_check(

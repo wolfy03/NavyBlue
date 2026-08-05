@@ -23,8 +23,9 @@ applies persisted state. Results are typed.
 
 `AircraftSquadron` remains the public facade. Destination serials, movement,
 lifecycle, and payload release are independent collaborators. Dive attacks use
-a pure `DiveReleasePolicy`; projectile outcomes remain authoritative in the
-payload release coordinator.
+one `SquadronDiveBombCoordinator` for AI and player commands, with an
+`AircraftDiveBombController` and attack solution per participating aircraft.
+Projectile outcomes remain authoritative in each aircraft weapon controller.
 
 ## Autoload Adapter
 

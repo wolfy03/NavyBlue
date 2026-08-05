@@ -121,11 +121,13 @@ func advance_formation_center(target: Vector3, delta: float) -> void:
 		target.z - owner_squadron.formation_center.z
 	)
 	if horizontal_offset.length_squared() > EPSILON:
+		var horizontal_distance := horizontal_offset.length()
 		var desired_forward := horizontal_offset.normalized()
-		var turn_step := deg_to_rad(maxf(
+		var turn_rate_rad_sec := deg_to_rad(maxf(
 			owner_squadron.squadron_data.aircraft_data.turn_rate_deg_sec,
 			0.0
-		)) * delta
+		))
+		var turn_step := turn_rate_rad_sec * delta
 		var angle := owner_squadron._formation_forward.angle_to(
 			desired_forward
 		)
@@ -144,9 +146,26 @@ func advance_formation_center(target: Vector3, delta: float) -> void:
 			var weight := minf(1.0, turn_step / maxf(angle, EPSILON))
 			owner_squadron._formation_forward = owner_squadron \
 				._formation_forward.slerp(desired_forward, weight).normalized()
+		var effective_speed := get_effective_speed()
+		var arrival_distance := maxf(
+			owner_squadron.squadron_data.aircraft_data.arrival_distance_m,
+			1.0
+		)
+		var turn_radius := effective_speed / maxf(turn_rate_rad_sec, EPSILON)
+		var travel_scale := 1.0
+		# Near a destination, full-speed pure pursuit can settle into an orbit
+		# whose turn radius is larger than the arrival radius. Let the abstract
+		# formation center turn before advancing so egress and carrier recovery
+		# always capture their destination without changing cruise speed.
+		if horizontal_distance <= maxf(turn_radius * 2.0, arrival_distance):
+			travel_scale = clampf(
+				owner_squadron._formation_forward.dot(desired_forward),
+				0.0,
+				1.0
+			)
 		var travel_distance := minf(
-			get_effective_speed() * delta,
-			horizontal_offset.length()
+			effective_speed * travel_scale * delta,
+			horizontal_distance
 		)
 		owner_squadron.formation_center += owner_squadron \
 			._formation_forward * travel_distance
@@ -175,6 +194,10 @@ func apply_direct_flight(
 		minimum_world_y
 	)
 	for aircraft in owner_squadron.get_alive_aircraft():
+		if not aircraft.is_movement_owned_by(
+			AircraftMovementOwner.Type.FORMATION
+		):
+			continue
 		aircraft.set_direct_flight(
 			owner_squadron._formation_forward,
 			speed_mps
@@ -191,7 +214,10 @@ func finish_direct_flight_holding(world_altitude: float) -> void:
 
 func restore_formation_flight() -> void:
 	for aircraft in owner_squadron.get_alive_aircraft():
-		aircraft.set_formation_flight()
+		if aircraft.is_movement_owned_by(
+			AircraftMovementOwner.Type.FORMATION
+		):
+			aircraft.set_formation_flight()
 	update_formation_targets()
 
 
@@ -242,6 +268,10 @@ func update_formation_targets() -> void:
 		right = Vector3.RIGHT
 	for aircraft in owner_squadron.aircraft_units:
 		if not is_instance_valid(aircraft) or not aircraft.active:
+			continue
+		if not aircraft.is_movement_owned_by(
+			AircraftMovementOwner.Type.FORMATION
+		):
 			continue
 		var offset_multiplier := 0.8 \
 			if owner_squadron._combat_formation_enabled else 1.0

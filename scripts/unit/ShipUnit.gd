@@ -5,6 +5,9 @@ const SHIP_DATABASE_SCRIPT := preload("res://scripts/data/ShipDatabase.gd")
 const WEAPON_DATABASE_SCRIPT := preload("res://scripts/data/WeaponDatabase.gd")
 
 @export var ship_id := "dd_bluewind"
+## Stable StageData spawn identity for deterministic combat decisions. It is
+## assigned before the ship enters the SceneTree and is never an Object id.
+var combat_spawn_id := 0
 @export var ship_data: ShipData
 @export var team: StringName = &"neutral"
 @export var fleet_id: StringName = &""

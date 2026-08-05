@@ -44,7 +44,7 @@ func resolve_dispersion_radius_m(accuracy_override: float = -1.0) -> float:
 ## Deterministic aim offset for one attack pass. Pure function of the seed:
 ## the same squadron/target/pass always reproduces the same offset.
 func resolve_dispersion_offset(deterministic_seed: int) -> Vector3:
-	return DiveBombAttackResolver.resolve_accuracy_dispersion_offset(
+	return DiveBombAccuracyMath.resolve_offset(
 		base_accuracy,
 		perfect_accuracy_dispersion_m,
 		minimum_accuracy_dispersion_m,

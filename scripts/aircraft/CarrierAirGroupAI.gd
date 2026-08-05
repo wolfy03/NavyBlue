@@ -235,11 +235,12 @@ func select_strike_target() -> ShipUnit:
 	_selected_target_ref = null
 	_selected_target_score = -INF
 	_selected_target_distance_m = 0.0
-	if not _initialized or get_tree() == null:
+	if not _initialized or air_group == null \
+			or air_group.battle_services == null \
+			or air_group.battle_services.ship_registry == null:
 		return null
 	var best_target: ShipUnit
-	for value in get_tree().get_nodes_in_group(&"ships"):
-		var candidate := value as ShipUnit
+	for candidate in air_group.battle_services.ship_registry.get_alive_ships():
 		if not _is_valid_strike_target(candidate):
 			continue
 		_candidate_count += 1
@@ -248,8 +249,8 @@ func select_strike_target() -> ShipUnit:
 				or score > _selected_target_score \
 				or (
 					is_equal_approx(score, _selected_target_score)
-					and candidate.get_instance_id()
-						< best_target.get_instance_id()
+					and CombatIdentity.for_ship(candidate)
+						< CombatIdentity.for_ship(best_target)
 				):
 			best_target = candidate
 			_selected_target_score = score

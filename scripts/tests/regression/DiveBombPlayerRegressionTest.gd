@@ -1,1 +1,1 @@
-extends "res://scripts/aircraft/tests/DiveBombAttackControllerTest.gd"
+extends "res://scripts/aircraft/tests/DiveBombPlayerExplicitTargetPriorityTest.gd"

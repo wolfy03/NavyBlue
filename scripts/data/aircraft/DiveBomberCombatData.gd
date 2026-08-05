@@ -21,25 +21,33 @@ var pull_out_aircraft_ratio: float = 0.5
 @export var pull_out_distance_m: float = 500.0
 @export var pull_out_climb_angle_degrees: float = 25.0
 
+@export_category("Individual Attack")
+@export var individual_dive_split_distance_m := 700.0
+@export var quick_dive_alignment_time_sec := 0.5
+@export var quick_dive_max_heading_error_degrees := 25.0
+@export var minimum_dive_lane_spacing_m := 0.0
+
+@export_category("Regroup")
+@export var regroup_after_attack := true
+@export var regroup_distance_m := 500.0
+@export var regroup_timeout_sec := 8.0
+@export_range(0.0, 1.0, 0.05) var regroup_completion_ratio := 0.7
+
 @export_category("Target Pass")
 @export var target_pass_margin_m: float = 75.0
 @export var target_pass_check_max_altitude_m: float = 160.0
 @export var require_release_attempt_before_pass_abort := true
 
 @export var maximum_dive_target_angle_degrees: float = 25.0
-# Deprecated compatibility alias for older resources.
-@export var dive_entry_distance_m: float = 900.0
-@export var automatic_release_distance_m: float = 180.0
 
 @export_category("Release Window")
-## Horizontal distance from the reference aircraft to the planned release
-## point within which the squadron may drop.
+## Horizontal distance from one aircraft to its planned release point.
 @export var release_position_tolerance_m := 60.0
-## Maximum horizontal error between the impact predicted from the reference
-## aircraft's current state and the planned impact point.
+## Maximum horizontal error between the impact predicted from one aircraft's
+## current state and the planned impact point.
 @export var maximum_predicted_impact_error_m := 90.0
-## Maximum angle between the reference aircraft's actual horizontal track and
-## the locked attack direction.
+## Maximum angle between one aircraft's actual horizontal track and its locked
+## attack direction.
 @export var maximum_release_heading_error_degrees := 12.0
 ## The squadron drops when the live-predicted impact has swept to within this
 ## forward distance of the intended point. Small values release closer to the
@@ -47,14 +55,9 @@ var pull_out_aircraft_ratio: float = 0.5
 @export var release_impact_trigger_margin_m := 12.0
 
 @export_category("Bombing Skill")
-## The single runtime source of dive-bombing accuracy. Null falls back to a
-## read-only migration of the legacy fields below.
+## The single runtime source of dive-bombing accuracy.
 @export var accuracy_profile: DiveBombAccuracyProfile
-## Legacy accuracy fields, kept only so pre-profile resources still load.
-## Runtime code must never read them directly: use get_accuracy_profile().
-@export_range(0.0, 1.0, 0.01) var base_bombing_accuracy := 1.0
-@export var accuracy_minimum_dispersion_radius_m := 0.0
-@export var accuracy_maximum_dispersion_radius_m := 150.0
+var _fallback_accuracy_profile: DiveBombAccuracyProfile
 
 @export_category("Target Acquisition")
 ## When a dive-bomb order designates a world position, hostile ships within
@@ -64,29 +67,12 @@ var pull_out_aircraft_ratio: float = 0.5
 @export_range(0.0, 2000.0, 10.0)
 var target_acquisition_radius_m := 250.0
 
-@export_category("Bombing Accuracy")
-# Dispersion radius (metres) bombs scatter within, resolved through
-# DiveBombAccuracyResolver. base_dispersion_radius_m is a lone bomber's spread;
-# it tightens toward minimum_dispersion_radius_m as more aircraft survive.
-@export var base_dispersion_radius_m: float = 95.0
-@export var minimum_dispersion_radius_m: float = 28.0
-@export var dispersion_reduction_per_extra_aircraft_m: float = 14.0
-
-
-## Runtime accuracy access: always through the profile. Resources authored
-## before DiveBombAccuracyProfile existed migrate their legacy fields into a
-## transient profile here; the legacy fields themselves are never read
-## anywhere else, so accuracy is applied exactly once.
 func get_accuracy_profile() -> DiveBombAccuracyProfile:
 	if accuracy_profile != null:
 		return accuracy_profile
-	var migrated := DiveBombAccuracyProfile.new()
-	migrated.base_accuracy = base_bombing_accuracy
-	migrated.perfect_accuracy_dispersion_m = \
-		accuracy_minimum_dispersion_radius_m
-	migrated.minimum_accuracy_dispersion_m = \
-		accuracy_maximum_dispersion_radius_m
-	return migrated
+	if _fallback_accuracy_profile == null:
+		_fallback_accuracy_profile = DiveBombAccuracyProfile.new()
+	return _fallback_accuracy_profile
 
 
 func get_target_acquisition_radius_m() -> float:
@@ -142,6 +128,23 @@ func validate() -> PackedStringArray:
 	if pull_out_climb_angle_degrees <= 0.0 \
 			or pull_out_climb_angle_degrees >= 90.0:
 		errors.append("pull-out climb angle must be in (0, 90).")
+	if individual_dive_split_distance_m < 0.0:
+		errors.append("individual_dive_split_distance_m cannot be negative.")
+	if quick_dive_alignment_time_sec < 0.0:
+		errors.append("quick_dive_alignment_time_sec cannot be negative.")
+	if quick_dive_max_heading_error_degrees < 0.0 \
+			or quick_dive_max_heading_error_degrees > 180.0:
+		errors.append(
+			"quick_dive_max_heading_error_degrees must be in [0, 180]."
+		)
+	if minimum_dive_lane_spacing_m < 0.0:
+		errors.append("minimum_dive_lane_spacing_m cannot be negative.")
+	if regroup_distance_m < 0.0:
+		errors.append("regroup_distance_m cannot be negative.")
+	if regroup_timeout_sec < 0.0:
+		errors.append("regroup_timeout_sec cannot be negative.")
+	if regroup_completion_ratio < 0.0 or regroup_completion_ratio > 1.0:
+		errors.append("regroup_completion_ratio must be in [0, 1].")
 	if target_pass_margin_m < 0.0:
 		errors.append("target_pass_margin_m must not be negative.")
 	if target_pass_check_max_altitude_m <= 0.0:
@@ -151,22 +154,6 @@ func validate() -> PackedStringArray:
 	if maximum_dive_target_angle_degrees <= 0.0 \
 			or maximum_dive_target_angle_degrees > 90.0:
 		errors.append("maximum target angle must be in (0, 90].")
-	if dive_entry_distance_m <= 0.0:
-		errors.append("dive_entry_distance_m must be positive.")
-	if automatic_release_distance_m <= 0.0:
-		errors.append("automatic_release_distance_m must be positive.")
-	if base_dispersion_radius_m <= 0.0:
-		errors.append("base_dispersion_radius_m must be positive.")
-	if minimum_dispersion_radius_m < 0.0 \
-			or minimum_dispersion_radius_m > base_dispersion_radius_m:
-		errors.append(
-			"minimum_dispersion_radius_m must be within "
-			+ "[0, base_dispersion_radius_m]."
-		)
-	if dispersion_reduction_per_extra_aircraft_m < 0.0:
-		errors.append(
-			"dispersion_reduction_per_extra_aircraft_m must not be negative."
-		)
 	if accuracy_profile != null:
 		for profile_error in accuracy_profile.validate():
 			errors.append("accuracy_profile: %s" % profile_error)

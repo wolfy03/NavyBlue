@@ -19,7 +19,10 @@ Autoloads are `EventBus`, `GameManager`, `RunManager`, `SceneLoader`,
   transform resolution, run restore, faction color, and spawn events.
 - `AircraftSquadron`: aircraft ownership, movement, loiter, mission routing,
   payload request tracking, fighter targets, recovery, and cleanup.
-- `DiveBombAttackController`: dive state and release policy/timing.
+- `SquadronDiveBombCoordinator`: shared AI/player pass setup, target lock,
+  per-aircraft controller aggregation, and post-attack regroup.
+- `AircraftDiveBombController`: one aircraft's alignment, fixed-angle dive,
+  release window, projectile release, pull-out, and movement ownership.
 
 ## Dynamic Boundaries
 

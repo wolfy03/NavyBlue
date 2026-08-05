@@ -9,6 +9,7 @@ class_name DiveBombTargetPreview
 @export var valid_color := Color(1.0, 0.55, 0.1, 0.5)
 @export var invalid_color := Color(1.0, 0.12, 0.08, 0.55)
 @export var line_width_m := 6.0
+@export var minimum_visible_radius_m := 24.0
 @export var height_offset_m := 1.5
 @export var segments := 48
 
@@ -67,7 +68,13 @@ func apply_preview(preview: DiveBombPreview) -> void:
 	if preview == null:
 		visible = false
 		return
-	var outer_radius := maxf(preview.dispersion_radius_m, 1.0)
+	# Perfect accuracy legitimately resolves to a zero-metre dispersion radius.
+	# Keep that gameplay value unchanged while still drawing a usable target
+	# marker at normal battle-camera zoom levels.
+	var outer_radius := maxf(
+		preview.dispersion_radius_m,
+		maxf(minimum_visible_radius_m, 1.0)
+	)
 	if not is_equal_approx(outer_radius, _last_outer_radius):
 		_last_outer_radius = outer_radius
 		var inner_radius := maxf(

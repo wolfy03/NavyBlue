@@ -21,6 +21,7 @@ var target_velocity := Vector3.ZERO
 
 var ship_ref: WeakRef
 var ship_instance_id := 0
+var target_combat_id := 0
 
 var distance_from_designation_m := 0.0
 var resolution_reason: StringName = &""
@@ -84,6 +85,7 @@ func get_debug_snapshot() -> Dictionary:
 	return {
 		"resolved_target_type": TargetType.keys()[int(type)],
 		"resolved_target_ship_id": ship_instance_id,
+		"resolved_target_combat_id": target_combat_id,
 		"resolved_target_ship_name": ship.name if ship != null else "",
 		"resolved_target_position": resolved_aim_position,
 		"resolved_target_velocity": target_velocity,

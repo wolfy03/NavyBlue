@@ -52,7 +52,8 @@ func spawn_stage(
 	var player_resolution := player_ship_resolver.resolve(test_config)
 	var player_request := _build_request(
 		stage_data.player_spawn,
-		player_resolution.ship_id
+		player_resolution.ship_id,
+		CombatIdentity.for_stage_spawn(stage_data.id, &"player", 0)
 	)
 	player_request.is_player = true
 	player_request.team = FactionRelations.PLAYER
@@ -70,10 +71,26 @@ func spawn_stage(
 		result.player_ship = player_creation.ship
 	else:
 		result.errors.append(player_creation.error)
-	for spawn_data in stage_data.ally_spawns:
-		_append_spawn(spawn_data, parent, result.allies, result.errors)
-	for spawn_data in stage_data.enemy_spawns:
-		_append_spawn(spawn_data, parent, result.enemies, result.errors)
+	for ally_index in stage_data.ally_spawns.size():
+		_append_spawn(
+			stage_data.ally_spawns[ally_index],
+			parent,
+			result.allies,
+			result.errors,
+			CombatIdentity.for_stage_spawn(
+				stage_data.id, &"ally", ally_index
+			)
+		)
+	for enemy_index in stage_data.enemy_spawns.size():
+		_append_spawn(
+			stage_data.enemy_spawns[enemy_index],
+			parent,
+			result.enemies,
+			result.errors,
+			CombatIdentity.for_stage_spawn(
+				stage_data.id, &"enemy", enemy_index
+			)
+		)
 	if debug_settings != null and debug_settings.log_spawn_resolution:
 		print_debug(
 			"Player ship resolved: id=%s source=%s stage=%s"
@@ -90,9 +107,10 @@ func _append_spawn(
 		spawn_data: ShipSpawnData,
 		parent: Node,
 		target: Array[ShipUnit],
-		errors: PackedStringArray
+		errors: PackedStringArray,
+		combat_spawn_id: int
 ) -> void:
-	var request := _build_request(spawn_data)
+	var request := _build_request(spawn_data, &"", combat_spawn_id)
 	var creation := ship_factory.create_ship(request, parent)
 	if creation.is_success():
 		target.append(creation.ship)
@@ -102,9 +120,11 @@ func _append_spawn(
 
 func _build_request(
 		spawn_data: ShipSpawnData,
-		resolved_ship_id: StringName = &""
+		resolved_ship_id: StringName = &"",
+		combat_spawn_id: int = 0
 ) -> ShipSpawnRequest:
 	var request := ShipSpawnRequest.new()
+	request.combat_spawn_id = combat_spawn_id
 	if spawn_data == null:
 		request.ship_id = resolved_ship_id
 		request.allow_player_fallback = not resolved_ship_id.is_empty()

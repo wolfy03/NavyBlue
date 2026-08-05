@@ -1,10 +1,12 @@
 extends RefCounted
 class_name GunneryAccuracyContext
-## Inputs for one accuracy resolution. Instance ids and command/salvo indices
-## feed the deterministic RNG seeds; the profiles supply the error model.
+## Inputs for one accuracy resolution. Stable combat ids and command/salvo
+## indices feed deterministic RNG; instance ids remain compatibility fallback.
 
 var shooter_instance_id := 0
 var target_instance_id := 0
+var shooter_combat_id := 0
+var target_combat_id := 0
 var fire_command_id := 0
 var salvo_index := 0
 var turret_index := 0

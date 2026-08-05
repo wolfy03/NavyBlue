@@ -39,6 +39,11 @@ func spawn_aircraft() -> void:
 			offset,
 			owner_squadron.battle_services
 		)
+		aircraft.aircraft_slot_id = index
+		aircraft.aircraft_combat_id = CombatIdentity.for_aircraft(
+			owner_squadron,
+			index
+		)
 		aircraft.set_weapon_updates_managed_by_squadron(true)
 		owner_squadron.payload_release_coordinator.register_aircraft(
 			aircraft

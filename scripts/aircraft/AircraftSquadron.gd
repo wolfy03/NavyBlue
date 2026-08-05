@@ -47,8 +47,6 @@ const EPSILON := 0.0001
 @onready var mission_controller: AircraftMissionController = get_node_or_null(
 	"AircraftMissionController"
 ) as AircraftMissionController
-@onready var dive_bomb_controller: DiveBombAttackController = \
-	get_node_or_null("DiveBombAttackController") as DiveBombAttackController
 @onready var torpedo_attack_controller: TorpedoAttackController = \
 	get_node_or_null("TorpedoAttackController") as TorpedoAttackController
 
@@ -139,8 +137,6 @@ func setup(
 	_spawn_aircraft()
 	if mission_controller != null:
 		mission_controller.setup(self, battle_services)
-	if dive_bomb_controller != null:
-		dive_bomb_controller.setup(self)
 	if torpedo_attack_controller != null:
 		torpedo_attack_controller.setup(
 			self,
@@ -159,8 +155,7 @@ func shutdown() -> void:
 	if coordinator != null:
 		coordinator.unregister_intercept_assignment(self)
 		coordinator.unregister_squadron(self)
-	if dive_bomb_controller != null:
-		dive_bomb_controller.shutdown()
+	_cancel_player_dive_run(&"shutdown")
 	if torpedo_attack_controller != null:
 		torpedo_attack_controller.shutdown()
 	if mission_controller != null:
@@ -223,9 +218,7 @@ func request_return() -> void:
 	dive_control_source = DiveControlSource.NONE
 	_has_manual_move_target = false
 	_manual_attack_target_ref = null
-	_player_dive_run = null
-	if dive_bomb_controller != null:
-		dive_bomb_controller.cancel()
+	_cancel_player_dive_run(&"return_requested")
 	if torpedo_attack_controller != null \
 			and torpedo_attack_controller.is_active():
 		torpedo_attack_controller.abort(&"return_requested", false)
@@ -257,43 +250,15 @@ func get_alive_aircraft() -> Array[AircraftUnit]:
 	return result
 
 
-## Central reference aircraft for dive-bombing: the alive unit horizontally
-## closest to the formation center, independent of array order. The whole
-## squadron's attack solution and release window are judged from this one
-## aircraft.
 ## Candidate ships for dive-bomb target resolution. Primary source is the
 ## battle-wide ship registry (maintained on spawn/despawn); the group lookup
 ## is a fallback for harnesses that build ships without BattleServices. Only
 ## called at resolve events (command, pass start, repath, target loss) —
 ## never per physics frame.
 func get_dive_bomb_candidate_ships() -> Array[ShipUnit]:
-	if battle_services != null:
-		var registered := battle_services.ship_registry.get_alive_ships()
-		if not registered.is_empty():
-			return registered
-	var result: Array[ShipUnit] = []
-	if not is_inside_tree():
-		return result
-	for value in get_tree().get_nodes_in_group(&"ships"):
-		var ship := value as ShipUnit
-		if ship != null and is_instance_valid(ship) and ship.is_alive():
-			result.append(ship)
-	return result
-
-
-func select_dive_bomb_reference_aircraft() -> AircraftUnit:
-	var selected: AircraftUnit = null
-	var best_distance_squared := INF
-	for aircraft in get_alive_aircraft():
-		if aircraft == null or not is_instance_valid(aircraft):
-			continue
-		var offset := aircraft.global_position - formation_center
-		offset.y = 0.0
-		var distance_squared := offset.length_squared()
-		if distance_squared < best_distance_squared:
-			best_distance_squared = distance_squared
-			selected = aircraft
-	return selected
+	if battle_services == null or battle_services.ship_registry == null:
+		return []
+	return battle_services.ship_registry.get_alive_ships()
 
 
 func assign_strike_mission(
@@ -391,8 +356,6 @@ func issue_player_move_command(
 			and torpedo_attack_controller.is_active():
 		torpedo_attack_controller.abort(&"player_override", false)
 	cancel_current_mission_for_player_command()
-	if dive_bomb_controller != null:
-		dive_bomb_controller.cancel()
 	set_command_authority(CommandAuthority.PLAYER)
 	dive_control_source = DiveControlSource.NONE
 	_manual_attack_target_ref = weakref(attack_target) \
@@ -419,8 +382,6 @@ func can_begin_manual_dive() -> bool:
 		and is_player_commanded() \
 		and get_aircraft_role() \
 			== AircraftData.AircraftRole.DIVE_BOMBER \
-		and dive_bomb_controller != null \
-		and not dive_bomb_controller.is_active() \
 		and (_player_dive_run == null or _player_dive_run.is_finished()) \
 		and has_any_ammunition()
 
@@ -449,33 +410,37 @@ func resolve_player_dive_target(
 	)
 
 
-## Immediate dive from the squadron's current position. The geometry is
-## whatever the player commanded, so the legacy point-based dive is kept; the
-## target itself still comes from the shared resolver.
 func begin_manual_dive() -> bool:
-	if not can_begin_manual_dive():
-		return false
-	cancel_current_mission_for_player_command()
 	var designation := _manual_move_target if _has_manual_move_target \
 		else formation_center + get_formation_forward() * 600.0
 	designation.y = 0.0
-	var resolved := resolve_player_dive_target(
+	return issue_manual_dive_bomb_command(
 		designation,
-		get_manual_attack_target()
+		get_manual_attack_target(),
+		DiveBombAttackMode.Type.QUICK_ATTACK
 	)
-	if not resolved.is_valid():
+
+
+func issue_manual_dive_bomb_command(
+		designated_position: Vector3,
+		explicit_target: ShipUnit = null,
+		attack_mode: int = DiveBombAttackMode.Type.QUICK_ATTACK
+) -> bool:
+	if not can_begin_manual_dive():
 		return false
-	# Keep the manual-target tracking aligned with the resolver's choice so
-	# the per-frame lead prediction follows the acquired ship.
-	_manual_attack_target_ref = weakref(resolved.get_ship()) \
-		if resolved.get_ship() != null else null
-	var begin_result := dive_bomb_controller.begin_dive_with_source(
-		resolved.get_aim_position(),
-		resolved.get_target_velocity(),
-		DiveControlSource.PLAYER
-	)
-	if begin_result != DiveBombAttackController.BeginDiveResult.STARTED:
+	cancel_current_mission_for_player_command()
+	var run := PlayerDiveBombRun.new()
+	if not run.setup(
+		self,
+		designated_position,
+		0.0,
+		explicit_target,
+		attack_mode
+	):
 		return false
+	_player_dive_run = run
+	dive_control_source = DiveControlSource.PLAYER
+	set_physics_process(true)
 	destination_tracker.clear_active_command()
 	_on_destination_command_changed()
 	return true
@@ -483,20 +448,14 @@ func begin_manual_dive() -> bool:
 
 func begin_manual_dive_at(
 		target_point: Vector3,
-		dispersion_radius_m: float = 0.0,
+		_dispersion_radius_m: float = 0.0,
 		explicit_target: ShipUnit = null
 ) -> bool:
-	if not can_begin_manual_dive():
-		return false
-	cancel_current_mission_for_player_command()
-	var run := PlayerDiveBombRun.new()
-	if not run.setup(self, target_point, dispersion_radius_m, explicit_target):
-		return false
-	_player_dive_run = run
-	set_physics_process(true)
-	destination_tracker.clear_active_command()
-	_on_destination_command_changed()
-	return true
+	return issue_manual_dive_bomb_command(
+		target_point,
+		explicit_target,
+		DiveBombAttackMode.Type.NORMAL_APPROACH
+	)
 
 
 func get_dive_bomber_combat_data() -> DiveBomberCombatData:
@@ -506,22 +465,30 @@ func get_dive_bomber_combat_data() -> DiveBomberCombatData:
 
 
 func _cancel_player_dive_run(reason: StringName) -> void:
-	# Cancels the pending player dive run AND the dive controller when a player
-	# dive is active, so clearing the run reference never leaves the underlying
-	# DiveBombAttackController running on its own.
 	if _player_dive_run != null:
 		_player_dive_run.cancel(reason)
 		_player_dive_run = null
-	if dive_bomb_controller != null \
-			and dive_control_source == DiveControlSource.PLAYER \
-			and dive_bomb_controller.is_active():
-		dive_bomb_controller.cancel()
+	if dive_control_source == DiveControlSource.PLAYER:
+		dive_control_source = DiveControlSource.NONE
 
 
-func get_dive_attack_state() -> DiveBombAttackController.State:
-	return dive_bomb_controller.state \
-		if dive_bomb_controller != null \
-		else DiveBombAttackController.State.IDLE
+func get_dive_attack_state() -> int:
+	if _player_dive_run != null \
+			and _player_dive_run.get_coordinator() != null:
+		return _player_dive_run.get_coordinator().state
+	if mission_controller != null \
+			and mission_controller.dive_bomb_behavior != null \
+			and mission_controller.dive_bomb_behavior.get_coordinator() != null:
+		return mission_controller.dive_bomb_behavior.get_coordinator().state
+	return SquadronDiveBombCoordinator.State.IDLE
+
+
+func is_dive_bomb_attack_active() -> bool:
+	if _player_dive_run != null and not _player_dive_run.is_finished():
+		return true
+	return mission_controller != null \
+		and mission_controller.dive_bomb_behavior != null \
+		and not mission_controller.dive_bomb_behavior.is_finished()
 
 
 func get_torpedo_attack_profile() -> TorpedoAttackProfile:
@@ -554,8 +521,6 @@ func issue_player_torpedo_attack(command: TorpedoAttackCommand) -> bool:
 			or not torpedo_attack_controller.can_begin_attack(command):
 		return false
 	cancel_current_mission_for_player_command()
-	if dive_bomb_controller != null:
-		dive_bomb_controller.cancel()
 	set_command_authority(CommandAuthority.PLAYER)
 	dive_control_source = DiveControlSource.NONE
 	_has_manual_move_target = false
@@ -826,9 +791,7 @@ func handle_carrier_unavailable(cleanup_grace_sec: float = 2.0) -> void:
 	dive_control_source = DiveControlSource.NONE
 	_has_manual_move_target = false
 	_manual_attack_target_ref = null
-	_player_dive_run = null
-	if dive_bomb_controller != null:
-		dive_bomb_controller.cancel()
+	_cancel_player_dive_run(&"carrier_unavailable")
 	if torpedo_attack_controller != null \
 			and torpedo_attack_controller.is_active():
 		torpedo_attack_controller.abort(&"carrier_unavailable", false)
@@ -885,11 +848,12 @@ func _physics_process(delta: float) -> void:
 	if _player_dive_run != null:
 		_player_dive_run.update(delta)
 		if _player_dive_run.is_finished():
+			var dive_succeeded := _player_dive_run.successful
 			_player_dive_run = null
-	if dive_bomb_controller != null and dive_bomb_controller.is_active():
-		if dive_control_source == DiveControlSource.PLAYER:
-			_update_player_dive_target()
-		dive_bomb_controller.update_dive(delta)
+			dive_control_source = DiveControlSource.NONE
+			if dive_succeeded and manual_return_after_release:
+				request_return()
+				return
 	var torpedo_attack_was_active := torpedo_attack_controller != null \
 		and torpedo_attack_controller.is_active()
 	if torpedo_attack_was_active:
@@ -903,20 +867,6 @@ func _physics_process(delta: float) -> void:
 			]:
 			mission_controller.update_mission(delta)
 	if torpedo_attack_was_active:
-		return
-	if dive_control_source != DiveControlSource.NONE \
-			and dive_bomb_controller != null \
-			and dive_bomb_controller.state in [
-				DiveBombAttackController.State.COMPLETED,
-				DiveBombAttackController.State.FAILED,
-			]:
-		var was_player_dive := \
-			dive_control_source == DiveControlSource.PLAYER
-		dive_control_source = DiveControlSource.NONE
-		if was_player_dive and manual_return_after_release:
-			request_return()
-			return
-	if dive_bomb_controller != null and dive_bomb_controller.is_active():
 		return
 	movement_controller.update_standard_movement(delta)
 
@@ -1116,7 +1066,7 @@ func get_command_debug_snapshot() -> Dictionary:
 		"dive_control_source":
 			DiveControlSource.keys()[int(dive_control_source)],
 		"dive_attack_state":
-			DiveBombAttackController.State.keys()[
+			SquadronDiveBombCoordinator.State.keys()[
 				int(get_dive_attack_state())
 			],
 	}
@@ -1144,34 +1094,6 @@ func _is_valid_manual_attack_target(target: ShipUnit) -> bool:
 		and target.is_alive() \
 		and carrier != null \
 		and carrier.is_hostile_to(target)
-
-
-func _get_target_world_velocity(target: ShipUnit) -> Vector3:
-	if target == null or not is_instance_valid(target):
-		return Vector3.ZERO
-	return target.get_world_velocity()
-
-
-func _update_player_dive_target() -> void:
-	var target := get_manual_attack_target()
-	if target == null or dive_bomb_controller == null:
-		return
-	var target_velocity := _get_target_world_velocity(target)
-	var release_height := maxf(
-		formation_center.y - target.global_position.y,
-		1.0
-	)
-	var gravity := float(ProjectSettings.get_setting(
-		"physics/3d/default_gravity",
-		9.8
-	))
-	var fall_time := sqrt(
-		2.0 * release_height / maxf(gravity, 0.1)
-	)
-	dive_bomb_controller.update_target(
-		target.global_position + target_velocity * fall_time,
-		target_velocity
-	)
 
 
 func _get_carrier_launch_position() -> Vector3:

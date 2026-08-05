@@ -68,6 +68,7 @@ func create_ship(
 		battle_services
 	)
 	ship.fleet_id = request.fleet_id
+	ship.combat_spawn_id = request.combat_spawn_id
 	parent.add_child(ship)
 	ship.global_transform = request.transform
 	if not request.display_name.is_empty():

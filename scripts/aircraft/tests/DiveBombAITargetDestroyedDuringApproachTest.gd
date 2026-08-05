@@ -50,7 +50,6 @@ func _run() -> void:
 	behavior.update(0.0)
 	# The assigned ship sinks mid-approach.
 	assigned._is_sinking = true
-	behavior._approach_repath_left = 0.0
 	behavior.update(0.5)
 	_check(
 		behavior.state == DiveBombMissionBehavior.State.APPROACHING,
@@ -67,7 +66,6 @@ func _run() -> void:
 	# The replacement sinks too: a ship strike with nothing left to attack
 	# fails safely and returns instead of bombing empty water.
 	replacement._is_sinking = true
-	behavior._approach_repath_left = 0.0
 	behavior.update(0.5)
 	_check(
 		behavior.is_finished() \
@@ -95,7 +93,6 @@ func _run() -> void:
 	)
 	position_behavior.update(0.0)
 	lost_a._is_sinking = true
-	position_behavior._approach_repath_left = 0.0
 	position_behavior.update(0.5)
 	_check(
 		position_behavior.get_resolved_target() != null \

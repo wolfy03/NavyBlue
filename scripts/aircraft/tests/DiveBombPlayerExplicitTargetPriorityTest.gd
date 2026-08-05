@@ -62,7 +62,6 @@ func _run() -> void:
 	)
 	# Repath re-resolution must not drift to the nearer ship either.
 	if run != null:
-		run._entry_repath_left = 0.0
 		run.update(0.5)
 		_check(
 			run.get_resolved_target().get_ship() == clicked,

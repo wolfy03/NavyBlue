@@ -35,7 +35,7 @@ func _run() -> void:
 	var context := DiveBombAttackContext.new()
 	context.squadron_combat_id = 777
 	context.reset_for_new_pass()
-	var solution := DiveBombAttackPlanner.build_commit_solution(
+	var solution := DiveBombAttackPlanner.build_aircraft_commit_solution(
 		null, reference, target, data, weapon, context
 	)
 	_check(solution != null and solution.valid, "commit solution solves")

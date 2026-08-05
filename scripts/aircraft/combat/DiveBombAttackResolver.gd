@@ -82,6 +82,15 @@ static func solve(
 	var dive_horizontal_speed := dive_speed * cos(dive_angle_rad)
 	if dive_vertical_speed <= EPSILON:
 		return DiveBombAttackSolution.failed(&"invalid_dive_geometry")
+	# The authored entry altitude is a minimum. Ensure the solved path contains
+	# enough physical dive time to satisfy the same release gate used by each
+	# aircraft controller, otherwise a shallow test/profile configuration could
+	# make release impossible before the safety altitude.
+	entry_altitude = maxf(
+		entry_altitude,
+		release_altitude + dive_vertical_speed \
+			* maxf(dive_data.minimum_dive_time_before_release_sec, 0.0)
+	)
 
 	# The bomb leaves with the aircraft's dive velocity, so its horizontal
 	# component is the dive's horizontal component along the attack heading.
@@ -110,7 +119,7 @@ static func solve(
 	var dive_time := vertical_drop / dive_vertical_speed
 	var dive_travel := attack_direction * (dive_horizontal_speed * dive_time)
 	# release_interval_sec is the stagger between bombs of one squadron, not
-	# a mechanical fuse: the central solution is planned for the first bomb,
+	# a mechanical fuse: the pass-wide solution is planned for the first bomb,
 	# so no release delay enters the ballistic timing.
 	var release_delay := 0.0
 	var approach_distance := maxf(dive_data.approach_distance_m, 0.0)
@@ -367,18 +376,12 @@ static func resolve_accuracy_dispersion_offset(
 		maximum_radius_m: float,
 		deterministic_seed: int
 ) -> Vector3:
-	var radius := lerpf(
-		maxf(maximum_radius_m, 0.0),
-		maxf(minimum_radius_m, 0.0),
-		clampf(accuracy, 0.0, 1.0)
+	return DiveBombAccuracyMath.resolve_offset(
+		accuracy,
+		minimum_radius_m,
+		maximum_radius_m,
+		deterministic_seed
 	)
-	if radius <= 0.001:
-		return Vector3.ZERO
-	var rng := RandomNumberGenerator.new()
-	rng.seed = deterministic_seed
-	var angle := rng.randf_range(0.0, TAU)
-	var distance := radius * sqrt(rng.randf())
-	return Vector3(cos(angle) * distance, 0.0, sin(angle) * distance)
 
 
 static func _resolve_attack_direction(

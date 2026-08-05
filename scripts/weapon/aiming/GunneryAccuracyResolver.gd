@@ -223,8 +223,10 @@ static func create_salvo_solution(
 		clampf(context.salvo_correction_level, 0.0, 1.0)
 	)
 	solution.salvo_seed = make_salvo_seed(
-		context.shooter_instance_id,
-		context.target_instance_id,
+		context.shooter_combat_id \
+			if context.shooter_combat_id != 0 else context.shooter_instance_id,
+		context.target_combat_id \
+			if context.target_combat_id != 0 else context.target_instance_id,
 		context.fire_command_id,
 		context.salvo_index,
 		context.weapon_group_id
@@ -260,8 +262,10 @@ static func create_independent_mount_solution(
 	if not solution.has_bias_basis():
 		return solution
 	var mount_seed := make_mount_seed(
-		context.shooter_instance_id,
-		context.target_instance_id,
+		context.shooter_combat_id \
+			if context.shooter_combat_id != 0 else context.shooter_instance_id,
+		context.target_combat_id \
+			if context.target_combat_id != 0 else context.target_instance_id,
 		mount_instance_id,
 		fire_sequence_index,
 		context.weapon_group_id
