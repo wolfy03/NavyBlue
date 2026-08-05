@@ -73,6 +73,11 @@ func build_from_aggregate(
 			TorpedoAttackController.State.keys()[
 				int(squadron.torpedo_attack_controller.state)
 			]
+	elif squadron.is_dive_bomb_attack_active():
+		snapshot.attack_state_name = \
+			SquadronDiveBombCoordinator.State.keys()[
+				int(squadron.get_dive_attack_state())
+			]
 	snapshot.mission_name = _resolve_mission_name(
 		squadron,
 		destination
@@ -88,6 +93,11 @@ func _resolve_mission_name(
 	if squadron.torpedo_attack_controller != null \
 			and squadron.torpedo_attack_controller.is_active():
 		return "Torpedo attack"
+	if squadron.is_dive_bomb_attack_active():
+		var attack_state := str(SquadronDiveBombCoordinator.State.keys()[
+			int(squadron.get_dive_attack_state())
+		]).capitalize()
+		return "Dive bomb: %s" % attack_state
 	if not mission_id.is_empty():
 		return mission_id
 	if destination != null and destination.command_type == &"player_move":

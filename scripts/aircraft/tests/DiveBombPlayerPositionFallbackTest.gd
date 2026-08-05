@@ -86,6 +86,14 @@ func _run() -> void:
 		),
 		"empty-water command starts a player dive run"
 	)
+	var command_snapshot := SquadronPresentationSnapshotBuilder.new().build(
+		squadron
+	)
+	_check(
+		command_snapshot.attack_state_name == "APPROACHING" \
+			and command_snapshot.mission_name == "Dive bomb: Approaching",
+		"manual dive overlay exposes the active approach instead of None"
+	)
 	var run := squadron._player_dive_run
 	var resolved := run.get_resolved_target() if run != null else null
 	_check(
@@ -103,6 +111,12 @@ func _run() -> void:
 	if run != null:
 		run.update(0.0)
 		var entry := squadron.destination
+		var approach_serial := squadron.destination_tracker.command_serial
+		run.update(0.3)
+		_check(
+			squadron.destination_tracker.command_serial == approach_serial,
+			"unchanged approach point preserves its destination serial"
+		)
 		var to_designation := entry - designation
 		to_designation.y = 0.0
 		_check(

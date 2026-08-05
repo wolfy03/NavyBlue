@@ -33,6 +33,7 @@ var _attack_context := DiveBombAttackContext.new()
 var _controllers: Array[AircraftDiveBombController] = []
 var _approach_repath_left := 0.0
 var _approach_destination_serial := -1
+var _approach_position := Vector3.ZERO
 var _regroup_destination_serial := -1
 var _regroup_elapsed_sec := 0.0
 var _regroup_position := Vector3.ZERO
@@ -143,6 +144,18 @@ func get_debug_snapshot() -> Dictionary:
 		"target_resolve_count": _attack_context.target_resolve_count,
 		"target_reacquire_count": _attack_context.target_reacquire_count,
 		"solution_revision": _attack_context.solution_revision,
+		"approach_destination_serial": _approach_destination_serial,
+		"approach_position": _approach_position,
+		"approach_distance_remaining_m": _flat_distance(
+			_squadron.formation_center,
+			_approach_position
+		) if _squadron != null and is_instance_valid(_squadron) else 0.0,
+		"approach_destination_reached": (
+			_squadron.has_reached_mission_destination(
+				_approach_destination_serial
+			) if _squadron != null and is_instance_valid(_squadron) \
+			and _approach_destination_serial >= 0 else false
+		),
 		"released_count": released_count,
 		"failed_count": failed_count,
 		"destroyed_count": destroyed_count,
@@ -190,16 +203,29 @@ func _update_approach(delta: float) -> void:
 	)
 	if _approach_destination_serial < 0 or _approach_repath_left <= 0.0:
 		var destination := _calculate_shared_approach_destination()
+		var force_first_command := _approach_destination_serial < 0
 		_approach_destination_serial = _squadron.set_mission_destination(
 			destination,
-			true,
+			force_first_command,
 			&"dive_bomb_approach"
 		)
+		# set_mission_destination owns combat-radius clamping. Retain the
+		# authoritative destination actually assigned to movement, not the
+		# unclamped planner request.
+		_approach_position = _squadron.destination
 		_approach_repath_left = REPATH_INTERVAL_SEC
-	if _squadron.has_reached_mission_destination(
-		_approach_destination_serial
-	):
+	if _has_reached_approach_position():
 		state = State.ATTACK_SPLIT
+
+
+func _has_reached_approach_position() -> bool:
+	if _approach_destination_serial < 0:
+		return false
+	return _squadron.has_reached_mission_destination(
+		_approach_destination_serial
+	) or _squadron.movement_controller.has_formation_arrived(
+		_approach_position
+	)
 
 
 func _calculate_shared_approach_destination() -> Vector3:
@@ -383,6 +409,10 @@ func _finish_without_regroup() -> void:
 		controller.mark_regrouped()
 	_squadron.restore_formation_flight()
 	state = State.COMPLETED if released_count > 0 else State.FAILED
+
+
+func _flat_distance(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
 
 
 func _update_counts() -> void:
