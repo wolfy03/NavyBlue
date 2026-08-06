@@ -160,6 +160,7 @@ func shutdown() -> void:
 		torpedo_attack_controller.shutdown()
 	if mission_controller != null:
 		mission_controller.shutdown()
+	force_release_all_movement_owners(&"squadron_shutdown")
 	if lifecycle_controller.owner_squadron != null:
 		lifecycle_controller.release_aircraft()
 	if payload_release_coordinator.aircraft_release_finished.is_connected(
@@ -219,6 +220,9 @@ func request_return() -> void:
 	_has_manual_move_target = false
 	_manual_attack_target_ref = null
 	_cancel_player_dive_run(&"return_requested")
+	# Aircraft still owned by an attack controller would otherwise ignore the
+	# return flight and keep flying their old combat headings forever.
+	force_release_all_movement_owners(&"return_requested")
 	if torpedo_attack_controller != null \
 			and torpedo_attack_controller.is_active():
 		torpedo_attack_controller.abort(&"return_requested", false)
@@ -758,8 +762,34 @@ func set_mission_destination(
 	)
 
 
+## Repath-aware destination update: keeps the active command (same serial)
+## while the change stays under the threshold, issues a new command
+## otherwise. See SquadronMovementController.update_destination_if_changed.
+func update_mission_destination_if_changed(
+		world_position: Vector3,
+		change_threshold_m: float,
+		command_type: StringName = &"mission"
+) -> int:
+	return movement_controller.update_destination_if_changed(
+		world_position,
+		change_threshold_m,
+		command_type
+	)
+
+
 func has_reached_mission_destination(command_serial: int = -1) -> bool:
 	return destination_tracker.is_reached(command_serial)
+
+
+## Lifecycle-layer recovery of aircraft still owned by a combat system
+## (dive attack, torpedo run) when the squadron leaves normal combat flow:
+## return to carrier, carrier loss, shutdown, destruction. Bumps each
+## aircraft's ownership generation so stale controllers cannot keep steering.
+func force_release_all_movement_owners(reason: StringName) -> void:
+	for aircraft in aircraft_units:
+		if aircraft == null or not is_instance_valid(aircraft):
+			continue
+		aircraft.force_release_movement_owner(reason)
 
 
 func get_destination_snapshot() -> SquadronDestinationSnapshot:
@@ -795,6 +825,7 @@ func handle_carrier_unavailable(cleanup_grace_sec: float = 2.0) -> void:
 	if torpedo_attack_controller != null \
 			and torpedo_attack_controller.is_active():
 		torpedo_attack_controller.abort(&"carrier_unavailable", false)
+	force_release_all_movement_owners(&"carrier_unavailable")
 	clear_fighter_targets()
 	for aircraft in aircraft_units:
 		if not is_instance_valid(aircraft):
@@ -1138,6 +1169,7 @@ func _mark_destroyed() -> void:
 	if torpedo_attack_controller != null \
 			and torpedo_attack_controller.is_active():
 		torpedo_attack_controller.abort(&"squadron_destroyed", false)
+	force_release_all_movement_owners(&"squadron_destroyed")
 	set_player_selected(false)
 	var coordinator := get_combat_coordinator()
 	if coordinator != null:

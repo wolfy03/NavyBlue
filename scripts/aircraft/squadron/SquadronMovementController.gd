@@ -73,6 +73,46 @@ func set_destination(
 				AircraftSquadron.State.HOLDING,
 			]:
 		return destination_tracker.command_serial
+	return _begin_destination_command(next_destination, command_type)
+
+
+## Explicit repath contract: the current command (and its serial) survives
+## while the newly computed destination stays within `change_threshold_m` of
+## the destination actually assigned to movement; a larger change issues a
+## new command with a new serial. Callers never have to guess the tracker's
+## internal epsilon policy through the `force` flag.
+func update_destination_if_changed(
+		world_position: Vector3,
+		change_threshold_m: float,
+		command_type: StringName = &"mission"
+) -> int:
+	if owner_squadron.state in [
+		AircraftSquadron.State.RETURNING,
+		AircraftSquadron.State.RECOVERING,
+		AircraftSquadron.State.DESTROYED,
+	]:
+		return destination_tracker.command_serial
+	var next_destination := owner_squadron \
+		._clamp_destination_horizontal(world_position)
+	var flat_change := Vector2(
+		next_destination.x - owner_squadron.destination.x,
+		next_destination.z - owner_squadron.destination.z
+	).length()
+	if destination_tracker.active \
+			and destination_tracker.command_type == command_type \
+			and owner_squadron.state in [
+				AircraftSquadron.State.EN_ROUTE,
+				AircraftSquadron.State.HOLDING,
+			] \
+			and flat_change <= maxf(change_threshold_m, 0.0):
+		return destination_tracker.command_serial
+	return _begin_destination_command(next_destination, command_type)
+
+
+func _begin_destination_command(
+		next_destination: Vector3,
+		command_type: StringName
+) -> int:
 	var command_serial := destination_tracker.begin_command(
 		command_type,
 		next_destination.y

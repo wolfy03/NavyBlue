@@ -34,6 +34,10 @@ var release_attempted := false
 var released := false
 var ammunition_consumed := false
 var degraded_release_used := false
+## Transient release refusals retried so far, and the cooldown until the
+## next attempt. Retries are fully per-aircraft.
+var release_retry_count := 0
+var release_retry_cooldown_sec := 0.0
 var last_release_altitude_m := 0.0
 var last_release_remaining_m := 0.0
 var last_predicted_forward_error_m := 0.0

@@ -74,9 +74,11 @@ func is_finished() -> bool:
 	return state == State.DONE
 
 
-func cancel(_reason: StringName = &"") -> void:
+func cancel(reason: StringName = &"") -> void:
 	if _coordinator != null:
-		_coordinator.cancel()
+		_coordinator.cancel(
+			reason if reason != &"" else &"player_cancelled"
+		)
 	_coordinator = null
 	_squadron = null
 	state = State.DONE

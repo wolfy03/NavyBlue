@@ -40,6 +40,13 @@ var formation_offset: Vector3 = Vector3.ZERO
 var aircraft_slot_id := -1
 var aircraft_combat_id := 0
 var movement_owner := AircraftMovementOwner.Type.FORMATION
+## Why the current owner holds movement, for debugging ownership disputes.
+var movement_owner_reason: StringName = &""
+## Incremented on EVERY ownership change, including forced overrides. A
+## controller that captured the generation at acquire time can detect that
+## someone else has owned (and possibly re-released) movement since, and must
+## not keep steering.
+var movement_owner_generation := 0
 var active := false
 var weapon_updates_managed_by_squadron := false
 var _destroyed_emitted := false
@@ -128,20 +135,47 @@ func set_direct_flight(
 		movement.set_direct_flight(direction, speed_mps)
 
 
-func acquire_movement_owner(next_owner: int) -> bool:
+func acquire_movement_owner(
+		next_owner: int,
+		reason: StringName = &""
+) -> bool:
 	if next_owner == AircraftMovementOwner.Type.FORMATION:
 		return false
 	if movement_owner != AircraftMovementOwner.Type.FORMATION \
 			and movement_owner != next_owner:
 		return false
+	if movement_owner != next_owner:
+		movement_owner_generation += 1
 	movement_owner = next_owner
+	movement_owner_reason = reason
 	return true
 
 
-func release_movement_owner(current_owner: int) -> void:
-	if movement_owner != current_owner:
+## Idempotent: releasing an ownership this caller no longer holds is a no-op,
+## so every cleanup path may call it unconditionally.
+func release_movement_owner(
+		current_owner: int,
+		reason: StringName = &""
+) -> void:
+	if movement_owner != current_owner \
+			or movement_owner == AircraftMovementOwner.Type.FORMATION:
 		return
 	movement_owner = AircraftMovementOwner.Type.FORMATION
+	movement_owner_reason = reason
+	movement_owner_generation += 1
+	set_formation_flight()
+
+
+## Lifecycle-layer escape hatch (return-to-carrier, squadron shutdown,
+## carrier loss, destruction). Normal combat systems must use
+## acquire/release; forcing bumps the generation so any stale controller
+## still holding the old ownership fails its next owned-flight request.
+func force_release_movement_owner(reason: StringName) -> void:
+	if movement_owner == AircraftMovementOwner.Type.FORMATION:
+		return
+	movement_owner = AircraftMovementOwner.Type.FORMATION
+	movement_owner_reason = reason
+	movement_owner_generation += 1
 	set_formation_flight()
 
 
@@ -160,13 +194,27 @@ func is_movement_owned_by(current_owner: int) -> bool:
 	return movement_owner == current_owner
 
 
+func get_movement_owner_debug_snapshot() -> Dictionary:
+	return {
+		"movement_owner": movement_owner,
+		"movement_owner_name": AircraftMovementOwner.Type.keys()[
+			int(movement_owner)
+		],
+		"movement_owner_reason": movement_owner_reason,
+		"movement_owner_generation": movement_owner_generation,
+	}
+
+
 func set_formation_flight() -> void:
 	if movement != null:
 		movement.set_formation_mode()
 
 
 func activate() -> void:
+	if movement_owner != AircraftMovementOwner.Type.FORMATION:
+		movement_owner_generation += 1
 	movement_owner = AircraftMovementOwner.Type.FORMATION
+	movement_owner_reason = &"activated"
 	active = true
 	visible = true
 	set_physics_process(true)
@@ -178,7 +226,10 @@ func activate() -> void:
 
 
 func deactivate() -> void:
+	if movement_owner != AircraftMovementOwner.Type.FORMATION:
+		movement_owner_generation += 1
 	movement_owner = AircraftMovementOwner.Type.FORMATION
+	movement_owner_reason = &"deactivated"
 	active = false
 	velocity = Vector3.ZERO
 	set_physics_process(false)

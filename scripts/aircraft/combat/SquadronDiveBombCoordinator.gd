@@ -12,9 +12,20 @@ enum State {
 	REGROUPING,
 	COMPLETED,
 	FAILED,
+	CANCELLED,
 }
 
-const REPATH_INTERVAL_SEC := 0.25
+## Why REGROUPING ended. Priority when several are true in the same frame:
+## NO_SURVIVORS > RATIO_REACHED > DESTINATION_REACHED > TIMEOUT.
+enum RegroupCompletionReason {
+	NONE,
+	RATIO_REACHED,
+	DESTINATION_REACHED,
+	TIMEOUT,
+	NO_SURVIVORS,
+	REGROUP_DISABLED,
+	CANCELLED,
+}
 
 var state := State.IDLE
 var released_count := 0
@@ -22,8 +33,16 @@ var failed_count := 0
 var destroyed_count := 0
 var pending_count := 0
 var pulling_out_count := 0
+## ACTUAL aircraft counted inside the regroup tolerances when regrouping
+## ended - never inflated to the survivor count.
 var regrouped_count := 0
+var regroup_alive_count := 0
+var regroup_arrived_count := 0
+var regroup_completion_ratio_actual := 0.0
+var regroup_completion_reason := RegroupCompletionReason.NONE
 var failure_reason: StringName = &""
+var movement_ownership_released_count := 0
+var approach_repath_count := 0
 
 var _squadron: AircraftSquadron
 var _target_request: DiveBombTargetRequest
@@ -33,7 +52,10 @@ var _attack_context := DiveBombAttackContext.new()
 var _controllers: Array[AircraftDiveBombController] = []
 var _approach_repath_left := 0.0
 var _approach_destination_serial := -1
+## The destination actually assigned to movement (post combat-radius clamp).
 var _approach_position := Vector3.ZERO
+## The planner's unclamped request, kept for clamp-offset diagnostics.
+var _approach_requested_position := Vector3.ZERO
 var _regroup_destination_serial := -1
 var _regroup_elapsed_sec := 0.0
 var _regroup_position := Vector3.ZERO
@@ -77,8 +99,13 @@ func setup(
 
 func update(delta: float) -> void:
 	if _squadron == null or not is_instance_valid(_squadron):
-		state = State.FAILED
-		failure_reason = &"squadron_unavailable"
+		if state not in [State.IDLE, State.COMPLETED, State.FAILED,
+				State.CANCELLED]:
+			# The squadron object is gone but individual aircraft may
+			# outlive it; never leave them owned by orphaned controllers.
+			_release_all_controller_ownership(&"squadron_unavailable")
+			state = State.FAILED
+			failure_reason = &"squadron_unavailable"
 		return
 	match state:
 		State.APPROACHING:
@@ -93,18 +120,35 @@ func update(delta: float) -> void:
 			pass
 
 
-func cancel() -> void:
-	for controller in _controllers:
-		if controller != null:
-			controller.cancel()
-			controller.mark_regrouped()
+## Cleans up from ANY state (aligning, diving, releasing, pulling out,
+## regrouping, failed): every controller is cancelled and its movement
+## ownership returned, exactly once, before formation control resumes.
+## Ammunition not yet spent stays aboard; spawned projectiles keep flying.
+func cancel(reason: StringName = &"cancelled") -> void:
+	var was_active := is_active()
+	_release_all_controller_ownership(reason)
 	_controllers.clear()
 	if _squadron != null and is_instance_valid(_squadron):
 		_squadron.restore_formation_flight()
 	_squadron = null
 	_target_request = null
 	_resolved_target = null
-	state = State.IDLE
+	if was_active:
+		if state == State.REGROUPING:
+			regroup_completion_reason = RegroupCompletionReason.CANCELLED
+		state = State.CANCELLED
+		failure_reason = reason
+	else:
+		state = State.IDLE
+
+
+func _release_all_controller_ownership(reason: StringName) -> void:
+	for controller in _controllers:
+		if controller == null:
+			continue
+		controller.cancel(reason)
+		controller.release_movement_ownership(reason)
+		movement_ownership_released_count += 1
 
 
 func is_completed() -> bool:
@@ -112,11 +156,16 @@ func is_completed() -> bool:
 
 
 func is_failed() -> bool:
-	return state == State.FAILED
+	return state in [State.FAILED, State.CANCELLED]
 
 
 func is_active() -> bool:
-	return state not in [State.IDLE, State.COMPLETED, State.FAILED]
+	return state not in [
+		State.IDLE,
+		State.COMPLETED,
+		State.FAILED,
+		State.CANCELLED,
+	]
 
 
 func get_resolved_target() -> DiveBombResolvedTarget:
@@ -146,6 +195,13 @@ func get_debug_snapshot() -> Dictionary:
 		"solution_revision": _attack_context.solution_revision,
 		"approach_destination_serial": _approach_destination_serial,
 		"approach_position": _approach_position,
+		"approach_requested_position": _approach_requested_position,
+		"approach_assigned_position": _approach_position,
+		"approach_clamp_offset_m": _flat_distance(
+			_approach_requested_position,
+			_approach_position
+		),
+		"approach_repath_count": approach_repath_count,
 		"approach_distance_remaining_m": _flat_distance(
 			_squadron.formation_center,
 			_approach_position
@@ -162,6 +218,16 @@ func get_debug_snapshot() -> Dictionary:
 		"pending_count": pending_count,
 		"pulling_out_count": pulling_out_count,
 		"regrouped_count": regrouped_count,
+		"regroup_alive_count": regroup_alive_count,
+		"regroup_arrived_count": regroup_arrived_count,
+		"regroup_completion_ratio_actual": regroup_completion_ratio_actual,
+		"regroup_completion_reason": RegroupCompletionReason.keys()[
+			int(regroup_completion_reason)
+		],
+		"regroup_elapsed_sec": _regroup_elapsed_sec,
+		"movement_ownership_released_count":
+			movement_ownership_released_count,
+		"controller_count": _controllers.size(),
 		"failure_reason": failure_reason,
 		"aircraft": aircraft_snapshots,
 	}
@@ -201,19 +267,38 @@ func _update_approach(delta: float) -> void:
 		_approach_repath_left - maxf(delta, 0.0),
 		0.0
 	)
+	var dive_data := _squadron.get_dive_bomber_combat_data()
 	if _approach_destination_serial < 0 or _approach_repath_left <= 0.0:
 		var destination := _calculate_shared_approach_destination()
-		var force_first_command := _approach_destination_serial < 0
-		_approach_destination_serial = _squadron.set_mission_destination(
-			destination,
-			force_first_command,
-			&"dive_bomb_approach"
-		)
+		_approach_requested_position = destination
+		# A moving target drags the computed approach point continuously;
+		# only a change beyond the authored threshold issues a NEW movement
+		# command (new serial). Sub-threshold drift keeps the current
+		# command so arrival tracking is never reset by noise.
+		var previous_serial := _approach_destination_serial
+		if previous_serial < 0:
+			_approach_destination_serial = _squadron.set_mission_destination(
+				destination,
+				true,
+				&"dive_bomb_approach"
+			)
+		else:
+			_approach_destination_serial = \
+				_squadron.update_mission_destination_if_changed(
+					destination,
+					dive_data.approach_repath_threshold_m,
+					&"dive_bomb_approach"
+				)
+		if _approach_destination_serial != previous_serial:
+			approach_repath_count += 1
 		# set_mission_destination owns combat-radius clamping. Retain the
 		# authoritative destination actually assigned to movement, not the
 		# unclamped planner request.
 		_approach_position = _squadron.destination
-		_approach_repath_left = REPATH_INTERVAL_SEC
+		_approach_repath_left = maxf(
+			dive_data.approach_repath_interval_sec,
+			0.0
+		)
 	if _has_reached_approach_position():
 		state = State.ATTACK_SPLIT
 
@@ -368,8 +453,13 @@ func _begin_regroup() -> void:
 	_regroup_position.y = (
 		carrier.global_position.y if carrier != null else 0.0
 	) + aircraft_data.operating_altitude_m
+	# Ownership policy: EVERY controller returns its aircraft to formation
+	# control at the moment regroup begins, so the rally flight is flown by
+	# one system for the whole squadron. No aircraft is ever mixed between a
+	# live dive controller and formation steering during the regroup.
 	for controller in _controllers:
 		controller.mark_regrouped()
+		movement_ownership_released_count += 1
 	_squadron.restore_formation_flight()
 	_regroup_destination_serial = _squadron.set_mission_destination(
 		_regroup_position,
@@ -377,6 +467,7 @@ func _begin_regroup() -> void:
 		&"dive_bomb_regroup"
 	)
 	_regroup_elapsed_sec = 0.0
+	regroup_completion_reason = RegroupCompletionReason.NONE
 	state = State.REGROUPING
 
 
@@ -385,29 +476,62 @@ func _update_regroup(delta: float) -> void:
 	var dive_data := _squadron.get_dive_bomber_combat_data()
 	var alive := _squadron.get_alive_aircraft()
 	var arrived := 0
-	var arrival_distance := maxf(
-		_squadron.squadron_data.aircraft_data.arrival_distance_m,
-		1.0
-	)
 	for aircraft in alive:
-		if aircraft.global_position.distance_to(_regroup_position) \
-				<= arrival_distance * 2.0:
+		if _has_aircraft_regrouped(aircraft, dive_data):
 			arrived += 1
 	var ratio := float(arrived) / float(alive.size()) \
-		if not alive.is_empty() else 1.0
-	if ratio >= clampf(dive_data.regroup_completion_ratio, 0.0, 1.0) \
-			or _regroup_elapsed_sec >= maxf(dive_data.regroup_timeout_sec, 0.0) \
-			or _squadron.has_reached_mission_destination(
-				_regroup_destination_serial
-			):
-		regrouped_count = alive.size()
-		state = State.COMPLETED if released_count > 0 else State.FAILED
+		if not alive.is_empty() else 0.0
+	regroup_alive_count = alive.size()
+	regroup_arrived_count = arrived
+	regroup_completion_ratio_actual = ratio
+	# Completion causes are judged individually and recorded by priority, so
+	# the stats always say WHY the regroup ended and how many actually made
+	# it - a timeout can no longer masquerade as a full rally.
+	var next_reason := RegroupCompletionReason.NONE
+	if alive.is_empty():
+		next_reason = RegroupCompletionReason.NO_SURVIVORS
+	elif ratio >= clampf(dive_data.regroup_completion_ratio, 0.0, 1.0):
+		next_reason = RegroupCompletionReason.RATIO_REACHED
+	elif _squadron.has_reached_mission_destination(
+		_regroup_destination_serial
+	):
+		next_reason = RegroupCompletionReason.DESTINATION_REACHED
+	elif _regroup_elapsed_sec >= maxf(dive_data.regroup_timeout_sec, 0.0):
+		next_reason = RegroupCompletionReason.TIMEOUT
+	if next_reason == RegroupCompletionReason.NONE:
+		return
+	regroup_completion_reason = next_reason
+	regrouped_count = arrived
+	# The attack verdict comes from released bombs alone; a regroup timeout
+	# is a normal ending, not a mission failure.
+	state = State.COMPLETED if released_count > 0 else State.FAILED
+
+
+## Split arrival test: horizontal ground-track distance and altitude error
+## are judged separately. A bomber recovering from its dive can be exactly
+## over the rally point long before it has climbed back to cruise altitude.
+func _has_aircraft_regrouped(
+		aircraft: AircraftUnit,
+		dive_data: DiveBomberCombatData
+) -> bool:
+	var horizontal_distance := Vector2(
+		aircraft.global_position.x - _regroup_position.x,
+		aircraft.global_position.z - _regroup_position.z
+	).length()
+	if horizontal_distance > maxf(dive_data.regroup_horizontal_tolerance_m, 1.0):
+		return false
+	var altitude_error := absf(
+		aircraft.global_position.y - _regroup_position.y
+	)
+	return altitude_error <= maxf(dive_data.regroup_altitude_tolerance_m, 1.0)
 
 
 func _finish_without_regroup() -> void:
 	for controller in _controllers:
 		controller.mark_regrouped()
+		movement_ownership_released_count += 1
 	_squadron.restore_formation_flight()
+	regroup_completion_reason = RegroupCompletionReason.REGROUP_DISABLED
 	state = State.COMPLETED if released_count > 0 else State.FAILED
 
 

@@ -10,6 +10,14 @@ var weapon_data: AircraftWeaponData
 var dive_data: DiveBomberCombatData
 var attack_mode := DiveBombAttackMode.Type.NORMAL_APPROACH
 var world_gravity_mps2 := 9.8
+## Bumped on every setup and cancel. Any release outcome tagged with an older
+## generation belongs to a previous attack and must not mutate this one.
+var attack_generation := 0
+## Generation of the aircraft's movement ownership at acquire time; if the
+## aircraft's generation moves past this (forced override, re-acquire by
+## another system), this controller's steering is stale.
+var _owned_movement_generation := -1
+var _movement_ownership_released := false
 
 
 func setup(
@@ -19,19 +27,23 @@ func setup(
 		solution: DiveBombAttackSolution,
 		next_attack_mode: int = DiveBombAttackMode.Type.NORMAL_APPROACH
 ) -> bool:
-	if aircraft == null or not is_instance_valid(aircraft) \
-			or not aircraft.is_alive() or next_weapon_data == null \
-			or next_dive_data == null or solution == null \
-			or not solution.valid:
-		return false
-	if next_weapon_data.weapon_type != AircraftWeaponData.WeaponType.BOMB \
-			or aircraft.weapon_controller == null \
-			or not aircraft.weapon_controller.has_ammunition():
-		return false
-	if not aircraft.acquire_movement_owner(
-		AircraftMovementOwner.Type.DIVE_BOMB_ATTACK
+	# Every validation runs BEFORE movement ownership is acquired, so a
+	# rejected setup can never leave the aircraft owned by a dead controller.
+	if not _validate_setup_inputs(
+		aircraft,
+		next_weapon_data,
+		next_dive_data,
+		solution
 	):
 		return false
+	if not aircraft.acquire_movement_owner(
+		AircraftMovementOwner.Type.DIVE_BOMB_ATTACK,
+		&"dive_bomb_setup"
+	):
+		return false
+	attack_generation += 1
+	_owned_movement_generation = aircraft.movement_owner_generation
+	_movement_ownership_released = false
 	weapon_data = next_weapon_data
 	dive_data = next_dive_data
 	attack_mode = next_attack_mode
@@ -59,12 +71,46 @@ func setup(
 	return true
 
 
+func _validate_setup_inputs(
+		aircraft: AircraftUnit,
+		next_weapon_data: AircraftWeaponData,
+		next_dive_data: DiveBomberCombatData,
+		solution: DiveBombAttackSolution
+) -> bool:
+	if aircraft == null or not is_instance_valid(aircraft) \
+			or not aircraft.is_alive() or next_weapon_data == null \
+			or next_dive_data == null or solution == null \
+			or not solution.valid:
+		return false
+	if next_weapon_data.weapon_type != AircraftWeaponData.WeaponType.BOMB \
+			or aircraft.weapon_controller == null \
+			or not aircraft.weapon_controller.has_ammunition():
+		return false
+	if not solution.attack_direction.is_finite() \
+			or not solution.final_aim_impact_position.is_finite() \
+			or not solution.release_position.is_finite():
+		return false
+	if next_dive_data.dive_speed_mps <= 0.0 \
+			or next_dive_data.dive_angle_degrees <= 0.0 \
+			or next_dive_data.dive_angle_degrees >= 90.0:
+		return false
+	return true
+
+
 func update(delta: float) -> void:
 	var aircraft := attack_state.get_aircraft()
 	if aircraft == null or not aircraft.is_alive():
 		attack_state.state = DiveBombAircraftAttackState.State.DESTROYED
 		attack_state.release_block_reason = \
 			DiveBombReleaseBlockReason.Type.AIRCRAFT_DESTROYED
+		return
+	if not is_terminal() and _has_lost_movement_ownership(aircraft):
+		# A lifecycle override (return, carrier loss, shutdown) took the
+		# aircraft. This attack can no longer steer, so it must not keep
+		# evaluating release windows or re-apply its old dive direction.
+		attack_state.release_block_reason = \
+			DiveBombReleaseBlockReason.Type.MOVEMENT_OWNERSHIP_LOST
+		attack_state.state = DiveBombAircraftAttackState.State.FAILED
 		return
 	match attack_state.state:
 		DiveBombAircraftAttackState.State.APPROACHING:
@@ -92,26 +138,62 @@ func is_attack_resolved() -> bool:
 	return attack_state.is_attack_resolved()
 
 
-func cancel() -> void:
+## Aborts the attack. Ammunition not yet consumed stays aboard, projectiles
+## already spawned keep flying, and the attack generation moves on so any
+## late release outcome from the aborted attack is ignored. Movement
+## ownership is returned so formation control resumes immediately.
+func cancel(reason: StringName = &"cancelled") -> void:
+	attack_generation += 1
 	if is_terminal():
+		release_movement_ownership(reason)
 		return
 	attack_state.release_block_reason = \
-		DiveBombReleaseBlockReason.Type.WEAPON_DISABLED
-	_begin_pull_out(false)
+		DiveBombReleaseBlockReason.Type.CANCELLED
+	attack_state.state = DiveBombAircraftAttackState.State.FAILED
+	release_movement_ownership(reason)
 
 
-func mark_regrouped() -> void:
+## Idempotent: safe to call from every cleanup path, in any order, any number
+## of times. Only touches the aircraft while this controller's acquire is
+## still the active ownership.
+func release_movement_ownership(reason: StringName = &"") -> void:
+	if _movement_ownership_released:
+		return
+	_movement_ownership_released = true
 	var aircraft := attack_state.get_aircraft()
 	if aircraft != null:
 		aircraft.release_movement_owner(
-			AircraftMovementOwner.Type.DIVE_BOMB_ATTACK
+			AircraftMovementOwner.Type.DIVE_BOMB_ATTACK,
+			reason
 		)
+
+
+func shutdown() -> void:
+	cancel(&"shutdown")
+
+
+func has_released_payload() -> bool:
+	return attack_state.released
+
+
+func mark_regrouped() -> void:
+	release_movement_ownership(&"regroup")
 	if attack_state.state in [
 		DiveBombAircraftAttackState.State.FAILED,
 		DiveBombAircraftAttackState.State.DESTROYED,
 	]:
 		return
 	attack_state.state = DiveBombAircraftAttackState.State.REGROUPING
+
+
+func _has_lost_movement_ownership(aircraft: AircraftUnit) -> bool:
+	if _movement_ownership_released:
+		return true
+	if not aircraft.is_movement_owned_by(
+		AircraftMovementOwner.Type.DIVE_BOMB_ATTACK
+	):
+		return true
+	return aircraft.movement_owner_generation != _owned_movement_generation
 
 
 func get_debug_snapshot() -> Dictionary:
@@ -128,6 +210,10 @@ func get_debug_snapshot() -> Dictionary:
 		"released": attack_state.released,
 		"ammunition_consumed": attack_state.ammunition_consumed,
 		"degraded_release_used": attack_state.degraded_release_used,
+		"release_retry_count": attack_state.release_retry_count,
+		"attack_generation": attack_generation,
+		"movement_owner_generation": _owned_movement_generation,
+		"movement_ownership_released": _movement_ownership_released,
 		"dive_elapsed_sec": attack_state.dive_elapsed_sec,
 		"last_release_altitude_m": attack_state.last_release_altitude_m,
 		"last_release_remaining_m": attack_state.last_release_remaining_m,
@@ -195,6 +281,10 @@ func _update_approach(aircraft: AircraftUnit) -> void:
 
 func _update_dive(aircraft: AircraftUnit, delta: float) -> void:
 	attack_state.dive_elapsed_sec += maxf(delta, 0.0)
+	attack_state.release_retry_cooldown_sec = maxf(
+		attack_state.release_retry_cooldown_sec - maxf(delta, 0.0),
+		0.0
+	)
 	aircraft.set_direct_flight_owned(
 		attack_state.locked_dive_direction,
 		maxf(dive_data.dive_speed_mps, 1.0),
@@ -208,7 +298,8 @@ func _update_dive(aircraft: AircraftUnit, delta: float) -> void:
 	)
 	attack_state.release_block_reason = reason
 	if reason == DiveBombReleaseBlockReason.Type.NONE:
-		_release_bomb(aircraft)
+		if attack_state.release_retry_cooldown_sec <= 0.0:
+			_release_bomb(aircraft)
 		return
 	if reason in [
 		DiveBombReleaseBlockReason.Type.SAFETY_ALTITUDE_REACHED,
@@ -313,8 +404,9 @@ func evaluate_release_window(
 
 
 func _release_bomb(aircraft: AircraftUnit) -> void:
-	if attack_state.release_attempted:
+	if attack_state.released:
 		return
+	var generation_at_request := attack_generation
 	attack_state.release_attempted = true
 	var ammunition_before := aircraft.weapon_controller.remaining_ammunition
 	var released := aircraft.weapon_controller.release(
@@ -323,6 +415,11 @@ func _release_bomb(aircraft: AircraftUnit) -> void:
 		attack_state.aircraft_combat_id,
 		attack_state.locked_attack_direction
 	)
+	if generation_at_request != attack_generation:
+		# The attack was cancelled while the request ran. The outcome belongs
+		# to the previous generation: an already spawned projectile keeps
+		# flying, but a terminated controller state is never resurrected.
+		return
 	attack_state.released = released
 	attack_state.ammunition_consumed = released \
 		and aircraft.weapon_controller.remaining_ammunition \
@@ -332,10 +429,24 @@ func _release_bomb(aircraft: AircraftUnit) -> void:
 		attack_state.release_block_reason = \
 			DiveBombReleaseBlockReason.Type.NONE
 		_begin_pull_out(true)
-	else:
+		return
+	# Transient refusal (busy weapon controller, queue pressure): retry a
+	# bounded number of times inside the still-open window instead of
+	# instantly wasting the pass. Ammunition was not consumed, so a later
+	# retry or a skip both keep the bomb aboard.
+	attack_state.release_retry_count += 1
+	if attack_state.release_retry_count > maxi(
+		dive_data.maximum_release_retry_count,
+		0
+	):
 		attack_state.release_block_reason = \
-			DiveBombReleaseBlockReason.Type.WEAPON_DISABLED
+			DiveBombReleaseBlockReason.Type.RELEASE_RETRY_EXHAUSTED
 		_begin_pull_out(false)
+		return
+	attack_state.release_retry_cooldown_sec = maxf(
+		dive_data.release_retry_interval_sec,
+		0.0
+	)
 
 
 func _begin_pull_out(was_released: bool) -> void:

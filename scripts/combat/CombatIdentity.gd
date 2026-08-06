@@ -6,11 +6,27 @@ class_name CombatIdentity
 ## they must not influence gameplay RNG because allocation order is not stable.
 
 
+## Ship ids fall back to ship_id+team when no stage spawn id was assigned.
+## That fallback is stable across runs but NOT unique for duplicate hulls of
+## one team, so gameplay spawns must always carry a combat_spawn_id; the
+## debug warning below surfaces any real path that reaches the fallback.
+static var _warned_fallback_ship_ids := {}
+
+
 static func for_ship(ship: ShipUnit) -> int:
 	if ship == null or not is_instance_valid(ship):
 		return 0
 	if ship.combat_spawn_id != 0:
 		return ship.combat_spawn_id
+	if OS.is_debug_build():
+		var warn_key := "%s/%s" % [ship.ship_id, ship.team]
+		if not _warned_fallback_ship_ids.has(warn_key):
+			_warned_fallback_ship_ids[warn_key] = true
+			push_warning(
+				"Unstable CombatIdentity fallback used for gameplay RNG: "
+				+ "ship '%s' (team %s) has no combat_spawn_id"
+				% [ship.ship_id, ship.team]
+			)
 	return _nonzero_hash([
 		&"ship",
 		StringName(ship.ship_id),

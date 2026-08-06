@@ -32,6 +32,25 @@ var pull_out_aircraft_ratio: float = 0.5
 @export var regroup_distance_m := 500.0
 @export var regroup_timeout_sec := 8.0
 @export_range(0.0, 1.0, 0.05) var regroup_completion_ratio := 0.7
+## Arrival is judged on the horizontal ground track and the altitude error
+## SEPARATELY: a bomber recovering from a dive can be exactly over the rally
+## point while still climbing back to cruise altitude.
+@export var regroup_horizontal_tolerance_m := 120.0
+@export var regroup_altitude_tolerance_m := 60.0
+
+@export_category("Approach Repath")
+## How often the shared approach destination is re-evaluated for a moving
+## target, and how far the new point must differ from the currently assigned
+## destination before a NEW movement command (new serial) is issued.
+@export var approach_repath_interval_sec := 0.25
+@export var approach_repath_threshold_m := 75.0
+
+@export_category("Release Retry")
+## A transient per-aircraft release refusal (busy controller, queue pressure)
+## is retried inside the still-open window at this cadence, at most this many
+## times, before the pass is abandoned with the bomb kept aboard.
+@export var release_retry_interval_sec := 0.05
+@export var maximum_release_retry_count := 3
 
 @export_category("Target Pass")
 @export var target_pass_margin_m: float = 75.0
@@ -145,6 +164,18 @@ func validate() -> PackedStringArray:
 		errors.append("regroup_timeout_sec cannot be negative.")
 	if regroup_completion_ratio < 0.0 or regroup_completion_ratio > 1.0:
 		errors.append("regroup_completion_ratio must be in [0, 1].")
+	if regroup_horizontal_tolerance_m <= 0.0:
+		errors.append("regroup_horizontal_tolerance_m must be positive.")
+	if regroup_altitude_tolerance_m <= 0.0:
+		errors.append("regroup_altitude_tolerance_m must be positive.")
+	if approach_repath_interval_sec < 0.0:
+		errors.append("approach_repath_interval_sec cannot be negative.")
+	if approach_repath_threshold_m < 0.0:
+		errors.append("approach_repath_threshold_m cannot be negative.")
+	if release_retry_interval_sec < 0.0:
+		errors.append("release_retry_interval_sec cannot be negative.")
+	if maximum_release_retry_count < 0:
+		errors.append("maximum_release_retry_count cannot be negative.")
 	if target_pass_margin_m < 0.0:
 		errors.append("target_pass_margin_m must not be negative.")
 	if target_pass_check_max_altitude_m <= 0.0:

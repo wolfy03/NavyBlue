@@ -51,7 +51,9 @@ func setup(
 		and owner_ship.battle_services.debug_settings != null
 		and owner_ship.battle_services.debug_settings.log_battle_ai
 	)
-	_random.seed = owner_ship.get_instance_id() * 1103515245 + 12345
+	# Observation-noise phase must not depend on allocation order: the same
+	# battle setup (and a save-restore of it) gets the same evaluation phase.
+	_random.seed = CombatIdentity.for_ship(owner_ship) * 1103515245 + 12345
 	_evaluation_elapsed_sec = -_random.randf_range(
 		0.0,
 		maxf(initial_evaluation_offset_max_sec, 0.0)

@@ -74,7 +74,9 @@ func update(delta: float) -> void:
 	if _finished or _coordinator == null:
 		return
 	_coordinator.update(delta)
-	_last_coordinator_snapshot = _coordinator.get_debug_snapshot()
+	# No per-frame snapshot dictionaries: get_debug_snapshot() reads the live
+	# coordinator on demand, and _finish_and_return captures the final state
+	# right before the coordinator is dropped.
 	match _coordinator.state:
 		SquadronDiveBombCoordinator.State.APPROACHING:
 			state = State.APPROACHING
@@ -88,7 +90,8 @@ func update(delta: float) -> void:
 			state = State.PULLING_OUT
 		SquadronDiveBombCoordinator.State.COMPLETED:
 			_begin_egress()
-		SquadronDiveBombCoordinator.State.FAILED:
+		SquadronDiveBombCoordinator.State.FAILED, \
+				SquadronDiveBombCoordinator.State.CANCELLED:
 			_finish_and_return(false)
 		_:
 			pass
@@ -104,7 +107,7 @@ func cancel_and_return() -> void:
 
 func cancel_without_return() -> void:
 	if _coordinator != null:
-		_coordinator.cancel()
+		_coordinator.cancel(&"mission_cancelled")
 	_coordinator = null
 	_finished = true
 	successful = false
@@ -205,7 +208,7 @@ func _update_egress() -> void:
 func _finish_and_return(was_successful: bool) -> void:
 	if _coordinator != null:
 		_last_coordinator_snapshot = _coordinator.get_debug_snapshot()
-		_coordinator.cancel()
+		_coordinator.cancel(&"mission_finished")
 	_coordinator = null
 	successful = was_successful
 	_finished = true
