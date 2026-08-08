@@ -26,7 +26,18 @@ var locked_dive_direction := Vector3.ZERO
 
 var dive_elapsed_sec := 0.0
 var alignment_elapsed_sec := 0.0
+var alignment_timeout_sec := 0.0
 var pull_out_elapsed_sec := 0.0
+
+## Live ALIGNING telemetry. These describe the real velocity track and the
+## lightweight target heading, not a visual transform.
+var current_heading := Vector3.FORWARD
+var desired_heading := Vector3.FORWARD
+var current_heading_error_degrees := 0.0
+var applied_turn_step_degrees := 0.0
+var current_turn_rate_degrees_sec := 0.0
+var final_solution_ready := false
+var final_solution_revision := 0
 
 var release_block_reason := DiveBombReleaseBlockReason.Type.NONE
 

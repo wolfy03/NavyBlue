@@ -61,6 +61,27 @@ func set_direct_flight(
 	_arrived = false
 
 
+## Resolves a level direct-flight track from the aircraft's real horizontal
+## velocity. The fallback follows the project's -Z forward convention.
+func resolve_steered_direction(
+		desired_direction: Vector3,
+		max_turn_rate_degrees_sec: float,
+		delta: float
+) -> Vector3:
+	if owner_aircraft == null or not is_instance_valid(owner_aircraft):
+		return AircraftSteeringMath.horizontal_heading(desired_direction)
+	var current_heading := AircraftSteeringMath.horizontal_heading(
+		owner_aircraft.velocity,
+		-owner_aircraft.global_transform.basis.z
+	)
+	return AircraftSteeringMath.resolve_horizontal_steered_direction(
+		current_heading,
+		desired_direction,
+		max_turn_rate_degrees_sec,
+		delta
+	)
+
+
 func _update_formation_movement(delta: float) -> void:
 	if owner_aircraft == null \
 			or not is_instance_valid(owner_aircraft) \

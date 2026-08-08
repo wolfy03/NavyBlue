@@ -190,6 +190,27 @@ func set_direct_flight_owned(
 	return true
 
 
+## Ownership-safe gradual horizontal direct flight. Immediate direct flight
+## remains available for deliberately locked states such as DIVING and
+## pull-out; tracking/turning states use this API.
+func steer_direct_flight_owned(
+		desired_direction: Vector3,
+		speed_mps: float,
+		max_turn_rate_degrees_sec: float,
+		delta: float,
+		current_owner: int
+) -> bool:
+	if movement_owner != current_owner or movement == null:
+		return false
+	var next_heading := movement.resolve_steered_direction(
+		desired_direction,
+		max_turn_rate_degrees_sec,
+		delta
+	)
+	movement.set_direct_flight(next_heading, speed_mps)
+	return true
+
+
 func is_movement_owned_by(current_owner: int) -> bool:
 	return movement_owner == current_owner
 

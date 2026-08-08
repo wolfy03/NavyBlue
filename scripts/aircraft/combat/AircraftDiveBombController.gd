@@ -1,7 +1,8 @@
 extends RefCounted
 class_name AircraftDiveBombController
-## Executes one aircraft's already-solved dive. Target selection, accuracy and
-## squadron aggregation deliberately live outside this class.
+## Executes one aircraft's dive. Target selection and pass-wide accuracy stay
+## outside this class; the final per-aircraft solution is refreshed exactly
+## once after physical heading alignment and is then immutable in DIVING.
 
 const EPSILON := 0.0001
 
@@ -18,6 +19,9 @@ var attack_generation := 0
 ## another system), this controller's steering is stale.
 var _owned_movement_generation := -1
 var _movement_ownership_released := false
+var _resolved_target: DiveBombResolvedTarget
+var _attack_context: DiveBombAttackContext
+var _pending_final_solution: DiveBombAttackSolution
 
 
 func setup(
@@ -25,7 +29,9 @@ func setup(
 		next_weapon_data: AircraftWeaponData,
 		next_dive_data: DiveBomberCombatData,
 		solution: DiveBombAttackSolution,
-		next_attack_mode: int = DiveBombAttackMode.Type.NORMAL_APPROACH
+		next_attack_mode: int = DiveBombAttackMode.Type.NORMAL_APPROACH,
+		resolved_target: DiveBombResolvedTarget = null,
+		attack_context: DiveBombAttackContext = null
 ) -> bool:
 	# Every validation runs BEFORE movement ownership is acquired, so a
 	# rejected setup can never leave the aircraft owned by a dead controller.
@@ -47,6 +53,9 @@ func setup(
 	weapon_data = next_weapon_data
 	dive_data = next_dive_data
 	attack_mode = next_attack_mode
+	_resolved_target = resolved_target
+	_attack_context = attack_context
+	_pending_final_solution = null
 	world_gravity_mps2 = float(ProjectSettings.get_setting(
 		"physics/3d/default_gravity",
 		9.8
@@ -68,6 +77,8 @@ func setup(
 		else DiveBombAircraftAttackState.State.ALIGNING
 	attack_state.release_block_reason = \
 		DiveBombReleaseBlockReason.Type.TOO_EARLY
+	if attack_state.state == DiveBombAircraftAttackState.State.ALIGNING:
+		_begin_alignment(aircraft)
 	return true
 
 
@@ -215,6 +226,29 @@ func get_debug_snapshot() -> Dictionary:
 		"movement_owner_generation": _owned_movement_generation,
 		"movement_ownership_released": _movement_ownership_released,
 		"dive_elapsed_sec": attack_state.dive_elapsed_sec,
+		"alignment_elapsed_sec": attack_state.alignment_elapsed_sec,
+		"alignment_timeout_sec": attack_state.alignment_timeout_sec,
+		"current_heading": attack_state.current_heading,
+		"desired_heading": attack_state.desired_heading,
+		"heading_error_degrees":
+			attack_state.current_heading_error_degrees,
+		"applied_turn_step_degrees":
+			attack_state.applied_turn_step_degrees,
+		"current_turn_rate_degrees_sec":
+			attack_state.current_turn_rate_degrees_sec,
+		"alignment_turn_rate_limit_degrees_sec":
+			dive_data.alignment_turn_rate_degrees_sec if dive_data != null else 0.0,
+		"alignment_speed_mps": _resolve_alignment_speed_mps(
+			attack_state.get_aircraft()
+		),
+		"final_solution_ready": attack_state.final_solution_ready,
+		"final_solution_revision": attack_state.final_solution_revision,
+		"dive_entry_heading_tolerance_degrees":
+			dive_data.dive_entry_heading_tolerance_degrees \
+				if dive_data != null else 0.0,
+		"maximum_dive_entry_turn_rate_degrees_sec":
+			dive_data.maximum_dive_entry_turn_rate_degrees_sec \
+				if dive_data != null else 0.0,
 		"last_release_altitude_m": attack_state.last_release_altitude_m,
 		"last_release_remaining_m": attack_state.last_release_remaining_m,
 		"last_predicted_forward_error_m":
@@ -227,34 +261,187 @@ func get_debug_snapshot() -> Dictionary:
 
 
 func _update_alignment(aircraft: AircraftUnit, delta: float) -> void:
-	attack_state.alignment_elapsed_sec += maxf(delta, 0.0)
-	var direction := attack_state.locked_attack_direction
-	aircraft.set_direct_flight_owned(
-		direction,
-		maxf(dive_data.dive_speed_mps, 1.0),
+	var safe_delta := maxf(delta, 0.0)
+	attack_state.alignment_elapsed_sec += safe_delta
+	var current_heading := _resolve_current_horizontal_heading(aircraft)
+	var desired_heading := _resolve_desired_alignment_heading(aircraft)
+	var next_heading := AircraftSteeringMath \
+		.resolve_horizontal_steered_direction(
+			current_heading,
+			desired_heading,
+			dive_data.alignment_turn_rate_degrees_sec,
+			safe_delta
+		)
+	var heading_error_rad := AircraftSteeringMath.signed_heading_error_rad(
+		current_heading,
+		desired_heading
+	)
+	var turn_step_rad := AircraftSteeringMath.signed_heading_error_rad(
+		current_heading,
+		next_heading
+	)
+	attack_state.current_heading = current_heading
+	attack_state.desired_heading = desired_heading
+	attack_state.current_heading_error_degrees = rad_to_deg(heading_error_rad)
+	attack_state.applied_turn_step_degrees = rad_to_deg(turn_step_rad)
+	attack_state.current_turn_rate_degrees_sec = (
+		rad_to_deg(turn_step_rad) / safe_delta if safe_delta > EPSILON else 0.0
+	)
+	aircraft.steer_direct_flight_owned(
+		desired_heading,
+		_resolve_alignment_speed_mps(aircraft),
+		dive_data.alignment_turn_rate_degrees_sec,
+		safe_delta,
 		AircraftMovementOwner.Type.DIVE_BOMB_ATTACK
 	)
-	var forward := _flat_direction(aircraft.get_forward_direction())
-	var angle_error := rad_to_deg(acos(clampf(
-		forward.dot(direction),
-		-1.0,
-		1.0
-	)))
-	var allowed_error := maxf(
-		dive_data.quick_dive_max_heading_error_degrees \
-			if attack_mode == DiveBombAttackMode.Type.QUICK_ATTACK \
-			else dive_data.maximum_release_heading_error_degrees,
+	var heading_aligned := absf(
+		attack_state.current_heading_error_degrees
+	) <= maxf(dive_data.dive_entry_heading_tolerance_degrees, 0.0)
+	var turn_settled := absf(
+		attack_state.current_turn_rate_degrees_sec
+	) <= maxf(
+		dive_data.maximum_dive_entry_turn_rate_degrees_sec,
 		0.0
 	)
-	if angle_error <= allowed_error:
-		attack_state.state = DiveBombAircraftAttackState.State.DIVING
+	if heading_aligned and turn_settled \
+			and _finalize_dive_solution(aircraft):
 		return
-	if attack_mode == DiveBombAttackMode.Type.QUICK_ATTACK \
-			and attack_state.alignment_elapsed_sec \
-				>= maxf(dive_data.quick_dive_alignment_time_sec, 0.0):
+	if attack_state.alignment_elapsed_sec \
+			>= attack_state.alignment_timeout_sec:
 		attack_state.release_block_reason = \
-			DiveBombReleaseBlockReason.Type.HEADING_NOT_ALIGNED
+			DiveBombReleaseBlockReason.Type.ALIGNMENT_TIMEOUT
 		_begin_pull_out(false)
+
+
+func _begin_alignment(aircraft: AircraftUnit) -> void:
+	attack_state.state = DiveBombAircraftAttackState.State.ALIGNING
+	attack_state.alignment_elapsed_sec = 0.0
+	attack_state.final_solution_ready = false
+	attack_state.final_solution_revision = 0
+	_pending_final_solution = null
+	var current_heading := _resolve_current_horizontal_heading(aircraft)
+	var desired_heading := _resolve_desired_alignment_heading(aircraft)
+	attack_state.current_heading = current_heading
+	attack_state.desired_heading = desired_heading
+	attack_state.current_heading_error_degrees = rad_to_deg(
+		AircraftSteeringMath.signed_heading_error_rad(
+			current_heading,
+			desired_heading
+		)
+	)
+	attack_state.applied_turn_step_degrees = 0.0
+	attack_state.current_turn_rate_degrees_sec = 0.0
+	var estimated_turn_time := AircraftSteeringMath.estimated_turn_time_sec(
+		current_heading,
+		desired_heading,
+		dive_data.alignment_turn_rate_degrees_sec
+	)
+	var minimum_timeout := maxf(
+		dive_data.minimum_alignment_timeout_sec,
+		0.0
+	)
+	var maximum_timeout := maxf(
+		dive_data.maximum_alignment_timeout_sec,
+		minimum_timeout
+	)
+	var scaled_timeout := estimated_turn_time \
+		* maxf(dive_data.alignment_timeout_multiplier, 1.0)
+	attack_state.alignment_timeout_sec = clampf(
+		scaled_timeout if is_finite(scaled_timeout) else maximum_timeout,
+		minimum_timeout,
+		maximum_timeout
+	)
+
+
+func _resolve_current_horizontal_heading(aircraft: AircraftUnit) -> Vector3:
+	return AircraftSteeringMath.horizontal_heading(
+		aircraft.get_world_velocity(),
+		-aircraft.global_transform.basis.z
+	)
+
+
+func _resolve_desired_alignment_heading(
+		aircraft: AircraftUnit
+) -> Vector3:
+	if _pending_final_solution != null:
+		return _flat_direction(_pending_final_solution.attack_direction)
+	if _resolved_target != null and _resolved_target.is_valid():
+		var tracking_position := DiveBombAttackPlanner \
+			.resolve_tracking_aim_position(_resolved_target, _attack_context)
+		var target_velocity := _resolved_target.get_target_velocity()
+		target_velocity.y = 0.0
+		var lead_time := maxf(
+			attack_state.solution.total_time_to_impact_sec \
+				if attack_state.solution != null else 0.0,
+			0.0
+		)
+		tracking_position += target_velocity * lead_time
+		var to_tracking_target := tracking_position - aircraft.global_position
+		to_tracking_target.y = 0.0
+		if to_tracking_target.length_squared() > EPSILON:
+			return to_tracking_target.normalized()
+	return _flat_direction(
+		attack_state.solution.attack_direction \
+			if attack_state.solution != null \
+			else attack_state.locked_attack_direction
+	)
+
+
+func _resolve_alignment_speed_mps(aircraft: AircraftUnit) -> float:
+	if dive_data == null:
+		return 0.0
+	if dive_data.alignment_speed_mps > 0.0:
+		return dive_data.alignment_speed_mps
+	if aircraft != null and aircraft.aircraft_data != null:
+		return maxf(aircraft.aircraft_data.cruise_speed_mps, 1.0)
+	return maxf(dive_data.dive_speed_mps, 1.0)
+
+
+## Builds the final ballistic solution once. A materially changed final
+## heading becomes the new alignment target; the cached solution is committed
+## only after the real velocity track reaches it.
+func _finalize_dive_solution(aircraft: AircraftUnit) -> bool:
+	if _pending_final_solution == null:
+		_pending_final_solution = DiveBombAttackPlanner \
+			.build_aircraft_commit_solution(
+				null,
+				aircraft,
+				_resolved_target,
+				dive_data,
+				weapon_data,
+				_attack_context
+			) if _resolved_target != null else \
+				attack_state.solution.duplicate_solution()
+		if _pending_final_solution == null \
+				or not _pending_final_solution.valid:
+			attack_state.release_block_reason = \
+				DiveBombReleaseBlockReason.Type.IMPACT_SOLUTION_INVALID
+			_begin_pull_out(false)
+			return false
+		attack_state.final_solution_ready = true
+		attack_state.final_solution_revision = \
+			_pending_final_solution.revision
+	var final_heading := _flat_direction(
+		_pending_final_solution.attack_direction
+	)
+	attack_state.desired_heading = final_heading
+	var final_heading_error := AircraftSteeringMath.signed_heading_error_rad(
+		_resolve_current_horizontal_heading(aircraft),
+		final_heading
+	)
+	attack_state.current_heading_error_degrees = rad_to_deg(
+		final_heading_error
+	)
+	if absf(attack_state.current_heading_error_degrees) \
+			> maxf(dive_data.dive_entry_heading_tolerance_degrees, 0.0):
+		return false
+	attack_state.solution = _pending_final_solution
+	attack_state.locked_attack_direction = final_heading
+	attack_state.locked_dive_direction = _build_locked_dive_direction(
+		final_heading
+	)
+	attack_state.state = DiveBombAircraftAttackState.State.DIVING
+	return true
 
 
 func _update_approach(aircraft: AircraftUnit) -> void:
@@ -266,7 +453,7 @@ func _update_approach(aircraft: AircraftUnit) -> void:
 		1.0
 	)
 	if to_entry.length() <= arrival_distance:
-		attack_state.state = DiveBombAircraftAttackState.State.ALIGNING
+		_begin_alignment(aircraft)
 		return
 	aircraft.set_direct_flight_owned(
 		to_entry.normalized(),

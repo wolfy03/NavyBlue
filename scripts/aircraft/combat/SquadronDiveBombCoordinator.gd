@@ -182,8 +182,23 @@ func get_aircraft_controllers() -> Array[AircraftDiveBombController]:
 
 func get_debug_snapshot() -> Dictionary:
 	var aircraft_snapshots: Array[Dictionary] = []
+	var aligning_count := 0
+	var diving_count := 0
+	var alignment_error_sum := 0.0
+	var maximum_alignment_error := 0.0
 	for controller in _controllers:
 		aircraft_snapshots.append(controller.get_debug_snapshot())
+		if controller.attack_state.state \
+				== DiveBombAircraftAttackState.State.ALIGNING:
+			aligning_count += 1
+			var error := absf(
+				controller.attack_state.current_heading_error_degrees
+			)
+			alignment_error_sum += error
+			maximum_alignment_error = maxf(maximum_alignment_error, error)
+		elif controller.attack_state.state \
+				== DiveBombAircraftAttackState.State.DIVING:
+			diving_count += 1
 	var result := {
 		"state": State.keys()[int(state)],
 		"attack_mode": DiveBombAttackMode.Type.keys()[int(_attack_mode)],
@@ -228,6 +243,13 @@ func get_debug_snapshot() -> Dictionary:
 		"movement_ownership_released_count":
 			movement_ownership_released_count,
 		"controller_count": _controllers.size(),
+		"aligning_count": aligning_count,
+		"diving_count": diving_count,
+		"average_alignment_heading_error_deg": (
+			alignment_error_sum / float(aligning_count) \
+				if aligning_count > 0 else 0.0
+		),
+		"maximum_alignment_heading_error_deg": maximum_alignment_error,
 		"failure_reason": failure_reason,
 		"aircraft": aircraft_snapshots,
 	}
@@ -409,7 +431,9 @@ func _begin_individual_attack() -> void:
 			_squadron.get_aircraft_weapon_data(),
 			_squadron.get_dive_bomber_combat_data(),
 			solution,
-			_attack_mode
+			_attack_mode,
+			_resolved_target,
+			_attack_context
 		):
 			_controllers.append(controller)
 		else:

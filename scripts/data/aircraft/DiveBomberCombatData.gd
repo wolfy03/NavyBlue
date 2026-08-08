@@ -23,9 +23,21 @@ var pull_out_aircraft_ratio: float = 0.5
 
 @export_category("Individual Attack")
 @export var individual_dive_split_distance_m := 700.0
-@export var quick_dive_alignment_time_sec := 0.5
-@export var quick_dive_max_heading_error_degrees := 25.0
 @export var minimum_dive_lane_spacing_m := 0.0
+
+@export_category("Dive Alignment")
+@export_range(1.0, 180.0, 1.0)
+var alignment_turn_rate_degrees_sec := 45.0
+## Zero uses the aircraft's cruise speed.
+@export var alignment_speed_mps := 0.0
+@export_range(0.0, 45.0, 0.5)
+var dive_entry_heading_tolerance_degrees := 5.0
+@export_range(0.0, 90.0, 0.5)
+var maximum_dive_entry_turn_rate_degrees_sec := 8.0
+@export var minimum_alignment_timeout_sec := 1.0
+@export_range(1.0, 5.0, 0.1)
+var alignment_timeout_multiplier := 1.5
+@export var maximum_alignment_timeout_sec := 6.0
 
 @export_category("Regroup")
 @export var regroup_after_attack := true
@@ -149,15 +161,33 @@ func validate() -> PackedStringArray:
 		errors.append("pull-out climb angle must be in (0, 90).")
 	if individual_dive_split_distance_m < 0.0:
 		errors.append("individual_dive_split_distance_m cannot be negative.")
-	if quick_dive_alignment_time_sec < 0.0:
-		errors.append("quick_dive_alignment_time_sec cannot be negative.")
-	if quick_dive_max_heading_error_degrees < 0.0 \
-			or quick_dive_max_heading_error_degrees > 180.0:
-		errors.append(
-			"quick_dive_max_heading_error_degrees must be in [0, 180]."
-		)
 	if minimum_dive_lane_spacing_m < 0.0:
 		errors.append("minimum_dive_lane_spacing_m cannot be negative.")
+	if alignment_turn_rate_degrees_sec <= 0.0 \
+			or alignment_turn_rate_degrees_sec > 180.0:
+		errors.append(
+			"alignment_turn_rate_degrees_sec must be in (0, 180]."
+		)
+	if alignment_speed_mps < 0.0:
+		errors.append("alignment_speed_mps cannot be negative.")
+	if dive_entry_heading_tolerance_degrees < 0.0 \
+			or dive_entry_heading_tolerance_degrees > 45.0:
+		errors.append(
+			"dive_entry_heading_tolerance_degrees must be in [0, 45]."
+		)
+	if maximum_dive_entry_turn_rate_degrees_sec < 0.0 \
+			or maximum_dive_entry_turn_rate_degrees_sec > 90.0:
+		errors.append(
+			"maximum_dive_entry_turn_rate_degrees_sec must be in [0, 90]."
+		)
+	if minimum_alignment_timeout_sec < 0.0:
+		errors.append("minimum_alignment_timeout_sec cannot be negative.")
+	if alignment_timeout_multiplier < 1.0:
+		errors.append("alignment_timeout_multiplier must be at least 1.0.")
+	if maximum_alignment_timeout_sec < minimum_alignment_timeout_sec:
+		errors.append(
+			"maximum_alignment_timeout_sec must be at least the minimum."
+		)
 	if regroup_distance_m < 0.0:
 		errors.append("regroup_distance_m cannot be negative.")
 	if regroup_timeout_sec < 0.0:

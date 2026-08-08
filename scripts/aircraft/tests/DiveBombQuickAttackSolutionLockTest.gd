@@ -1,8 +1,8 @@
 extends SceneTree
-## Solution lock contract (§26) and target-destroyed-after-lock policy
-## (§25): once the individual attack begins, target motion, target loss and
-## newly appearing ships change neither the locked dive direction nor the
-## final aim point.
+## Solution lock and target-destroyed-after-lock contract: ALIGNING may track
+## the selected target. After every aircraft physically
+## enters DIVING, target motion/loss and newly appearing ships change neither
+## the locked dive direction nor the final aim point.
 
 var _failures: Array[String] = []
 
@@ -44,6 +44,17 @@ func _run() -> void:
 	_check(
 		controllers.size() == squadron.get_alive_aircraft().size(),
 		"every armed aircraft receives its own solution"
+	)
+	for _frame in 600:
+		coordinator.update(1.0 / 60.0)
+		for aircraft_value in squadron.aircraft_units:
+			var aircraft := aircraft_value as AircraftUnit
+			aircraft.movement.update_movement(1.0 / 60.0)
+		if _all_diving(controllers):
+			break
+	_check(
+		_all_diving(controllers),
+		"every aircraft physically aligns before the final lock"
 	)
 	var locked_aim := coordinator.get_final_aim_impact_position()
 	var locked_directions: Array[Vector3] = []
@@ -109,6 +120,16 @@ func _find_enemy(battle: BattleScene) -> ShipUnit:
 		if ship != null and is_instance_valid(ship):
 			return ship
 	return null
+
+
+func _all_diving(
+		controllers: Array[AircraftDiveBombController]
+) -> bool:
+	for controller in controllers:
+		if controller.attack_state.state \
+				!= DiveBombAircraftAttackState.State.DIVING:
+			return false
+	return not controllers.is_empty()
 
 
 func _finish(battle: BattleScene) -> void:
